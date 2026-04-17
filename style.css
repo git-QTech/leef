@@ -4,6 +4,10 @@
   padding: 0;
 }
 
+input, textarea, [contenteditable="true"] {
+  user-select: text;
+}
+
 :root {
   --topbar-bg: #5aef7e;
   --tab-active: #82efa2;
@@ -23,6 +27,16 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  user-select: none;
+}
+
+/* Hide browser chrome during video fullscreen */
+body.video-fullscreen .browser-top {
+  display: none;
+}
+
+body.video-fullscreen .main-content {
+  height: 100vh;
 }
 
 /* --- TITLE BAR & TOP BAR --- */
@@ -40,7 +54,6 @@ body {
   align-items: center;
   padding: 8px 150px 8px 16px;
   gap: 12px;
-  -webkit-app-region: no-drag;
 }
 
 .brand {
@@ -74,6 +87,7 @@ body {
   align-items: center;
   justify-content: center;
   transition: background 0.2s;
+  -webkit-app-region: no-drag;
 }
 
 .nav-btn:hover {
@@ -88,6 +102,7 @@ body {
   align-items: center;
   padding: 4px 12px;
   gap: 8px;
+  -webkit-app-region: no-drag;
 }
 
 .address-bar-container input {
@@ -121,6 +136,7 @@ body {
   color: white;
   font-size: 1.2rem;
   cursor: pointer;
+  -webkit-app-region: no-drag;
 }
 
 .avatar {
@@ -129,6 +145,7 @@ body {
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid white;
+  -webkit-app-region: no-drag;
 }
 
 /* Tabs row */
@@ -136,7 +153,6 @@ body {
   display: flex;
   padding: 0 16px;
   gap: 4px;
-  -webkit-app-region: no-drag;
   overflow-x: auto;
 }
 
@@ -155,6 +171,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  -webkit-app-region: no-drag;
 }
 
 .tab.active {
@@ -196,6 +213,7 @@ body {
   display: flex;
   align-items: center;
   opacity: 0.6;
+  -webkit-app-region: no-drag;
 }
 .new-tab-btn:hover {
   opacity: 1;
@@ -429,7 +447,80 @@ body {
   font-family: var(--font-sans);
   font-size: 2rem;
   font-weight: normal;
-  margin-bottom: 30px;
+  margin-bottom: 14px;
+}
+
+/* --- HOME SEARCH BAR --- */
+.home-search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.home-search-icon {
+  position: absolute;
+  left: 14px;
+  color: rgba(0,0,0,0.4);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+#home-search {
+  width: 100%;
+  padding: 10px 14px 10px 38px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(0,0,0,0.1);
+  background: rgba(255,255,255,0.75);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  color: #111;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  user-select: text;
+}
+
+#home-search:focus {
+  border-color: var(--topbar-bg);
+  box-shadow: 0 0 0 3px rgba(90, 239, 126, 0.2);
+  background: #fff;
+}
+
+/* --- NEWS HEADER --- */
+.news-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.news-header h1 {
+  margin-bottom: 0;
+}
+
+.news-refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1.5px solid rgba(0,0,0,0.12);
+  background: rgba(255,255,255,0.7);
+  font-size: 0.8rem;
+  font-family: var(--font-sans);
+  color: #444;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+  -webkit-app-region: no-drag;
+}
+
+.news-refresh-btn:hover {
+  background: rgba(255,255,255,0.95);
+  transform: translateY(-1px);
+}
+
+.news-refresh-btn:active {
+  transform: translateY(0);
 }
 
 .hub-grid {
@@ -475,6 +566,77 @@ body {
 .hub-tile-x .small-text {
   font-size: 0.8rem;
   opacity: 0.7;
+}
+
+/* Hub tile dynamic features */
+.hub-tile {
+  position: relative;
+}
+
+.hub-tile-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0,0,0,0.15);
+  border: none;
+  color: rgba(0,0,0,0.5);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s, color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-app-region: no-drag;
+}
+
+.hub-tile:hover .hub-tile-remove {
+  opacity: 1;
+}
+
+.hub-tile-remove:hover {
+  background: rgba(0,0,0,0.3);
+  color: #fff;
+}
+
+.hub-tile-custom {
+  background: linear-gradient(135deg, #e0e0e0, #c8c8c8);
+  color: #333;
+}
+
+/* News card bottom row */
+.news-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.news-dismiss-btn {
+  background: none;
+  border: 1px solid rgba(0,0,0,0.1);
+  color: rgba(0,0,0,0.4);
+  font-size: 0.7rem;
+  font-family: var(--font-sans);
+  padding: 3px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s, color 0.2s;
+  -webkit-app-region: no-drag;
+}
+
+.news-card:hover .news-dismiss-btn {
+  opacity: 1;
+}
+
+.news-dismiss-btn:hover {
+  background: rgba(0,0,0,0.06);
+  color: rgba(0,0,0,0.7);
+  border-color: rgba(0,0,0,0.2);
 }
 
 /* Webview wrapper */
@@ -762,3 +924,189 @@ input:checked + .slider:before { transform: translateX(22px); }
   margin-bottom: 10px;
   line-height: 1.5;
 }
+
+/* --- TOAST NOTIFICATION --- */
+.leef-toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(20, 20, 20, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #fff;
+  padding: 14px 18px;
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+  z-index: 9999;
+  max-width: 420px;
+  width: calc(100% - 60px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+  font-family: var(--font-sans);
+}
+
+.leef-toast.visible {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.leef-toast-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+.leef-toast-body {
+  flex: 1;
+}
+
+.leef-toast-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 2px;
+}
+
+.leef-toast-msg {
+  font-size: 0.8rem;
+  opacity: 0.75;
+  line-height: 1.4;
+}
+
+.leef-toast-close {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.5);
+  font-size: 1.3rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 4px;
+  flex-shrink: 0;
+  transition: color 0.2s;
+  -webkit-app-region: no-drag;
+}
+
+.leef-toast-close:hover {
+  color: #fff;
+}
+
+/* --- HUB ADD TILE MODAL --- */
+.hub-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: modalFadeIn 0.2s ease;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.hub-modal {
+  background: rgba(255,255,255,0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  padding: 28px 32px;
+  width: 360px;
+  max-width: 90vw;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+  font-family: var(--font-sans);
+  animation: modalSlideIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalSlideIn {
+  from { transform: translateY(20px) scale(0.97); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.hub-modal h3 {
+  margin: 0 0 20px 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #111;
+}
+
+.hub-modal label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #555;
+  margin-bottom: 6px;
+  margin-top: 14px;
+}
+
+.hub-modal label:first-of-type {
+  margin-top: 0;
+}
+
+.hub-modal input[type="text"] {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(0,0,0,0.12);
+  background: #fff;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  color: #111;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+  user-select: text;
+}
+
+.hub-modal input[type="text"]:focus {
+  border-color: var(--topbar-bg);
+  box-shadow: 0 0 0 3px rgba(90, 239, 126, 0.2);
+}
+
+.hub-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.hub-modal-btn {
+  padding: 8px 20px;
+  border-radius: 10px;
+  border: none;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.hub-modal-btn:active {
+  transform: scale(0.97);
+}
+
+.hub-modal-cancel {
+  background: rgba(0,0,0,0.06);
+  color: #555;
+}
+
+.hub-modal-cancel:hover {
+  background: rgba(0,0,0,0.1);
+}
+
+.hub-modal-confirm {
+  background: var(--topbar-bg);
+  color: #000;
+  font-weight: 600;
+}
+
+.hub-modal-confirm:hover {
+  background: #4de06e;
+}
+

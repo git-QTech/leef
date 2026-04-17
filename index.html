@@ -38,7 +38,7 @@
         <button class="action-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></button>
         <button class="action-btn" id="btn-bookmarks"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></button>
         <button class="action-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></button>
-        <img src="https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=100&h=100&fit=crop" alt="User" class="avatar" id="btn-settings" style="cursor: pointer;">
+        <img src="./images/default-avatar.png" alt="User" class="avatar" id="btn-settings" style="cursor: pointer;">
         
         <div id="bookmarks-dropdown" class="bookmarks-dropdown" style="display: none;">
           <div class="bookmarks-header">
@@ -63,7 +63,13 @@
     <!-- Home Layout -->
     <div class="home-layout" id="home-view">
       <div class="news-section">
-        <h1>Leef News</h1>
+        <div class="news-header">
+          <h1>Leef News</h1>
+          <button id="btn-refresh-news" class="news-refresh-btn" title="Refresh news">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh
+          </button>
+        </div>
         <div id="dynamic-news-container">
           <p style="opacity: 0.6; font-family: var(--font-sans)">Loading latest news...</p>
         </div>
@@ -71,20 +77,12 @@
 
       <div class="hub-section">
         <h1>Leef Hub</h1>
+        <div class="home-search-wrapper">
+          <svg class="home-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="home-search" placeholder="Search or enter a URL..." autocomplete="off" spellcheck="false" />
+        </div>
         <div class="hub-grid">
-          <div class="hub-tile hub-tile-amazon" data-url="https://amazon.com">Amazon</div>
-          <div class="hub-tile hub-tile-netflix" data-url="https://netflix.com">Netflix</div>
-          <div class="hub-tile hub-tile-x" data-url="https://twitter.com">
-            <div>X</div>
-            <div class="small-text">Formerly Twitter</div>
-          </div>
-          <div class="hub-tile hub-tile-facebook" data-url="https://facebook.com">Facebook</div>
-          <div class="hub-tile hub-tile-youtube" data-url="https://youtube.com">Youtube</div>
-          <div class="hub-tile hub-tile-discord" data-url="https://discord.com">Discord</div>
-          <div class="hub-tile hub-tile-disney" data-url="https://disneyplus.com">Disney +</div>
-          <div class="hub-tile hub-tile-add">
-            <b>+</b> Add More
-          </div>
+          <!-- Hub tiles rendered dynamically by HubManager -->
         </div>
       </div>
 
@@ -104,13 +102,53 @@
         <p class="changelog-subtitle">Discover the latest updates and improvements</p>
         
         <div class="update-card">
+          <div class="update-date">April 18, 2026</div>
+          <h2>v0.1.3 — Launch Release</h2>
+          <ul>
+            <li><strong>Settings Persistence:</strong> All user preferences (ad blocker, HTTPS-only, search engine, zoom, tracking level, etc.) now persist across restarts via localStorage and are sent to the main process on startup.</li>
+            <li><strong>Home Page Search Bar:</strong> Added a search/URL input directly on the home page so you don't have to rely on the top address bar.</li>
+            <li><strong>Dynamic Leef Hub:</strong> Hub tiles can now be added and removed by the user. Click the × on any tile to remove it, or click "+ Add More" to add a custom site. Your layout persists across sessions.</li>
+            <li><strong>News Feed "I Don't Care":</strong> Each news card now has a dismiss button that replaces it with the next available headline from the RSS feed.</li>
+            <li><strong>News Feed Refresh:</strong> Added a refresh button next to the Leef News heading to fetch the latest headlines on demand.</li>
+            <li><strong>Toast Notification System:</strong> Replaced all native alert() dialogs with a sleek, animated toast notification system used across bookmarks, settings, data clearing, and site warnings.</li>
+            <li><strong>YouTube Warning Toast:</strong> A one-time toast warns users about potential performance impacts above 1440p and known fullscreen border limitations.</li>
+            <li><strong>Video Fullscreen Support:</strong> Entering fullscreen on videos now hides the browser chrome. The main process handles OS-level fullscreen via webContents events.</li>
+            <li><strong>Background Activity Limits:</strong> Background tabs now pause all video and audio elements (not just mute) and resume playback when you return to that tab.</li>
+            <li><strong>Security Hardening:</strong> Added webSecurity flag, RSS content sanitization (XSS prevention), URL link validation, empty input guards, webRequest handler stacking fix, and a 512KB RSS data cap.</li>
+            <li><strong>Performance:</strong> Settings save is debounced (500ms), news images use lazy loading, dead code removed, and ToastManager initialization ordered correctly.</li>
+            <li><strong>Window Controls Color Match:</strong> Title bar overlay color now matches the CSS top bar exactly.</li>
+            <li><strong>Color-Shift Fix:</strong> Forced sRGB/OpenGL rendering to fix grayed-out colors on static screens (Windows HDR issue).</li>
+            <li><strong>GitHub Security Policy:</strong> Added SECURITY.md with vulnerability reporting process and response timeline.</li>
+          </ul>
+        </div>
+
+        <div class="update-card">
           <div class="update-date">April 16, 2026</div>
-          <h2>Persistent Local Memory & Bookmarks!</h2>
+          <h2>Bug Fixes & Full Settings Implementation</h2>
+          <ul>
+            <li><strong>Window Drag Fixed:</strong> Resolved an issue where users couldn't drag the browser window from the top bar. Interactive elements (buttons, tabs, address bar) are now correctly excluded from the drag region.</li>
+            <li><strong>Viewport Highlight Fixed:</strong> Fixed a bug where clicking and dragging caused the entire browser UI to highlight in blue. Text selection is now disabled across the browser chrome for a native-app feel.</li>
+            <li><strong>Default Profile Avatar:</strong> Replaced the external placeholder profile image with a locally stored default avatar asset that works fully offline.</li>
+            <li><strong>Ad Blocker Implemented:</strong> The Ad &amp; Tracker Blocking toggle now actively intercepts and cancels network requests to known ad/tracker domains using Electron's webRequest API.</li>
+            <li><strong>HTTPS-Only Mode:</strong> The browser now automatically upgrades <code>http://</code> requests to <code>https://</code> at the network layer when this setting is enabled.</li>
+            <li><strong>Tracking Protection Levels:</strong> Standard and Strict modes now use separate block lists. Strict mode blocks 20+ additional analytics, fingerprinting, and retargeting domains.</li>
+            <li><strong>Notification Permissions:</strong> The master notification toggle now properly controls whether websites can request notification permissions via Electron's permission handler API.</li>
+            <li><strong>Downloads — Ask Where To Save:</strong> Enabling "Ask where to save" now triggers a native Save dialog before any file begins downloading.</li>
+            <li><strong>Background Activity Limits:</strong> Inactive tabs now have audio muted automatically when background limits are enabled, reducing resource usage.</li>
+            <li><strong>Startup Behavior:</strong> All three startup modes (New Tab, Continue Where Left Off, Open Homepage) are now fully functional. "Continue" mode persists tab URLs across sessions.</li>
+            <li><strong>Color-Shift Fix:</strong> Resolved an issue on Windows/HDR where colors would appear "grayed out" or washed out when the screen was static. Forced sRGB rendering and disabled direct video overlays.</li>
+          </ul>
+        </div>
+
+        <div class="update-card">
+          <div class="update-date">April 16, 2026</div>
+          <h2>Persistent Local Memory &amp; Bookmarks!</h2>
           <ul>
             <li><strong>Privacy Policy Upgrade:</strong> We've successfully disabled the strict "in-memory-only" restriction to allow core browser functionalities like Cache, IndexedDB, LocalStorage, and explicitly Bookmarks to securely persist across reboots onto your local storage.</li>
             <li><strong>Bookmarks System:</strong> Added a gorgeous new "Add to Bookmarks" dropdown menu tied to the Star icon, which successfully grabs site context, pulls Google Favicons, and manages routing.</li>
           </ul>
         </div>
+
         
         <div class="update-card">
           <div class="update-date">April 16, 2026</div>
@@ -332,6 +370,31 @@
       <!-- Webviews will be injected here -->
     </div>
 
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="leef-toast" class="leef-toast">
+    <div class="leef-toast-icon">⚠️</div>
+    <div class="leef-toast-body">
+      <div class="leef-toast-title">YouTube Performance Warning</div>
+      <div class="leef-toast-msg">Streaming above 1440p on YouTube may slow down Leef. For the best experience, keep quality at 1440p or below.</div>
+    </div>
+    <button class="leef-toast-close" id="leef-toast-close">×</button>
+  </div>
+
+  <!-- Hub Add Tile Modal -->
+  <div id="hub-add-modal" class="hub-modal-overlay" style="display:none;">
+    <div class="hub-modal">
+      <h3>Add to Leef Hub</h3>
+      <label for="hub-add-name">Site Name</label>
+      <input type="text" id="hub-add-name" placeholder="e.g. GitHub" autocomplete="off" spellcheck="false" />
+      <label for="hub-add-url">Site URL</label>
+      <input type="text" id="hub-add-url" placeholder="e.g. https://github.com" autocomplete="off" spellcheck="false" />
+      <div class="hub-modal-actions">
+        <button id="hub-add-cancel" class="hub-modal-btn hub-modal-cancel">Cancel</button>
+        <button id="hub-add-confirm" class="hub-modal-btn hub-modal-confirm">Add Tile</button>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="./renderer.js"></script>
