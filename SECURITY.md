@@ -16,7 +16,6 @@ We take security seriously. If you discover a vulnerability in Leef Browser, **p
 
 Instead, report it privately so we can address it before public disclosure:
 
-- **Email:** security@qtechdev.com *(replace with your actual contact)*
 - **GitHub:** Use [GitHub's private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing/privately-reporting-a-security-vulnerability) on this repository
 
 ### What to include

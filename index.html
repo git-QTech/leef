@@ -91,7 +91,8 @@
           <svg class="brand-icon" viewBox="0 0 24 24" style="height: 32px;"><path d="M17,8C8,10 5.9,16.17 3.82,21.34L5.71,22L6.66,19.7C7.14,19.87 7.64,20 8,20C19,20 22,3 22,3C21,5 14,5.25 9,6.25C4,7.25 7.05,10.67 6,12C4.19,14.3 3.96,16.92 3.65,19.25C5.81,13.84 8.4,9.65 17,8Z" /></svg>
           Leef
         </div>
-        <button id="btn-whats-new" class="nav-btn" style="width: auto; padding: 5px 15px; font-size: 0.9rem; border-radius: 20px; font-weight: 500;">What's New</button>
+        <button id="btn-whats-new" class="nav-btn">What's New</button>
+        <button id="btn-credits" class="nav-btn">Credits</button>
       </div>
     </div>
 
@@ -103,6 +104,19 @@
         
         <div class="update-card">
           <div class="update-date">April 18, 2026</div>
+          <h2>Context Menus & AI-Free Search (v0.1.4)</h2>
+          <ul>
+            <li><strong>Full Context Menu:</strong> Fixed a major bug where right-clicking didn't work. Implemented a native context menu with Back/Forward/Reload, "Open Link in New Tab," and standard text actions.</li>
+            <li><strong>✨ Raw Copy:</strong> Added a special "Raw Copy" feature to the right-click menu that copies selected text as pure plain text, stripping all links and formatting.</li>
+            <li><strong>AI-Free Search (Beta):</strong> Implemented a "Block Google AI Overview" setting that seamlessly prevents AI summaries from appearing. Added focus-protection to ensure the "-noai" tag stays hidden while typing.</li>
+            <li><strong>Security Hardening:</strong> Resolved 11 vulnerabilities (including 9 high-severity issues) by upgrading <code>electron-builder</code> to v26.8.1 and refreshing dependency locks.</li>
+            <li><strong>added credits:</strong> added credits to the leef home page, including a custom SVG Canadian flag and detailed project attribution.</li>
+            <li><strong>Branding & UI Fixes:</strong> Enlarged internal page logos and matched the "Credits" button style with the rest of the UI.</li>
+          </ul>
+        </div>
+
+        <div class="update-card">
+          <div class="update-date">April 17, 2026</div>
           <h2>v0.1.3 — Launch Release</h2>
           <ul>
             <li><strong>Settings Persistence:</strong> All user preferences (ad blocker, HTTPS-only, search engine, zoom, tracking level, etc.) now persist across restarts via localStorage and are sent to the main process on startup.</li>
@@ -168,7 +182,66 @@
             <li>Applied full custom modern styling architecture.</li>
           </ul>
         </div>
+      </div>
+    </div>
+    
+    <!-- Credits Layout -->
+    <div class="credits-layout" id="credits-view" style="display: none;">
+      <div class="credits-content">
+        <div class="credits-header">
+           <svg class="credits-logo" viewBox="0 0 24 24"><path d="M17,8C8,10 5.9,16.17 3.82,21.34L5.71,22L6.66,19.7C7.14,19.87 7.64,20 8,20C19,20 22,3 22,3C21,5 14,5.25 9,6.25C4,7.25 7.05,10.67 6,12C4.19,14.3 3.96,16.92 3.65,19.25C5.81,13.84 8.4,9.65 17,8Z" /></svg>
+           <h1>Leef Browser Credits</h1>
+           <p class="credits-subtitle">Version 0.1.4 — Open Source Privacy</p>
+        </div>
         
+        <div class="credits-section">
+          <h2>Project Information</h2>
+          <div class="credits-card">
+            <div class="credits-row">
+              <span class="credits-label">Developer</span>
+              <span class="credits-value">QTech</span>
+            </div>
+            <div class="credits-row">
+              <span class="credits-label">Repository</span>
+              <span class="credits-value"><a href="https://github.com/Zexerif/leef" id="credits-github-link">github.com/Zexerif/leef</a></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="credits-section">
+          <h2>License & Policy</h2>
+          <div class="credits-card license-card">
+            <h3>Creative Commons Zero v1.0 Universal</h3>
+            <p>Leef Browser is dedicated to the public domain under the <strong>CC0 1.0</strong> license. You are free to copy, modify, and distribute this software for any purpose without restriction.</p>
+            <div class="license-badge">
+              <img src="https://licensebuttons.net/p/zero/1.0/88x31.png" alt="CC0 License">
+            </div>
+          </div>
+          <div class="credits-card">
+            <h3>Privacy Policy</h3>
+            <p>We believe your data belongs to you. Leef Browser does not collect analytics, telemetry, or browsing history. Everything stays local on your machine.</p>
+          </div>
+        </div>
+
+        <div class="credits-section">
+          <h2>The Leef Story</h2>
+          <p>Leef was designed in 2022 as a proof of concept and was originally just a very basic web page, not a standalone browser. Around 2023, you would go there instead of google.com. It was popular in a small group of about 30 people, but eventually, it was abandoned.</p>
+          <p>Development on the full browser started in July 2025, and it was released into public alpha in April 2026. It was made to be a fast and AI-free alternative to Google.</p>
+          <p>Every browser company is adding AI slop to their browser. I got tired of it, so I made the opposite: a no-AI browser.</p>
+        </div>
+
+        <div class="credits-footer">
+          <div class="canada-badge">
+            <svg class="flag-svg" viewBox="0 0 640 480" xmlns="http://www.w3.org/2000/svg">
+              <path fill="#ff0000" d="M0 0h640v480H0z"/>
+              <path fill="#fff" d="M160 0h320v480H160z"/>
+              <!-- High-quality professional maple leaf path -->
+              <path fill="#ff0000" d="M312,382.1l1.5-62.7c0.1-4.7,0.1-4.7,4.8-4.7l13.9-0.1c4.5,0,4.6-0.1,5.6,4.3l3.2,13.7c1.3,5.6,2.1,6.5,7.7,4.2 l14.1-5.7c3.9-1.6,4.6-2,4.8-6.1l1.1-23.7c0.2-4.9,0.3-5-4-7.5l-20.3-11.8c-4.4-2.5-4.4-2.2-0.5-5.6l26.2-22.3 c4.4-3.7,4.1-3.6,1.4-8.8l-10-18.8c-2.4-4.5-2.6-4.9,2.4-5.3l35.8-2.6c5.8-0.4,5.9-0.5,5.1-6.1l-3.3-22.1 c-1.2-8.3-1.6-8.5-9.8-7l-26.6,5c-5.4,1-5.7,0.8-3.4-4.5l6.5-15.1c2-4.7,1.8-4.9-3.2-5.4l-21.3-2.1c-5.7-0.6-5.8-0.6-7.8,4.9 l-6.9,19.3c-1.8,5.1-2.1,5-5-0.1l-10.8-19.1c-3.1-5.4-3.3-5.4-9,0l-10.8,19.1c-2.9,5.2-3.1,5.2-5,0.1l-6.9-19.3 c-1.9-5.5-2.1-5.5-7.8-4.9l-21.3,2.1c-5,0.5-5.2,0.6-3.2,5.4l6.5,15.1c2.3,5.3,2,5.6-3.4,4.5l-26.6-5c-8.1-1.5-8.5-1.3-9.8,7 l-3.3,22.1c-0.8,5.7-0.7,5.7,5.1,6.1l35.8,2.6c5,0.3,4.8,0.7,2.4,5.3l-10,18.8c-2.7,5.2-3,5.1,1.4,8.8l26.2,22.3 c3.9,3.3,3.9,3.1-0.5,5.6l-20.3,11.8c-4.3,2.5-4.2,2.6-4,7.5l1.1,23.7c0.2,4.1,0.9,4.5,4.8,6.1l14.1,5.7c5.6,2.3,6.4,1.4,7.7-4.2 l3.2-13.7c1-4.4,1.1-4.3,5.6-4.3l13.9,0.1c4.7,0,4.7,0.1,4.8,4.7l1.5,62.7c0.1,4.9,0.1,4.8,8,4.8C312,386.9,311.9,386.9,312,382.1z"/>
+            </svg>
+            Proudly Made in Canada
+          </div>
+          <p>&copy; 2026 QTech & Contributors. Built with passion for a freer web.</p>
+        </div>
       </div>
     </div>
 
@@ -283,6 +356,13 @@
               <p>Block aggressive ads and hidden trackers</p>
             </div>
             <label class="switch"><input type="checkbox" id="ad-blocker" checked><span class="slider"></span></label>
+          </div>
+          <div class="setting-group toggle-group">
+            <div>
+              <h3>Block Google AI Overview <span class="beta-tag">BETA</span></h3>
+              <p>Seamlessly prevent AI Overviews from appearing in Google searches</p>
+            </div>
+            <label class="switch"><input type="checkbox" id="block-ai" checked><span class="slider"></span></label>
           </div>
           <div class="setting-group">
             <h3>Site Permissions</h3>

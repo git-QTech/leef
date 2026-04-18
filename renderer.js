@@ -5,13 +5,19 @@
 
 // --- UTILITIES ---
 class BrowserUtils {
-  static parseAddress(str, engineBaseUrl) {
+  static parseAddress(str, engineBaseUrl, blockAI = true) {
     str = str.trim();
     const domainPattern = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/.*)?$/;
     if (!str.includes(' ') && (domainPattern.test(str) || str.startsWith('http://') || str.startsWith('https://') || str.startsWith('localhost:'))) {
       if (!str.startsWith('http://') && !str.startsWith('https://')) return 'https://' + str;
       return str;
     }
+    
+    // AI Overview Blocking for Google (Seamless)
+    if (blockAI && engineBaseUrl.includes('google.com/search') && !str.toLowerCase().includes('-noai')) {
+      str += ' -noai';
+    }
+    
     return engineBaseUrl + encodeURIComponent(str);
   }
 
@@ -29,6 +35,7 @@ const UI = {
     home: document.getElementById('home-view'),
     settings: document.getElementById('settings-view'),
     changelog: document.getElementById('changelog-view'),
+    credits: document.getElementById('credits-view'),
     webviewsContainer: document.getElementById('webviews-container')
   },
   tabsContainer: document.getElementById('tabs-container'),
@@ -44,7 +51,8 @@ const UI = {
     settings: document.getElementById('btn-settings'),
     clearData: document.getElementById('btn-clear-data'),
     defaultBrowser: document.getElementById('btn-default-browser'),
-    whatsNew: document.getElementById('btn-whats-new')
+    whatsNew: document.getElementById('btn-whats-new'),
+    credits: document.getElementById('btn-credits')
   }
 };
 
@@ -64,6 +72,7 @@ class SettingsManager {
       backgroundLimit: true,
       allowNotifications: true,
       askDownload: false,
+      blockAIOverview: true,
       customUa: '',
       dohToggle: false,
       proxyUrl: ''
@@ -96,6 +105,7 @@ class SettingsManager {
     if (el('background-limit')) el('background-limit').checked = s.backgroundLimit;
     if (el('allow-notifications')) el('allow-notifications').checked = s.allowNotifications;
     if (el('ask-download')) el('ask-download').checked = s.askDownload;
+    if (el('block-ai')) el('block-ai').checked = s.blockAIOverview;
     if (el('custom-ua')) el('custom-ua').value = s.customUa || '';
     if (el('doh-toggle')) el('doh-toggle').checked = s.dohToggle;
     if (el('proxy-url')) el('proxy-url').value = s.proxyUrl || '';
@@ -166,6 +176,7 @@ class SettingsManager {
       backgroundLimit: document.getElementById('background-limit').checked,
       allowNotifications: document.getElementById('allow-notifications').checked,
       askDownload: document.getElementById('ask-download').checked,
+      blockAIOverview: document.getElementById('block-ai').checked,
       customUa: document.getElementById('custom-ua').value,
       dohToggle: document.getElementById('doh-toggle').checked,
       proxyUrl: document.getElementById('proxy-url').value
@@ -377,15 +388,20 @@ class HubManager {
     // Clean up old listeners to prevent stacking
     const newConfirm = btnConfirm.cloneNode(true);
     const newCancel = btnCancel.cloneNode(true);
+    const newUrlInput = urlInput.cloneNode(true);
+    const newOverlay = overlay.cloneNode(true);
+    
     btnConfirm.parentNode.replaceChild(newConfirm, btnConfirm);
     btnCancel.parentNode.replaceChild(newCancel, btnCancel);
+    urlInput.parentNode.replaceChild(newUrlInput, urlInput);
+    overlay.parentNode.replaceChild(newOverlay, overlay);
 
-    const close = () => { overlay.style.display = 'none'; };
+    const close = () => { newOverlay.style.display = 'none'; };
 
     newCancel.addEventListener('click', close);
     newConfirm.addEventListener('click', () => {
       const name = nameInput.value.trim();
-      const url = urlInput.value.trim();
+      const url = newUrlInput.value.trim();
       if (!name || !url) {
         if (window.toastManager) window.toastManager.show('⚠️ Missing Info', 'Please enter both a name and URL.', 3000);
         return;
@@ -399,13 +415,16 @@ class HubManager {
     });
 
     // Allow Enter key to submit
-    urlInput.addEventListener('keydown', (e) => {
+    newUrlInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') newConfirm.click();
     });
     // Allow clicking overlay backdrop to cancel
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) close();
+    newOverlay.addEventListener('click', (e) => {
+      if (e.target === newOverlay) close();
     });
+    
+    newOverlay.style.display = 'flex';
+    nameInput.focus();
   }
 }
 
@@ -554,7 +573,7 @@ class TabManager {
 
   createTab(route = 'home') {
     const tabId = 'tab-' + this.tabCounter++;
-    const isInternal = ['home', 'settings', 'changelog'].includes(route);
+    const isInternal = ['home', 'settings', 'changelog', 'credits'].includes(route);
     
     const tabEl = document.createElement('div');
     tabEl.className = 'tab';
@@ -562,7 +581,7 @@ class TabManager {
     
     const tabTitle = document.createElement('div');
     tabTitle.className = 'tab-title';
-    tabTitle.textContent = route === 'home' ? 'Leef Browser | Home' : (route === 'settings' ? 'Settings' : (route === 'changelog' ? "What's New" : 'Loading...'));
+    tabTitle.textContent = route === 'home' ? 'Leef Browser | Home' : (route === 'settings' ? 'Settings' : (route === 'changelog' ? "What's New" : (route === 'credits' ? 'Credits' : 'Loading...')));
     
     const tabClose = document.createElement('button');
     tabClose.className = 'tab-close';
@@ -589,7 +608,7 @@ class TabManager {
     // Initial Routing setup
     if (!isInternal) {
       this.mountWebview(tabObj);
-      tabObj.url = BrowserUtils.parseAddress(route, this.settings.currentSettings.searchEngine);
+      tabObj.url = BrowserUtils.parseAddress(route, this.settings.currentSettings.searchEngine, this.settings.currentSettings.blockAIOverview);
       tabObj.webviewEl.src = tabObj.url;
     }
 
@@ -623,6 +642,72 @@ class TabManager {
          try { tab.webviewEl.setZoomFactor(parseFloat(this.settings.currentSettings.zoom) || 1.0); } catch(e){}
       }
       this.updateTabUI(tab);
+      
+      // Seamless AI Overview Blocking: Clean up the on-page Google Search UI
+      if (this.settings.currentSettings.blockAIOverview && tab.url.includes('google.com')) {
+        tab.webviewEl.executeJavaScript(`
+          (function() {
+            const hookInputs = () => {
+              const inputs = document.querySelectorAll('input[name="q"], textarea[name="q"]');
+              inputs.forEach(input => {
+                if (input.dataset.noaiHooked) return;
+                input.dataset.noaiHooked = "true";
+                
+                const proto = Object.getPrototypeOf(input);
+                const descriptor = Object.getOwnPropertyDescriptor(proto, 'value') || 
+                                   Object.getOwnPropertyDescriptor(input.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value');
+                
+                if (descriptor) {
+                  Object.defineProperty(input, 'value', {
+                    get: function() {
+                      let val = descriptor.get.call(this);
+                      return val ? val.replace(/( ?)-noai/gi, '') : val;
+                    },
+                    set: function(val) {
+                      if (val && typeof val === 'string') val = val.replace(/( ?)-noai/gi, '');
+                      descriptor.set.call(this, val);
+                    }
+                  });
+                  // Clean whatever is currently there natively
+                  descriptor.set.call(input, descriptor.get.call(input).replace(/( ?)-noai/gi, ''));
+                }
+              });
+            };
+            hookInputs();
+            // Lightweight check for dynamic element replacements
+            setInterval(hookInputs, 1000); 
+
+            // Prevent Google from submitting batched AJAX queries that bypass our Network filter
+            const triggerSearch = (query) => {
+              if (!query) return;
+              if (!query.toLowerCase().includes('-noai')) query += ' -noai';
+              window.location.href = '/search?q=' + encodeURIComponent(query);
+            };
+
+            // Intercept Enter key
+            document.addEventListener('keydown', (e) => {
+              if (e.key === 'Enter' && e.target.name === 'q') {
+                e.stopPropagation();
+                e.preventDefault();
+                triggerSearch(e.target.value);
+              }
+            }, true);
+            
+            // Intercept Search Button click
+            document.addEventListener('click', (e) => {
+              const btn = e.target.closest('button[aria-label="Google Search"], input[value="Google Search"]');
+              if (btn) {
+                const input = document.querySelector('input[name="q"], textarea[name="q"]');
+                if (input) {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  triggerSearch(input.value);
+                }
+              }
+            }, true);
+          })();
+        `);
+      }
 
       // Show YouTube quality warning toast once per session
       if (window.toastManager && tab.url && tab.url.includes('youtube.com')) {
@@ -632,6 +717,14 @@ class TabManager {
           'Streaming above 1440p may slow down Leef. Fullscreen may also show a border due to browser limitations.'
         );
       }
+    });
+
+    // Right-Click Context Menu for Webviews
+    tab.webviewEl.addEventListener('context-menu', (e) => {
+      e.preventDefault();
+      try {
+        window.require('electron').ipcRenderer.send('show-context-menu', e.params);
+      } catch(err) {}
     });
 
     // Fullscreen: hide/show browser chrome when a page requests fullscreen.
@@ -649,7 +742,7 @@ class TabManager {
     if (!rawInput || !rawInput.trim()) return; // guard empty input
     const tab = this.getActiveTab();
     if (!tab) return;
-    const fullUrl = BrowserUtils.parseAddress(rawInput.trim(), this.settings.currentSettings.searchEngine);
+    const fullUrl = BrowserUtils.parseAddress(rawInput.trim(), this.settings.currentSettings.searchEngine, this.settings.currentSettings.blockAIOverview);
     
     if (!tab.webviewEl) {
       // Lazy load instantiation
@@ -666,10 +759,18 @@ class TabManager {
     if (tab.url === 'home') tab.tabTitle.textContent = 'Leef Browser | Home';
     else if (tab.url === 'settings') tab.tabTitle.textContent = 'Settings';
     else if (tab.url === 'changelog') tab.tabTitle.textContent = "What's New";
+    else if (tab.url === 'credits') tab.tabTitle.textContent = "Credits";
     else tab.tabTitle.textContent = tab.title;
 
     if (this.activeTabId === tab.id) {
-      if (!tab.isInternal) UI.inputs.address.value = tab.url;
+      if (!tab.isInternal) {
+        // Strip -noai from the address bar for a seamless display
+        let displayUrl = tab.url;
+        if (this.settings.currentSettings.blockAIOverview && displayUrl.includes('google.com/search')) {
+           displayUrl = displayUrl.replace(/(\+|\%20)-noai/g, '');
+        }
+        UI.inputs.address.value = displayUrl;
+      }
       else UI.inputs.address.value = '';
     }
   }
@@ -720,15 +821,16 @@ class TabManager {
     UI.views.home.style.display = tab.url === 'home' ? 'flex' : 'none';
     UI.views.settings.style.display = tab.url === 'settings' ? 'flex' : 'none';
     UI.views.changelog.style.display = tab.url === 'changelog' ? 'flex' : 'none';
+    UI.views.credits.style.display = tab.url === 'credits' ? 'flex' : 'none';
     
     if (tab.isInternal) {
       UI.views.webviewsContainer.classList.remove('active');
-      UI.inputs.address.value = '';
     } else {
       UI.views.webviewsContainer.classList.add('active');
       if (tab.webviewEl) tab.webviewEl.classList.add('active');
-      UI.inputs.address.value = tab.url;
     }
+    
+    this.updateTabUI(tab);
   }
 
   closeTab(tabId) {
@@ -760,6 +862,52 @@ class TabManager {
     
     if (UI.buttons.settings) UI.buttons.settings.addEventListener('click', () => this.createTab('settings'));
     if (UI.buttons.whatsNew) UI.buttons.whatsNew.addEventListener('click', () => this.createTab('changelog'));
+    if (UI.buttons.credits) UI.buttons.credits.addEventListener('click', () => this.createTab('credits'));
+
+    // Handle Context Menu commands from Main Process
+    try {
+      window.require('electron').ipcRenderer.on('context-menu-command', (event, data) => {
+        const tab = this.getActiveTab();
+        if (!tab) return;
+        
+        switch (data.command) {
+          case 'go-back':
+            if (tab.webviewEl && tab.webviewEl.canGoBack()) tab.webviewEl.goBack();
+            break;
+          case 'go-forward':
+            if (tab.webviewEl && tab.webviewEl.canGoForward()) tab.webviewEl.goForward();
+            break;
+          case 'reload':
+            if (tab.webviewEl) tab.webviewEl.reload();
+            break;
+          case 'create-tab':
+            this.createTab(data.url);
+            break;
+          case 'copy-image':
+            if (tab.webviewEl) tab.webviewEl.copyImageAt(data.x, data.y);
+            break;
+        }
+      });
+    } catch(e) {}
+
+    // Global context menu for non-webview areas (Home, Settings, etc.)
+    window.addEventListener('contextmenu', (e) => {
+      if (e.target.tagName === 'WEBVIEW') return;
+      
+      const params = {
+        x: e.x,
+        y: e.y,
+        isEditable: e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable,
+        selectionText: window.getSelection().toString(),
+        canGoBack: false,
+        canGoForward: false,
+        editFlags: {}
+      };
+      
+      try {
+        window.require('electron').ipcRenderer.send('show-context-menu', params);
+      } catch(err) {}
+    });
 
     // Address Bar
     UI.inputs.address.addEventListener('keydown', (e) => {

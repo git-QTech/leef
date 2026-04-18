@@ -1,6 +1,12 @@
-import { app, BrowserWindow, session, ipcMain } from 'electron';
+import { app, BrowserWindow, session, ipcMain, Menu, MenuItem, clipboard, nativeImage } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+// SET IDENTITY AS EARLY AS POSSIBLE (Critical for Windows Taskbar)
+app.name = 'Leef Browser';
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.quinn.leefbrowser');
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,7 +41,8 @@ function createWindow() {
     titleBarOverlay: {
       color: '#5aef7e', // matches --topbar-bg in style.css exactly
       symbolColor: '#000000'
-    }
+    },
+    icon: nativeImage.createFromPath(path.join(__dirname, 'images/icon.png'))
   });
 
   // Decide if we are in dev or prod
@@ -110,6 +117,22 @@ ipcMain.on('apply-settings', (event, settings) => {
       } catch (e) {}
     }
 
+    // AI Overview Blocking - Secure Network Layer Redirection (v0.1.4)
+    if (settings.blockAIOverview) {
+      try {
+        const parsedUrl = new URL(url);
+        // Ensure we only touch actual Google searches with valid protocols
+        const isSafeProtocol = parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:';
+        if (isSafeProtocol && parsedUrl.hostname.includes('google.com') && parsedUrl.pathname.startsWith('/search')) {
+          let query = parsedUrl.searchParams.get('q');
+          if (query && !query.toLowerCase().includes('-noai')) {
+            parsedUrl.searchParams.set('q', query + ' -noai');
+            return callback({ redirectURL: parsedUrl.toString() });
+          }
+        }
+      } catch (e) {}
+    }
+
     callback({ cancel: false });
   });
 
@@ -140,6 +163,75 @@ ipcMain.on('apply-settings', (event, settings) => {
   } else {
     sess.setProxy({ proxyRules: 'direct://' });
   }
+});
+
+ipcMain.on('show-context-menu', (event, params) => {
+  const menu = new Menu();
+
+  // Link actions
+  if (params.linkURL) {
+    menu.append(new MenuItem({
+      label: 'Open Link in New Tab',
+      click: () => event.sender.send('context-menu-command', { command: 'create-tab', url: params.linkURL })
+    }));
+    menu.append(new MenuItem({
+      label: 'Copy Link Address',
+      click: () => clipboard.writeText(params.linkURL)
+    }));
+    menu.append(new MenuItem({ type: 'separator' }));
+  }
+
+  // Image actions
+  if (params.hasImageContents || (params.mediaType === 'image')) {
+    menu.append(new MenuItem({
+      label: 'Copy Image',
+      click: () => event.sender.send('context-menu-command', { command: 'copy-image', x: params.x, y: params.y })
+    }));
+    menu.append(new MenuItem({ type: 'separator' }));
+  }
+
+  // Text selection actions
+  if (params.selectionText) {
+    menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+    menu.append(new MenuItem({
+      label: 'Raw Copy (No formatting)',
+      click: () => clipboard.writeText(params.selectionText)
+    }));
+    menu.append(new MenuItem({ type: 'separator' }));
+  }
+
+  // Input actions (if editable)
+  if (params.isEditable) {
+    menu.append(new MenuItem({ label: 'Cut', role: 'cut' }));
+    menu.append(new MenuItem({ label: 'Paste', role: 'paste' }));
+    menu.append(new MenuItem({ label: 'Select All', role: 'selectAll' }));
+    menu.append(new MenuItem({ type: 'separator' }));
+  }
+
+  // Standard Navigation
+  menu.append(new MenuItem({
+    label: 'Back',
+    enabled: params.editFlags.canGoBack || params.canGoBack,
+    click: () => event.sender.send('context-menu-command', { command: 'go-back' })
+  }));
+  menu.append(new MenuItem({
+    label: 'Forward',
+    enabled: params.editFlags.canGoForward || params.canGoForward,
+    click: () => event.sender.send('context-menu-command', { command: 'go-forward' })
+  }));
+  menu.append(new MenuItem({
+    label: 'Reload',
+    click: () => event.sender.send('context-menu-command', { command: 'reload' })
+  }));
+
+  menu.append(new MenuItem({ type: 'separator' }));
+  menu.append(new MenuItem({
+    label: 'Inspect Element',
+    click: () => event.sender.inspectElement(params.x, params.y)
+  }));
+
+  const win = BrowserWindow.fromWebContents(event.sender);
+  menu.popup({ window: win });
 });
 
 ipcMain.on('clear-data', async () => {
