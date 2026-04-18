@@ -13,6 +13,10 @@ To download and install Leef Browser:
 2. Download the latest `.exe` installer.
 3. Run the installer and you're ready to go!
 
+> [!NOTE]
+> **Note for Windows Users:**
+> Because Leef is a new and independent project, you may see a "Windows protected your PC" warning when running the installer. To proceed, simply click **More Info** then select **Run Anyway**. As the browser grows in popularity, this warning will eventually disappear!
+
 ## Build from Source
 If you want to build Leef yourself:
 1. Clone the repo: `git clone https://github.com/Zexerif/leef.git`
