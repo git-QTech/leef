@@ -5,7 +5,7 @@ A fast, lightweight Chromium browser built with one purpose. No AI overviews, no
 - **Privacy First**: Integrated ad-blocking, tracker protection, and a strict local-only data policy.
 - **AI-Free Search**: Built-in blocking for Google AI Overviews to keep your results clean.
 - **Speed**: Optimized for rapid page loads with a minimalist, modern UI.
-- **No Telemetry**: Leef collects zero analytics or tracking data.*
+- **No Telemetry**: Leef collects zero analytics or tracking data. Since we're fully open source, you don't have to take our word for it.*
 
 ## Security
 Leef is actively maintained with security updates and a clear response policy — critical patches
@@ -32,4 +32,4 @@ Take it, fork it, build on it, sell it. No strings attached, we dont care. Altho
 that misrepresents or reflects poorly on the our project.
 
 
-*As a Chromium-based browser, some background communication may occur at the engine level outside of our control.*
+*As a Chromium-based browser, some background communication may occur at the engine level outside of our control. Sorry 😔*
