@@ -10,8 +10,7 @@ A fast, lightweight Chromium browser built with one purpose. No AI overviews, no
 ## Security
 Leef is actively maintained with security updates and a clear response policy — critical patches
 are issued within 14 days of a verified report. If you discover a vulnerability, please report
-it privately via [GitHub's private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing/privately-reporting-a-security-vulnerability)
-or email contact.qtech@proton.me. See [SECURITY.md](SECURITY.md) for full details.
+it. See [SECURITY](SECURITY.md) for full details.
 
 
 ## Download
