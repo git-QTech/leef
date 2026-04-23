@@ -13,7 +13,7 @@ class BrowserUtils {
       return str;
     }
     
-    // AI Overview Blocking for Google (Seamless)
+    // AI Overview Blocking for Google (johan this needs to be redone)
     if (blockAI && engineBaseUrl.includes('google.com/search') && !str.toLowerCase().includes('-noai')) {
       str += ' -noai';
     }
@@ -134,7 +134,7 @@ class SettingsManager {
       });
     });
 
-    // Auto-save settings on change (debounced to avoid hammering IPC)
+    // Auto-save settings on change because i fucked up the first 3 times
     let saveDebounce = null;
     document.querySelectorAll('.settings-layout input, .settings-layout select').forEach(el => {
       el.addEventListener('change', () => {
@@ -540,7 +540,7 @@ class NewsService {
       this.shownIndices[slotIdx] = replacement;
       this.renderCards();
     } else {
-      // No more items — just remove the card
+      // if no more items just remove the card
       this.shownIndices.splice(slotIdx, 1);
       this.renderCards();
       if (window.toastManager) window.toastManager.show('📰 No More Headlines', 'You\'ve seen all available stories. Try refreshing later!', 4000);
@@ -643,7 +643,7 @@ class TabManager {
       }
       this.updateTabUI(tab);
       
-      // Seamless AI Overview Blocking: Clean up the on-page Google Search UI
+      //  AI Overview Blocking (again, johan this needs to be redone please k love ya)
       if (this.settings.currentSettings.blockAIOverview && tab.url.includes('google.com')) {
         tab.webviewEl.executeJavaScript(`
           (function() {
@@ -781,7 +781,7 @@ class TabManager {
     const tab = this.getActiveTab();
     if (!tab) return;
     
-    // Only suspend the previously active tab (not all tabs — avoids O(n) executeJavaScript calls)
+    // Only suspend the previously active tab (not all tabs — avoids O(n) executeJavaScript calls because that one tester kept doing it)
     if (prevTabId && prevTabId !== tabId && this.settings.currentSettings.backgroundLimit) {
       const prevTab = this.tabs.find(t => t.id === prevTabId);
       if (prevTab && prevTab.webviewEl) {
