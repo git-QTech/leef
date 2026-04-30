@@ -47,14 +47,44 @@
       </div>
 
       <div class="address-bar-container">
-        <svg class="globe-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="2" y1="12" x2="22" y2="12"></line>
-          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-        </svg>
+        <button id="btn-site-identity" class="site-identity-btn" title="Site Information">
+          <svg class="globe-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+        </button>
+        <div id="site-identity-dropdown" class="site-identity-dropdown" style="display: none;">
+          <div class="si-header">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+            <div style="flex:1;">
+              <div id="si-domain" style="font-weight:600; font-size:1rem;">example.com</div>
+              <div id="si-status" style="font-size:0.8rem; color:#4caf50;">Connection is secure</div>
+            </div>
+          </div>
+          <div class="si-section">
+            <div class="si-row">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+              </svg>
+              <span>Ads & Trackers Blocked: <strong id="si-adblock-count">0</strong></span>
+            </div>
+          </div>
+          <div class="si-section">
+            <button id="btn-clear-site-cookies" class="si-btn-danger">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Clear Site Cookies
+            </button>
+          </div>
+        </div>
         <input type="text" id="address-input" placeholder="Search or enter web address" autocomplete="off"
           spellcheck="false">
-        <div id="address-suggestions" class="address-suggestions" style="display: none;"></div>
       </div>
 
       <div class="actions" style="position: relative;">
@@ -108,6 +138,58 @@
           <div id="downloads-list">
             <!-- Downloads injected here -->
           </div>
+        </div>
+
+        <div id="quick-settings-dropdown" class="quick-settings-dropdown" style="display: none;">
+
+          <!-- Row 1: Leef Beta + Screenshot -->
+          <button class="qs-tile qs-tile-version" id="btn-qs-changelog">
+            <img src="./images/icon-mark.png" alt="Leef">
+            <span>Leef 0.2.0<br>Beta</span>
+          </button>
+          <button class="qs-tile qs-tile-screenshot" id="btn-qs-screenshot">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+            <span>Screenshot</span>
+          </button>
+
+          <!-- Row 2: Bug Report (wide) + Volume Slider (narrow) -->
+          <button class="qs-tile qs-tile-bug" id="btn-qs-bug">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+              stroke-linejoin="round">
+              <rect width="8" height="14" x="8" y="6" rx="4"></rect>
+              <path d="m19 7-3 2"></path>
+              <path d="m5 7 3 2"></path>
+              <path d="m19 19-3-2"></path>
+              <path d="m5 19 3-2"></path>
+              <path d="M20 13h-4"></path>
+              <path d="M4 13h4"></path>
+              <path d="m10 4 1 2"></path>
+              <path d="m14 4-1 2"></path>
+            </svg>
+            <span>Bug Report</span>
+          </button>
+          <div id="qs-tile-volume" class="qs-tile qs-tile-volume">
+            <span id="qs-volume-percent" class="qs-vol-pct">100%</span>
+            <input type="range" id="qs-volume-slider" min="0" max="2" step="0.1" value="1">
+            <span class="qs-vol-title">Tab Volume</span>
+          </div>
+
+          <!-- Row 3: Settings (full width) -->
+          <button class="qs-tile qs-tile-settings" id="btn-qs-settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
+              </path>
+            </svg>
+            <span>Settings</span>
+          </button>
+
         </div>
       </div>
     </div>
@@ -186,21 +268,38 @@
         <p class="changelog-subtitle">Discover the latest updates and improvements</p>
 
         <div class="update-card">
-          <div class="update-date">April 27, 2026</div>
-          <h2>Diagnostics & Onboarding (v0.1.7)</h2>
+          <div class="update-date">April 28, 2026</div>
+          <h2>Beta (v0.2.0)</h2>
           <ul>
-            <li><strong>First-Time Setup Wizard:</strong> A brand-new onboarding experience for fresh installs. Configure privacy, ad-blocking, and search preferences with a modern, animated walkthrough.</li>
-            <li><strong>Bug Report Diagnostics:</strong> Generate a local diagnostics log from the Advanced settings. Includes system specs and configurations to help with bug reports (100% local, no telemetry).</li>
-            <li><strong>Refined Ad-Blocking:</strong> Replaced the old toggle with a clear 3-tier selector (None, Basic, Comprehensive) to match the main settings and provide more granular control.</li>
-            <li><strong>Home Tab Optimization:</strong> Fixed issues with home page tiles and layout alignment for a cleaner startup experience.</li>
-            <li><strong>Branding & Logo Polish:</strong> Enlarged and re-centered logos across the onboarding and settings pages for a more premium, high-impact feel.</li>
-            <li><strong>Transparency Note:</strong> Added a permanent notice emphasizing that Leef is non-profit, donation-free, and collects zero telemetry data.</li>
+            <li><strong>Quick Settings Menu:</strong> A quick settings menu is now accessible from the toolbar. Quick
+              access to Changelog, Bug Reports, Settings, and more.</li>
+            <li><strong>Site Identity & Privacy:</strong> Click the globe icon in the address bar to view site security,
+              track ad-blocking stats per tab, and quickly clear site-specific cookies.</li>
+            <li><strong>Optimized Volume Booster:</strong> A new per-tab volume slider in Quick Settings to boost audio
+              up to 200%. Opt-in via Performance settings.</li>
+            <li><strong>Built-in Screenshot Tool:</strong> Instantly capture the active web page and save it directly to
+              your Downloads folder using the new camera tile in Quick Settings.</li>
+          </ul>
+        </div>
+
+        <div class="update-card">
+          <div class="update-date">April 27, 2026</div>
+          <h2>(v0.1.7)</h2>
+          <ul>
+            <li><strong>First-Time Setup Wizard:</strong> A brand-new onboarding experience for fresh installs.
+              Configure privacy, ad-blocking, and search preferences with a modern, animated walkthrough.</li>
+            <li><strong>Bug Report Diagnostics:</strong> Generate a local diagnostics log from the Advanced settings.
+              Includes system specs and configurations to help with bug reports (which is completely optional btw).</li>
+            <li><strong>Home Tab Optimization:</strong> Fixed issues with home page tiles and layout alignment for a
+              cleaner startup experience.</li>
+            <li><strong>Branding & Logo Polish:</strong> Enlarged and re-centered logos across the onboarding and
+              settings pages.</li>
           </ul>
         </div>
 
         <div class="update-card">
           <div class="update-date">April 26, 2026</div>
-          <h2>Performance & Tab Mastery (v0.1.6)</h2>
+          <h2>(v0.1.6)</h2>
           <ul>
             <li><strong>Site Permissions Manager:</strong> Fully implemented dynamic permission prompts for Camera,
               Microphone, and Location. You can now manage, revoke, or manually add site permissions directly from the
@@ -220,7 +319,7 @@
 
         <div class="update-card">
           <div class="update-date">April 18, 2026</div>
-          <h2>Security & Transparency Update (v0.1.5)</h2>
+          <h2>(v0.1.5)</h2>
           <ul>
             <li><strong>Dual-Tier Ad-Blocking:</strong> Choice between "Basic Domain Filtering" (Lightweight, Offline)
               and "Comprehensive Engine" (uBlock-style via Ghostery).</li>
@@ -239,7 +338,7 @@
 
         <div class="update-card">
           <div class="update-date">April 18, 2026</div>
-          <h2>Context Menus & AI-Free Search (v0.1.4)</h2>
+          <h2>(v0.1.4)</h2>
           <ul>
             <li><strong>Full Context Menu:</strong> Fixed a major bug where right-clicking didn't work. Implemented a
               native context menu with Back/Forward/Reload, "Open Link in New Tab," and standard text actions.</li>
@@ -296,7 +395,7 @@
 
         <div class="update-card">
           <div class="update-date">April 16, 2026</div>
-          <h2>Bug Fixes & Full Settings Implementation</h2>
+          <h2>alpha-rc-3</h2>
           <ul>
             <li><strong>Window Drag Fixed:</strong> Resolved an issue where users couldn't drag the browser window from
               the top bar. Interactive elements (buttons, tabs, address bar) are now correctly excluded from the drag
@@ -328,7 +427,7 @@
 
         <div class="update-card">
           <div class="update-date">April 16, 2026</div>
-          <h2>Persistent Local Memory &amp; Bookmarks!</h2>
+          <h2>alpha-rc-2</h2>
           <ul>
             <li><strong>Privacy Policy Upgrade:</strong> We've successfully disabled the strict "in-memory-only"
               restriction to allow core browser functionalities like Cache, IndexedDB, LocalStorage, and explicitly
@@ -341,7 +440,7 @@
 
         <div class="update-card">
           <div class="update-date">April 16, 2026</div>
-          <h2>Dynamic RSS News Feed</h2>
+          <h2>alpha-rc-1</h2>
           <ul>
             <li><strong>Live News Delivery:</strong> Using internal HTTPS routing inside Electron's Node layer to
               securely intercept Yahoo RSS feeds without triggering CORS flags.</li>
@@ -353,11 +452,9 @@
 
         <div class="update-card">
           <div class="update-date">April 15, 2026</div>
-          <h2>Initial Alpha Build</h2>
+          <h2>Alpha Build</h2>
           <ul>
-            <li>Implemented infinite tabs with internal Chromium Webviews.</li>
-            <li>Set up comprehensive Settings menus targeting standard web tracking restrictions.</li>
-            <li>Applied full custom modern styling architecture.</li>
+            <li>ITS ALIVEEEEEE!!!!!</li>
           </ul>
         </div>
       </div>
@@ -369,7 +466,7 @@
         <div class="credits-header">
           <img class="credits-logo" src="./images/icon-mark.png">
           <h1>Leef Browser Credits</h1>
-          <p class="credits-subtitle">Version 0.1.7 — Open Source Privacy</p>
+          <p class="credits-subtitle">Version 0.2.0 — Open Source Privacy</p>
         </div>
 
         <div class="credits-section">
@@ -410,8 +507,11 @@
 
         <div class="credits-section">
           <h2>Transparency & Funding</h2>
-          <div class="credits-card" style="border-left: 4px solid var(--primary-color); background: rgba(23, 179, 64, 0.05);">
-            <p><strong>Leef is a labor of love.</strong> We do not collect telemetry, we do not sell your data, and we do not make any money. We also do not accept donations at this time. Enjoy using Leef exactly as it was intended: fast, private, and free.</p>
+          <div class="credits-card"
+            style="border-left: 4px solid var(--primary-color); background: rgba(23, 179, 64, 0.05);">
+            <p><strong>Leef is a labor of love.</strong> We do not collect telemetry, we do not sell your data, and we
+              do not make any money. We also do not accept donations at this time. Enjoy using Leef exactly as it was
+              intended: fast, private, and free.</p>
           </div>
         </div>
 
@@ -548,8 +648,10 @@
           <div class="setting-group">
             <h3>Clear browsing data</h3>
             <p>Clear history, cookies, cache, and more</p>
-            <button class="settings-btn btn-danger" id="btn-clear-data" style="margin-bottom: 8px;">Clear Data Now</button>
-            <button class="settings-btn" id="btn-redo-setup" style="background: rgba(0,0,0,0.05); color: #333;">Redo First-Time Setup</button>
+            <button class="settings-btn btn-danger" id="btn-clear-data" style="margin-bottom: 8px;">Clear Data
+              Now</button>
+            <button class="settings-btn" id="btn-redo-setup" style="background: rgba(0,0,0,0.05); color: #333;">Redo
+              First-Time Setup</button>
           </div>
           <div class="setting-group">
             <h3>Tracking Protection</h3>
@@ -621,6 +723,13 @@
             <label class="switch"><input type="checkbox" id="background-limit" checked><span
                 class="slider"></span></label>
           </div>
+          <div class="setting-group toggle-group">
+            <div>
+              <h3>Per-Tab Volume Booster</h3>
+              <p>Enable the volume booster in Quick Settings. Uses 0% CPU when set to 100%.</p>
+            </div>
+            <label class="switch"><input type="checkbox" id="enable-volume-boost"><span class="slider"></span></label>
+          </div>
         </div>
 
         <!-- Notifications -->
@@ -684,9 +793,14 @@
           <div class="setting-group">
             <h3>Bug Report Diagnostics</h3>
             <p style="margin-bottom: 8px;">Generate a local log file with system info to help us debug issues.</p>
-            <button class="settings-btn" id="btn-generate-log" style="background: rgba(0,0,0,0.05); color: #333; margin-bottom: 8px;">Generate Diagnostics Log</button>
-            <div style="font-size: 0.8rem; color: #666; line-height: 1.4; background: rgba(0,0,0,0.02); padding: 8px; border-radius: 6px;">
-              <strong>Privacy Note:</strong> This file is saved locally to your Downloads folder. We do not collect telemetry. Unless you manually upload this file to the <a href="https://forms.gle/upGc1dvPYaoBw4o96" target="_blank" style="color: var(--primary-color); text-decoration: none;">bug report form</a> or email it to <strong>contact.qtech@proton.me</strong>, no data leaves your device.
+            <button class="settings-btn" id="btn-generate-log"
+              style="background: rgba(0,0,0,0.05); color: #333; margin-bottom: 8px;">Generate Diagnostics Log</button>
+            <div
+              style="font-size: 0.8rem; color: #666; line-height: 1.4; background: rgba(0,0,0,0.02); padding: 8px; border-radius: 6px;">
+              <strong>Privacy Note:</strong> This file is saved locally to your Downloads folder. We do not collect
+              telemetry. Unless you manually upload this file to the <a href="https://forms.gle/upGc1dvPYaoBw4o96"
+                target="_blank" style="color: var(--primary-color); text-decoration: none;">bug report form</a> or email
+              it to <strong>contact.qtech@proton.me</strong>, no data leaves your device.
             </div>
           </div>
         </div>
@@ -811,7 +925,7 @@
     <div class="flags-footer">
       <button class="settings-btn" id="btn-flags-relaunch"
         style="display: none; background: #ff0000; color: #fff;">Apply & Restart</button>
-              <p>Note: Enabling experimental features may affect browser stability.</p>
+      <p>Note: Enabling experimental features may affect browser stability.</p>
     </div>
   </div>
   </div>
@@ -833,17 +947,19 @@
         <h1>Welcome to Leef</h1>
         <p>Set up your browsing experience before we get started.</p>
       </div>
-      
+
       <div class="onboarding-options">
         <div class="onboarding-card" style="animation-delay: 0.1s;">
           <div style="flex: 1; padding-right: 16px;">
             <h3>AI Overview Blocker</h3>
             <p>Automatically remove AI-generated summaries from Google search results.</p>
           </div>
-          <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-ai"><span class="slider"></span></label>
+          <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-ai"><span
+              class="slider"></span></label>
         </div>
 
-        <div class="onboarding-card" style="animation-delay: 0.2s; flex-direction: column; align-items: flex-start; gap: 12px; height: auto; padding: 16px;">
+        <div class="onboarding-card"
+          style="animation-delay: 0.2s; flex-direction: column; align-items: flex-start; gap: 12px; height: auto; padding: 16px;">
           <div style="margin-bottom: 8px;">
             <h3>Ad & Tracker Blocking</h3>
             <p>Choose your level of protection. You can adjust this later in settings.</p>
@@ -851,15 +967,18 @@
           <div class="radio-group" style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
             <label class="radio-row" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
               <input type="radio" name="onboard-adblock-tier" value="none">
-              <span style="font-size: 0.9rem; color: rgba(0,0,0,0.8);"><strong>None</strong> — No active blocking.</span>
+              <span style="font-size: 0.9rem; color: rgba(0,0,0,0.8);"><strong>None</strong> — No active
+                blocking.</span>
             </label>
             <label class="radio-row" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
               <input type="radio" name="onboard-adblock-tier" value="basic">
-              <span style="font-size: 0.9rem; color: rgba(0,0,0,0.8);"><strong>Basic</strong> — Lightweight domain filtering (100% Offline).</span>
+              <span style="font-size: 0.9rem; color: rgba(0,0,0,0.8);"><strong>Basic</strong> — Lightweight domain
+                filtering (100% Offline).</span>
             </label>
             <label class="radio-row" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
               <input type="radio" name="onboard-adblock-tier" value="comprehensive">
-              <span style="font-size: 0.9rem; color: rgba(0,0,0,0.8);"><strong>Comprehensive</strong> — Full engine protection. <span style="color: var(--primary-color); font-weight: 600;">(External Call)</span></span>
+              <span style="font-size: 0.9rem; color: rgba(0,0,0,0.8);"><strong>Comprehensive</strong> — Full engine
+                protection. <span style="color: var(--primary-color); font-weight: 600;">(External Call)</span></span>
             </label>
           </div>
         </div>
@@ -869,14 +988,16 @@
             <h3>Live Search Autocomplete</h3>
             <p>Send keystrokes to a search engine for live address bar suggestions.</p>
           </div>
-          <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-autocomplete"><span class="slider"></span></label>
+          <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-autocomplete"><span
+              class="slider"></span></label>
         </div>
       </div>
 
       <div class="onboarding-footer" style="animation-delay: 0.4s;">
         <button id="btn-onboarding-finish" class="nav-btn btn-primary">Start Browsing</button>
         <div class="onboarding-subtext">
-          <strong>Transparency Note:</strong> Leef is built for you. We don't collect telemetry, make money, or take donations.<br>
+          <strong>Transparency Note:</strong> Leef is built for you. We don't collect telemetry, make money, or take
+          donations.<br>
           <span style="opacity: 0.7; font-size: 0.8rem;">You can change these options at any time in Settings.</span>
         </div>
       </div>

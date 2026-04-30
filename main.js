@@ -82,6 +82,9 @@ async function initAdBlocker(enabled = false) {
 
     // Enable cosmetic filtering and IPC handlers (Once)
     blocker.enableBlockingInSession(sess);
+    blocker.on('request-blocked', (request) => {
+      if (mainWindow) mainWindow.webContents.send('adblock-item-blocked', { tabId: request.tabId, url: request.url });
+    });
     adblockerEnabled = true;
   } catch (err) {
     console.error('AdBlocker error:', err);
@@ -134,6 +137,21 @@ async function checkForUpdates(manual = false) {
     if (manual && mainWindow) mainWindow.webContents.send('update-available', 'error');
   }
 }
+
+ipcMain.handle('fetch-autocomplete', async (event, query) => {
+  try {
+    const fetchUrl = 'https://suggestqueries.google.com/complete/search?client=chrome&q=' + encodeURIComponent(query);
+    const response = await fetch(fetchUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data[1] || [];
+  } catch (err) {
+    console.error('Autocomplete fetch failed:', err);
+    return [];
+  }
+});
 
 function createWindow() {
   // Use pure in-memory partition for privacy
@@ -500,7 +518,25 @@ ipcMain.on('clear-data', async () => {
   await sess.clearCache();
 });
 
-ipcMain.on('generate-bug-log', (event, data) => {
+ipcMain.on('clear-site-data', async (event, domain) => {
+  if (!domain) return;
+  const sess = session.fromPartition('persist:leef-session');
+  try {
+    const cookies = await sess.cookies.get({ domain });
+    for (const cookie of cookies) {
+      let url = (cookie.secure ? 'https://' : 'http://') + cookie.domain + cookie.path;
+      // Strip leading dot from domain for the URL if present
+      url = url.replace(/:\/\/\./, '://');
+      await sess.cookies.remove(url, cookie.name);
+    }
+  } catch(e) {
+    console.error('Failed to clear site cookies:', e);
+  }
+});
+
+ipcMain.on('generate-bug-log', (event, data = {}) => {
+  const settings = data.settings || {};
+  const labs = data.labs || {};
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `leef-diagnostics-${timestamp}.txt`;
@@ -544,12 +580,12 @@ CPU: ${cpuModel} (${cpuCores} cores)
 --------------------------------------------------
 BROWSER SETTINGS
 --------------------------------------------------
-${JSON.stringify(data.settings, null, 2)}
+${JSON.stringify(settings, null, 2)}
 
 --------------------------------------------------
 LABS / EXPERIMENTAL FLAGS
 --------------------------------------------------
-${JSON.stringify(data.labs, null, 2)}
+${JSON.stringify(labs, null, 2)}
 
 --------------------------------------------------
 END OF LOG
@@ -560,6 +596,28 @@ END OF LOG
   } catch (error) {
     console.error('Failed to generate bug log:', error);
     event.sender.send('bug-log-generated', { success: false, error: error.message });
+  }
+});
+
+ipcMain.on('capture-page', async (event, data) => {
+  if (!mainWindow) return;
+  try {
+    const rect = data && data.rect ? data.rect : undefined;
+    const image = await mainWindow.webContents.capturePage(rect);
+    
+    // Copy to clipboard
+    clipboard.writeImage(image);
+    
+    const buffer = image.toPNG();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `Leef_Screenshot_${timestamp}.png`;
+    const filePath = path.join(app.getPath('downloads'), filename);
+    
+    fs.writeFileSync(filePath, buffer);
+    event.sender.send('screenshot-captured', { success: true, filePath, filename });
+  } catch (error) {
+    console.error('Failed to capture page:', error);
+    event.sender.send('screenshot-captured', { success: false, error: error.message });
   }
 });
 
