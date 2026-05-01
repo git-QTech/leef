@@ -2282,26 +2282,77 @@ body.modal-open .browser-top {
 }
 
 /* First-Time Startup Onboarding */
+.onboarding-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-main);
+  z-index: 99998;
+}
+
+.onboarding-bg::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: var(--topbar-bg);
+}
+
+.onboarding-bg::after {
+  content: '';
+  position: fixed;
+  top: 40px;
+  left: 0;
+  right: 0;
+  height: 80px;
+  background: linear-gradient(to bottom, var(--topbar-bg), var(--bg-main));
+}
+
 .onboarding-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(180deg, var(--topbar-bg) 0%, var(--topbar-bg) 40px, var(--bg-main) 120px);
+  background: transparent;
   z-index: 99999;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 20px;
+  justify-content: flex-start;
+  padding: 60px 20px;
   overflow-y: auto;
-  animation: bloomIn 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+  -webkit-overflow-scrolling: touch;
+}
+
+.onboarding-overlay::-webkit-scrollbar {
+  width: 8px;
+}
+
+.onboarding-overlay::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.onboarding-overlay::-webkit-scrollbar-thumb {
+  background: rgba(23, 179, 64, 0.2);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.onboarding-overlay::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-color);
+  background-clip: content-box;
 }
 
 .onboarding-content {
   max-width: 600px;
   width: 100%;
+  will-change: transform;
 }
 
 .onboarding-header-section {

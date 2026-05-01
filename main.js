@@ -196,6 +196,14 @@ function createWindow() {
   });
 
   // mainWindow.webContents.openDevTools();
+
+  // Global Testing Shortcut: Ctrl+Shift+O (v0.2.1)
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.shift && input.key.toLowerCase() === 'o' && input.type === 'keyDown') {
+      mainWindow.webContents.send('trigger-offline-game');
+      event.preventDefault();
+    }
+  });
 }
 
 // Tracking domain lists

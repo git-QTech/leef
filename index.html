@@ -145,7 +145,7 @@
           <!-- Row 1: Leef Beta + Screenshot -->
           <button class="qs-tile qs-tile-version" id="btn-qs-changelog">
             <img src="./images/icon-mark.png" alt="Leef">
-            <span>Leef 0.2.0<br>Beta</span>
+            <span>Leef <span class="leef-version-val"></span><br>Beta</span>
           </button>
           <button class="qs-tile qs-tile-screenshot" id="btn-qs-screenshot">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -243,7 +243,6 @@
                 spellcheck="false" />
             </div>
             <div class="hub-grid">
-              <!-- Hub tiles rendered dynamically by HubManager -->
             </div>
           </div>
         </div>
@@ -266,6 +265,18 @@
       <div class="changelog-content">
         <h1>What's New in Leef</h1>
         <p class="changelog-subtitle">Discover the latest updates and improvements</p>
+        <div class="update-card">
+          <div class="update-date">May 1, 2026</div>
+          <h2>Patch (v<span class="leef-version-val"></span>)</h2>
+          <ul>
+            <li><strong>Added Error Pages:</strong> Implemented brand-new, helpful error pages that show up when you're
+              offline or a site fails to load. Includes diagnostic error codes and easy reconnect options.</li>
+            <li><strong>Performance and bug fixes</strong> Squashed some bugs and optimized performance in onboarding
+              flow and more.</li>
+            <li><strong>Language bugfix</strong> Fixed a bug where the wrong language was being displayed in the
+              settings menu.</li>
+          </ul>
+        </div>
 
         <div class="update-card">
           <div class="update-date">April 28, 2026</div>
@@ -466,7 +477,7 @@
         <div class="credits-header">
           <img class="credits-logo" src="./images/icon-mark.png">
           <h1>Leef Browser Credits</h1>
-          <p class="credits-subtitle">Version 0.2.0 — Open Source Privacy</p>
+          <p class="credits-subtitle">Version <span class="leef-version-val"></span> — Beta</p>
         </div>
 
         <div class="credits-section">
@@ -478,7 +489,7 @@
             </div>
             <div class="credits-row">
               <span class="credits-label">Contributors</span>
-              <span class="credits-value">Quinn, Johan, Jesse, Hannah</span>
+              <span class="credits-value">Quinn, Johan, Hannah</span>
             </div>
             <div class="credits-row">
               <span class="credits-label">Repository</span>
@@ -510,7 +521,7 @@
           <div class="credits-card"
             style="border-left: 4px solid var(--primary-color); background: rgba(23, 179, 64, 0.05);">
             <p><strong>Leef is a labor of love.</strong> We do not collect telemetry, we do not sell your data, and we
-              do not make any money. We also do not accept donations at this time. Enjoy using Leef exactly as it was
+              do not make any money. We don't take donations. Enjoy using Leef exactly as it was
               intended: fast, private, and free.</p>
           </div>
         </div>
@@ -571,7 +582,7 @@
 
           <div class="setting-group">
             <h3>Default browser</h3>
-            <p>Make Leef your default browser</p>
+            <p>Make Leef your default browser (probably wont work)</p>
             <button class="settings-btn" id="btn-default-browser">Make default</button>
           </div>
 
@@ -588,10 +599,9 @@
           <div class="setting-group">
             <h3>Language</h3>
             <select id="language-select">
-              <option value="en">English</option>
-              <option value="fr">French</option>
-              <option value="es">Spanish</option>
-              <option value="it">Italian</option>
+              <option value="en">American English</option>
+              <option value="en-gb">British English</option>
+              <option value="en-ca">Canadian English</option>
             </select>
           </div>
 
@@ -940,6 +950,7 @@
   </script>
 
   <!-- First-Time Startup Onboarding -->
+  <div id="onboarding-bg" class="onboarding-bg" style="display: none;"></div>
   <div id="onboarding-overlay" class="onboarding-overlay" style="display: none;">
     <div class="onboarding-content">
       <div class="onboarding-header-section">
@@ -951,6 +962,19 @@
       <div class="onboarding-options">
         <div class="onboarding-card" style="animation-delay: 0.1s;">
           <div style="flex: 1; padding-right: 16px;">
+            <h3>Language Preference</h3>
+            <p>Select your regional spelling for the browser interface.</p>
+          </div>
+          <select id="onboard-language"
+            style="padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); background: #f9f9f9; font-weight: 600; cursor: pointer;">
+            <option value="en">American English</option>
+            <option value="en-gb">British English</option>
+            <option value="en-ca">Canadian English</option>
+          </select>
+        </div>
+
+        <div class="onboarding-card" style="animation-delay: 0.2s;">
+          <div style="flex: 1; padding-right: 16px;">
             <h3>AI Overview Blocker</h3>
             <p>Automatically remove AI-generated summaries from Google search results.</p>
           </div>
@@ -959,7 +983,7 @@
         </div>
 
         <div class="onboarding-card"
-          style="animation-delay: 0.2s; flex-direction: column; align-items: flex-start; gap: 12px; height: auto; padding: 16px;">
+          style="animation-delay: 0.3s; flex-direction: column; align-items: flex-start; gap: 12px; height: auto; padding: 16px;">
           <div style="margin-bottom: 8px;">
             <h3>Ad & Tracker Blocking</h3>
             <p>Choose your level of protection. You can adjust this later in settings.</p>
@@ -983,7 +1007,7 @@
           </div>
         </div>
 
-        <div class="onboarding-card" style="animation-delay: 0.3s;">
+        <div class="onboarding-card" style="animation-delay: 0.4s;">
           <div style="flex: 1; padding-right: 16px;">
             <h3>Live Search Autocomplete</h3>
             <p>Send keystrokes to a search engine for live address bar suggestions.</p>
@@ -993,7 +1017,7 @@
         </div>
       </div>
 
-      <div class="onboarding-footer" style="animation-delay: 0.4s;">
+      <div class="onboarding-footer" style="animation-delay: 0.5s;">
         <button id="btn-onboarding-finish" class="nav-btn btn-primary">Start Browsing</button>
         <div class="onboarding-subtext">
           <strong>Transparency Note:</strong> Leef is built for you. We don't collect telemetry, make money, or take

@@ -3,6 +3,25 @@
  * Renderer Process Core Architecture
  */
 
+let APP_VERSION = '0.2.1'; // Fallback
+
+async function initVersion() {
+  try {
+    const response = await fetch('./package.json');
+    const pkg = await response.json();
+    APP_VERSION = pkg.version;
+    
+    // Auto-populate any elements that need the version string
+    document.querySelectorAll('.leef-version-val').forEach(el => {
+      el.textContent = APP_VERSION;
+    });
+  } catch (e) {
+    console.error('Failed to load version from package.json:', e);
+  }
+}
+
+initVersion();
+
 // --- UTILITIES ---
 class BrowserUtils {
   static parseAddress(str, engineBaseUrl, blockAI = true) {
@@ -94,9 +113,30 @@ class SettingsManager {
   loadSavedSettings() {
     try {
       const saved = JSON.parse(localStorage.getItem('leef_settings') || '{}');
+      
+      // Fallback: If saved language is not supported anymore, default to en
+      const supported = ['en', 'en-gb', 'en-ca'];
+      if (saved.language && !supported.includes(saved.language)) {
+        saved.language = 'en';
+      }
+      
       return { ...this.defaultSettings, ...saved };
     } catch (e) {
       return { ...this.defaultSettings };
+    }
+  }
+
+  applyLocalization() {
+    const lang = this.currentSettings.language;
+    if (lang === 'en-gb' || lang === 'en-ca') {
+      // Very simple string replacement for common regional spelling differences
+      const targets = document.querySelectorAll('label, h1, h2, h3, p, li, span, strong');
+      targets.forEach(el => {
+        if (el.children.length === 0 || el.tagName === 'STRONG') {
+          // Only replace text in leaf nodes or specific emphasized tags to avoid breaking HTML
+          el.innerHTML = el.innerHTML.replace(/Color/g, 'Colour').replace(/color/g, 'colour');
+        }
+      });
     }
   }
 
@@ -104,7 +144,11 @@ class SettingsManager {
     const s = this.currentSettings;
     const el = id => document.getElementById(id);
     if (el('search-engine-select')) el('search-engine-select').value = s.searchEngine;
-    if (el('language-select')) el('language-select').value = s.language;
+    if (el('language-select')) {
+      el('language-select').value = s.language || 'en';
+      // If still empty (e.g. value not in list), force to 'en'
+      if (!el('language-select').value) el('language-select').value = 'en';
+    }
     if (el('zoom-select')) el('zoom-select').value = s.zoom;
     if (el('font-size-select')) el('font-size-select').value = s.fontSize;
     if (el('https-only')) el('https-only').checked = s.httpsOnly;
@@ -124,6 +168,9 @@ class SettingsManager {
 
     // Show adblock badge based on saved setting
     this.updateAdblockBadge(s.adBlockerMode || 'none');
+
+    // Apply regional spelling (Color vs Colour)
+    this.applyLocalization();
   }
 
   sendSettingsToMain() {
@@ -1137,11 +1184,24 @@ class TabManager {
           });
         }
       }
+    });
 
+    // Audio status monitoring
+    tab.webviewEl.addEventListener('media-paused', () => { tab.isAudioPlaying = false; this.updateTabUI(tab); });
+    tab.webviewEl.addEventListener('media-started-playing', () => { tab.isAudioPlaying = true; this.updateTabUI(tab); });
 
-      // Audio status monitoring
-      tab.webviewEl.addEventListener('media-paused', () => { tab.isAudioPlaying = false; this.updateTabUI(tab); });
-      tab.webviewEl.addEventListener('media-started-playing', () => { tab.isAudioPlaying = true; this.updateTabUI(tab); });
+    // Offline Error Handling (v0.2.1)
+    tab.webviewEl.addEventListener('did-fail-load', (e) => {
+      // Ignore code -3 (ABORTED) which happens on normal navigation/refresh
+      if (e.errorCode === -3) return;
+      
+      console.warn('Navigation failed:', e.validatedURL, e.errorDescription);
+      
+      // Only show offline page for main frame failures that aren't about-blank
+      if (e.isMainFrame && e.validatedURL !== 'about:blank') {
+        const offlinePath = `file://${window.require('path').join(__dirname, 'offline.html')}?url=${encodeURIComponent(e.validatedURL)}&code=${e.errorCode}&desc=${encodeURIComponent(e.errorDescription)}`;
+        tab.webviewEl.loadURL(offlinePath);
+      }
     });
 
     // Right-Click Context Menu for Webviews
@@ -1207,6 +1267,17 @@ class TabManager {
       if (!tab.isInternal) {
         // Strip -noai from the address bar for a seamless display
         let displayUrl = tab.url;
+        
+        // Handle Offline Page URL Spoofing (v0.2.1)
+        if (displayUrl.startsWith('file://') && displayUrl.includes('offline.html')) {
+          try {
+            const urlObj = new URL(displayUrl);
+            const params = new URLSearchParams(urlObj.search);
+            const spoofUrl = params.get('url');
+            if (spoofUrl) displayUrl = spoofUrl;
+          } catch (e) { }
+        }
+
         if (this.settings.currentSettings.blockAIOverview && displayUrl.includes('google.com/search')) {
           displayUrl = displayUrl.replace(/(\+|\%20)-noai/g, '');
         }
@@ -1472,6 +1543,17 @@ class TabManager {
         }
       });
     } catch (e) { }
+
+    // Testing Shortcut: Ctrl+Shift+O to force-open the Offline Game (v0.2.1)
+    window.require('electron').ipcRenderer.on('trigger-offline-game', () => {
+      const tab = this.getActiveTab();
+      if (tab) {
+        const offlinePath = `file://${window.require('path').join(__dirname, 'offline.html')}?url=${encodeURIComponent(tab.url || 'https://google.com')}`;
+        if (!tab.webviewEl) this.mountWebview(tab);
+        tab.isInternal = false;
+        tab.webviewEl.loadURL(offlinePath);
+      }
+    });
   }
 
   syncInternalOrder() {
@@ -2361,13 +2443,16 @@ window.onload = () => {
     localStorage.removeItem('leef_labs_flags');
 
     const overlay = document.getElementById('onboarding-overlay');
+    const bg = document.getElementById('onboarding-bg');
     if (overlay) {
       overlay.style.display = 'flex';
+      if (bg) bg.style.display = 'block';
 
       document.getElementById('btn-onboarding-finish').addEventListener('click', () => {
         const aiChecked = document.getElementById('onboard-ai').checked;
         const autoChecked = document.getElementById('onboard-autocomplete').checked;
         const adblockVal = document.querySelector('input[name="onboard-adblock-tier"]:checked')?.value || 'none';
+        const langVal = document.getElementById('onboard-language').value;
 
         // Sync to actual settings DOM
         const blockAiEl = document.getElementById('block-ai');
@@ -2375,6 +2460,9 @@ window.onload = () => {
 
         const autoEl = document.getElementById('live-autocomplete');
         if (autoEl) autoEl.checked = autoChecked;
+
+        const langEl = document.getElementById('language-select');
+        if (langEl) langEl.value = langVal;
 
         // Adblock is radio buttons ('none', 'basic', 'comprehensive')
         document.querySelectorAll('input[name="adblock-tier"]').forEach(r => {
@@ -2385,6 +2473,7 @@ window.onload = () => {
 
         localStorage.setItem('leef_onboarding_done', 'true');
         overlay.style.display = 'none';
+        if (bg) bg.style.display = 'none';
       });
     }
   }
