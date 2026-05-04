@@ -54,7 +54,6 @@
       "recovery.html",
       "images/**/*",
       "!dist/**/*",
-      "!node_modules/**/*",
       "!src/**/*",
       "!public/**/*",
       "!Local Storage/**/*",
@@ -78,7 +77,8 @@
     },
     "nsis": {
       "oneClick": true,
-      "perMachine": false
+      "perMachine": false,
+      "artifactName": "leef-browser-setup-${version}.${ext}"
     },
     "asar": true
   }
