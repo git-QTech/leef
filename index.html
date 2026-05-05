@@ -55,9 +55,12 @@
           </svg>
         </button>
 
-        <div id="drm-indicator" class="drm-indicator" style="display: none;" title="Protected DRM Content (Widevine) Active">
+        <div id="drm-indicator" class="drm-indicator" style="display: none;"
+          title="Protected DRM Content (Widevine) Active">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"></path>
+            <path
+              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z">
+            </path>
           </svg>
           <span>DRM</span>
         </div>
@@ -135,6 +138,8 @@
               stroke-dasharray="62.8" stroke-dashoffset="62.8" id="toolbar-dl-ring"></circle>
           </svg>
         </button>
+
+
         <button class="action-btn" id="btn-settings" title="Settings">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
@@ -269,7 +274,22 @@
         <div class="home-grid-layout">
           <div class="news-section">
             <div class="news-header">
-              <h1>Leef News</h1>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <h1>Leef News</h1>
+                <div class="news-info-trigger" title="Privacy Information">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                  </svg>
+                  <div class="news-disclaimer-tooltip">
+                    Yahoo News is not associated with Leef. We use their RSS feed to fetch headlines locally. Dismissed
+                    headlines are stored on your device and are not shared with Yahoo. Yahoo may collect analytics if
+                    you click on an article.
+                  </div>
+                </div>
+              </div>
               <button id="btn-refresh-news" class="news-refresh-btn" title="Refresh news">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                   stroke-linecap="round" stroke-linejoin="round">
@@ -319,6 +339,22 @@
       <div class="changelog-content">
         <h1>What's New in Leef</h1>
         <p class="changelog-subtitle">Discover the latest updates and improvements</p>
+        <div class="update-card">
+          <div class="update-date">May 5, 2026</div>
+          <h2>Privacy & Speed (v0.4.1)</h2>
+          <ul>
+            <li><strong>Global Privacy Control (GPC):</strong> Full integration as a core privacy feature.</li>
+            <li><strong>Instant Launch:</strong> Optimized startup by making adblocker initialization non-blocking.</li>
+            <li><strong>Restored Recovery:</strong> Holding Shift at startup now enters Safe Mode with zero delay.</li>
+            <li><strong>Manual News Mode:</strong> New setting to stop automatic news tracking—fetches only on demand.
+            </li>
+            <li><strong>Persistent Headlines:</strong> "I don't care" headline dismissals now persist for 24 hours.</li>
+            <li><strong>News Privacy Info:</strong> Added detailed transparency info regarding RSS data fetching.</li>
+            <li><strong>Performance:</strong> Removed blocking PowerShell calls to significantly reduce startup time.
+            </li>
+          </ul>
+        </div>
+
         <div class="update-card">
           <div class="update-date">May 4, 2026</div>
           <h2>Privacy Suite (v0.4.0)</h2>
@@ -736,6 +772,20 @@
             <h3>Custom New Tab Page</h3>
             <input type="text" id="custom-new-tab" placeholder="e.g. https://google.com">
           </div>
+          <div class="setting-group toggle-group">
+            <div>
+              <h3>Per-Tab Volume Booster</h3>
+              <p>Enable the volume booster in Quick Settings. Uses 0% CPU when set to 100%.</p>
+            </div>
+            <label class="switch"><input type="checkbox" id="enable-volume-boost"><span class="slider"></span></label>
+          </div>
+          <div class="setting-group toggle-group">
+            <div>
+              <h3>Manual News Refresh</h3>
+              <p>Stop news from loading automatically. News only fetches when you click "Refresh".</p>
+            </div>
+            <label class="switch"><input type="checkbox" id="news-manual-refresh"><span class="slider"></span></label>
+          </div>
         </div>
 
         <!-- Privacy -->
@@ -791,7 +841,16 @@
           <div class="setting-group">
             <h3>Privacy Dashboard</h3>
             <p style="margin-bottom: 12px;">View detailed analytics and recent protection activity.</p>
-            <button class="settings-btn" id="btn-open-privacy-settings" style="width: auto; background: var(--primary-color); color: white; border: none;">Open Privacy Dashboard</button>
+            <button class="settings-btn" id="btn-open-privacy-settings"
+              style="width: auto; background: var(--primary-color); color: white; border: none;">Open Privacy
+              Dashboard</button>
+          </div>
+          <div class="setting-group toggle-group">
+            <div>
+              <h3>Global Privacy Control (GPC)</h3>
+              <p>Automatically signal your privacy preference to websites</p>
+            </div>
+            <label class="switch"><input type="checkbox" id="flag-gpc" checked><span class="slider"></span></label>
           </div>
           <div class="setting-group toggle-group">
             <div>
@@ -806,6 +865,13 @@
               <p>Fetch real-time search suggestions from Google as you type in the address bar</p>
             </div>
             <label class="switch"><input type="checkbox" id="live-autocomplete"><span class="slider"></span></label>
+          </div>
+          <div class="setting-group toggle-group">
+            <div>
+              <h3>CSS Tracking Sanitizer</h3>
+              <p>Strip tracking pixels embedded in CSS</p>
+            </div>
+            <label class="switch"><input type="checkbox" id="flag-css-sanitize" checked><span class="slider"></span></label>
           </div>
           <div class="setting-group">
             <h3>Site Permissions</h3>
@@ -824,13 +890,6 @@
             </div>
             <label class="switch"><input type="checkbox" id="background-limit" checked><span
                 class="slider"></span></label>
-          </div>
-          <div class="setting-group toggle-group">
-            <div>
-              <h3>Per-Tab Volume Booster</h3>
-              <p>Enable the volume booster in Quick Settings. Uses 0% CPU when set to 100%.</p>
-            </div>
-            <label class="switch"><input type="checkbox" id="enable-volume-boost"><span class="slider"></span></label>
           </div>
         </div>
 
@@ -917,7 +976,8 @@
       <div class="privacy-content">
         <div class="privacy-header">
           <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
-            <h1 style="font-family: var(--font-display); font-size: 2.5rem; color: var(--primary-color);">Privacy Analytics
+            <h1 style="font-family: var(--font-display); font-size: 2.5rem; color: var(--primary-color);">Privacy
+              Analytics
             </h1>
           </div>
           <p class="flags-subtitle">A live look at how Leef is protecting your privacy.</p>
@@ -928,7 +988,8 @@
           style="display: none; text-align: center; padding: 40px 20px; background: white; border-radius: 20px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 20px rgba(0,0,0,0.02);">
           <div style="font-size: 4rem; margin-bottom: 20px;">🛡️</div>
           <h2 style="margin-bottom: 10px;">Ad Blocking is Disabled</h2>
-          <p style="color: #666; margin-bottom: 25px; max-width: 400px; margin-inline: auto;">To see how well Leef protects
+          <p style="color: #666; margin-bottom: 25px; max-width: 400px; margin-inline: auto;">To see how well Leef
+            protects
             you from ads and trackers, you first need to enable the blocker in your settings.</p>
           <button id="btn-privacy-enable-blocker" class="settings-btn"
             style="background: var(--primary-color); color: white; border: none; padding: 12px 24px; font-weight: 600;">Open
@@ -953,7 +1014,8 @@
           <div class="privacy-section" style="margin-top: 30px;">
             <h3 style="margin-bottom: 15px; font-weight: 600;">Protection activity from this session</h3>
             <div id="privacy-recent-list" class="privacy-recent-list">
-              <p style="opacity:0.5; font-size:0.9rem; padding: 15px; text-align: center;">Start browsing to see protection
+              <p style="opacity:0.5; font-size:0.9rem; padding: 15px; text-align: center;">Start browsing to see
+                protection
                 in action.</p>
             </div>
           </div>
@@ -1062,7 +1124,37 @@
     </div>
   </div>
 
-  <!-- Experimental Flags Layout -->
+  <!-- News Privacy Modal -->
+  <div id="news-privacy-modal" class="hub-modal-overlay" style="display:none;">
+    <div class="hub-modal" style="max-width: 500px; width: 90%;">
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+        <span style="font-size: 1.5rem;">📰</span>
+        <h3 style="margin: 0;">News & Privacy</h3>
+      </div>
+
+      <div style="font-size: 0.9rem; color: #444; line-height: 1.6; margin-bottom: 20px;">
+        <p style="margin-bottom: 10px;"><strong>How we fetch news:</strong> Leef Browser uses Yahoo News' RSS feeds.
+          Unlike other browsers that might track what you read, Leef fetches the news directly from Yahoo's servers to
+          your machine. We don't act as a "middleman," so we never see what headlines you're looking at.</p>
+
+        <p style="margin-bottom: 10px;"><strong>"I Don't Care" Button:</strong> When you dismiss a headline, that
+          preference is stored exclusively in your local browser settings. We do <strong>not</strong> send this feedback
+          to Yahoo or any other server. It's just a local filter to help you curate your own feed.</p>
+
+        <p style="margin-bottom: 10px;"><strong>Third-Party Analytics:</strong> Because you are fetching the RSS feed
+          directly, Yahoo may see your IP address and basic browser info (like any website you visit). If you click on
+          an article, you are leaving Leef's local environment and entering Yahoo's website, where their standard
+          privacy policy and analytics apply.</p>
+
+        <p><strong>Affiliation:</strong> Leef Browser is an independent project and is not affiliated with, sponsored
+          by, or endorsed by Yahoo or its parent companies.</p>
+      </div>
+
+      <div class="hub-modal-actions">
+        <button id="news-privacy-close" class="hub-modal-btn hub-modal-confirm" style="flex: 1;">I Understand</button>
+      </div>
+    </div>
+  </div>
   <div class="flags-layout" id="flags-view" style="display: none;">
     <div class="flags-content">
       <div class="flags-header">
@@ -1078,7 +1170,8 @@
         <label class="switch"><input type="checkbox" id="flag-fingerprint-master"><span class="slider"></span></label>
       </div>
 
-      <div id="fingerprint-sub-options" style="display: none; margin-left: 20px; border-left: 2px solid var(--primary-color); padding-left: 15px; margin-top: -10px; margin-bottom: 20px;">
+      <div id="fingerprint-sub-options"
+        style="display: none; margin-left: 20px; border-left: 2px solid var(--primary-color); padding-left: 15px; margin-top: -10px; margin-bottom: 20px;">
         <div class="flag-card">
           <div class="flag-info">
             <h3>Ghost Mode</h3>
@@ -1090,7 +1183,8 @@
         <div class="flag-card">
           <div class="flag-info">
             <h3>Stealth User Agent</h3>
-            <p>Remove "LeefBrowser" from your browser identifier string. <span class="warning-text">⚠️ May cause "Unsupported Browser" errors on some sites.</span></p>
+            <p>Remove "LeefBrowser" from your browser identifier string. <span class="warning-text">⚠️ May cause
+                "Unsupported Browser" errors on some sites.</span></p>
           </div>
           <label class="switch"><input type="checkbox" id="flag-stealth-ua"><span class="slider"></span></label>
         </div>
@@ -1098,7 +1192,8 @@
         <div class="flag-card">
           <div class="flag-info">
             <h3>Audio Scrambler</h3>
-            <p>Randomize AudioContext. <span class="warning-text">⚠️ May cause slight crackling in high-fidelity web apps.</span></p>
+            <p>Randomize AudioContext. <span class="warning-text">⚠️ May cause slight crackling in high-fidelity web
+                apps.</span></p>
           </div>
           <label class="switch"><input type="checkbox" id="flag-audio-scrambler"><span class="slider"></span></label>
         </div>
@@ -1106,7 +1201,8 @@
         <div class="flag-card">
           <div class="flag-info">
             <h3>Hardware Cloak</h3>
-            <p>Spoof RAM, CPU, and WebGL. <span class="warning-text">⚠️ May reduce performance in WebGL games.</span></p>
+            <p>Spoof RAM, CPU, and WebGL. <span class="warning-text">⚠️ May reduce performance in WebGL games.</span>
+            </p>
           </div>
           <label class="switch"><input type="checkbox" id="flag-hardware-cloak"><span class="slider"></span></label>
         </div>
@@ -1114,7 +1210,8 @@
         <div class="flag-card">
           <div class="flag-info">
             <h3>Timezone Spoof (UTC)</h3>
-            <p>Force UTC/GMT+0 reporting. <span class="warning-text">⚠️ Will cause offsets in web calendars and local times.</span></p>
+            <p>Force UTC/GMT+0 reporting. <span class="warning-text">⚠️ Will cause offsets in web calendars and local
+                times.</span></p>
           </div>
           <label class="switch"><input type="checkbox" id="flag-timezone-spoof"><span class="slider"></span></label>
         </div>
@@ -1122,7 +1219,8 @@
         <div class="flag-card">
           <div class="flag-info">
             <h3>Font Masking</h3>
-            <p>Inhibit font enumeration. <span class="warning-text">⚠️ May break some custom icons or cause layout shifts.</span></p>
+            <p>Inhibit font enumeration. <span class="warning-text">⚠️ May break some custom icons or cause layout
+                shifts.</span></p>
           </div>
           <label class="switch"><input type="checkbox" id="flag-font-mask"><span class="slider"></span></label>
         </div>
@@ -1130,9 +1228,19 @@
         <div class="flag-card">
           <div class="flag-info">
             <h3>DNT Header</h3>
-            <p>Send "Do Not Track" signal. <span class="warning-text">⚠️ Some sites may react unexpectedly to this header.</span></p>
+            <p>Send "Do Not Track" signal. <span class="warning-text">⚠️ Some sites may react unexpectedly to this
+                header.</span></p>
           </div>
           <label class="switch"><input type="checkbox" id="flag-dnt-header"><span class="slider"></span></label>
+        </div>
+
+        <div class="flag-card">
+          <div class="flag-info">
+            <h3>CSS Tracking Sanitizer</h3>
+            <p>Neutralizes invisible tracking pixels and CSS-based fingerprinting techniques used by third-party
+              scripts.</p>
+          </div>
+          <label class="switch"><input type="checkbox" id="flag-css-exorcist"><span class="slider"></span></label>
         </div>
       </div>
 
@@ -1163,9 +1271,21 @@
       <div class="flag-card">
         <div class="flag-info">
           <h3>YouTube Warp Speed</h3>
-          <p>Force unskippable ads to play at 16x speed. <span class="warning-text">⚠️ May cause a 5-10s delay before some videos start.</span></p>
+          <p>Force unskippable ads to play at 16x speed. <span class="warning-text">⚠️ May cause a 5-10s delay before
+              some videos start.</span></p>
         </div>
         <label class="switch"><input type="checkbox" id="flag-yt-warp-speed"><span class="slider"></span></label>
+      </div>
+
+
+
+
+      <div class="flag-card">
+        <div class="flag-info">
+          <h3>AI Content Heuristics <span class="beta-tag">EXPERIMENTAL</span></h3>
+          <p>Identifies linguistic patterns commonly associated with AI-generated text using localized analysis.</p>
+        </div>
+        <label class="switch"><input type="checkbox" id="flag-slop-scanner"><span class="slider"></span></label>
       </div>
 
       <div class="flag-card">
@@ -1173,16 +1293,10 @@
           <h3>Privacy Analytics</h3>
           <p>Access a live look at how Leef is protecting you from trackers and ads.</p>
         </div>
-        <button id="btn-open-privacy-lab" class="settings-btn" style="width: auto; background: var(--primary-color); color: white; border: none;">Open Dashboard</button>
+        <button id="btn-open-privacy-lab" class="settings-btn"
+          style="width: auto; background: var(--primary-color); color: white; border: none;">Open Dashboard</button>
       </div>
 
-      <div class="flag-card">
-        <div class="flag-info" style="opacity: 0.5;">
-          <h3>Custom RSS Feeds</h3>
-          <p>Add your own news sources to the home feed. (Coming in v0.1.6)</p>
-        </div>
-        <label class="switch" style="opacity: 0.5;"><input type="checkbox" disabled><span class="slider"></span></label>
-      </div>
     </div>
 
     <div class="flags-footer">
@@ -1277,6 +1391,47 @@
           donations.<br>
           <span style="opacity: 0.7; font-size: 0.8rem;">You can change these options at any time in Settings.</span>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Audit Diagnostic Modal -->
+  <div id="audit-modal" class="hub-modal-overlay" style="display:none; z-index: 10001; top: 82px;">
+    <div class="hub-modal" style="max-width: 600px; width: 95%; background: white; border: 1px solid #ddd; box-shadow: 0 15px 50px rgba(0,0,0,0.3);">
+      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span id="audit-icon" style="font-size: 1.5rem;">🧐</span>
+          <h3 style="margin: 0; font-family: var(--font-sans); font-weight: 700;">Linguistic Diagnostic Report</h3>
+        </div>
+        <button onclick="document.getElementById('audit-modal').style.display='none'" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#999;">&times;</button>
+      </div>
+      <div style="margin-bottom: 20px;">
+        <div id="audit-confidence-summary" style="font-weight: 700; margin-bottom: 20px; font-size: 1.1rem; color: var(--primary-color); display: flex; align-items: center; gap: 8px;">
+          <div id="audit-indicator-dot" style="width: 12px; height: 12px; border-radius: 50%; background: #ccc;"></div>
+          Confidence: Low Signal
+        </div>
+        
+        <div style="max-height: 300px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; background: #fff;">
+          <table class="audit-table" style="width: 100%; border-collapse: collapse; text-align: left;">
+            <thead>
+              <tr style="background: #f4f4f4; border-bottom: 1px solid #ddd;">
+                <th style="padding: 12px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #666;">Detected Signal</th>
+                <th style="padding: 12px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; color: #666;">Category</th>
+              </tr>
+            </thead>
+            <tbody id="audit-table-body">
+              <!-- Rows injected via renderer -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="audit-disclaimer-box" style="margin-bottom: 25px; padding: 15px; background: #f9f9f9; border-radius: 12px; border: 1px solid #eee; font-size: 0.85rem; color: #555; line-height: 1.5;">
+        <span style="font-weight: 700; color: #333;">Linguistic Note:</span> AI models are trained on professional human data. High-quality human writing (academic, corporate, or journalistic) often flags as "synthetic" because it follows similar patterns of clarity and structure.
+      </div>
+
+      <div style="display: flex; justify-content: flex-end;">
+        <button onclick="document.getElementById('audit-modal').style.display='none'" class="hub-modal-btn hub-modal-confirm" style="padding: 10px 24px;">Dismiss Report</button>
       </div>
     </div>
   </div>

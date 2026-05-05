@@ -101,6 +101,8 @@ class SettingsManager {
       proxyUrl: '',
       liveAutocomplete: false,
       enableVolumeBoost: false,
+      gpc: true,
+      newsManualRefresh: false,
       sitePermissions: {}
     };
     // Load previously saved settings and merge with defaults
@@ -157,7 +159,8 @@ class SettingsManager {
     if (el('auto-check-updates')) el('auto-check-updates').checked = s.autoCheckUpdates;
     document.querySelectorAll(`input[name="adblock-tier"]`).forEach(r => { r.checked = r.value === (s.adBlockerMode || 'none'); });
     if (el('background-limit')) el('background-limit').checked = s.backgroundLimit;
-    if (el('enable-volume-boost')) el('enable-volume-boost').checked = s.enableVolumeBoost;
+    if (document.getElementById('enable-volume-boost')) document.getElementById('enable-volume-boost').checked = s.enableVolumeBoost;
+    if (document.getElementById('news-manual-refresh')) document.getElementById('news-manual-refresh').checked = s.newsManualRefresh;
     if (el('allow-notifications')) el('allow-notifications').checked = s.allowNotifications;
     if (el('ask-download')) el('ask-download').checked = s.askDownload;
     if (el('block-ai')) el('block-ai').checked = s.blockAIOverview;
@@ -165,6 +168,7 @@ class SettingsManager {
     if (el('doh-toggle')) el('doh-toggle').checked = s.dohToggle;
     if (el('proxy-url')) el('proxy-url').value = s.proxyUrl || '';
     if (el('live-autocomplete')) el('live-autocomplete').checked = s.liveAutocomplete;
+    if (el('flag-gpc')) el('flag-gpc').checked = s.gpc !== false; // Default to true
     document.querySelectorAll(`input[name="startup"]`).forEach(r => { r.checked = r.value === s.startup; });
     document.querySelectorAll(`input[name="tracking"]`).forEach(r => { r.checked = r.value === s.tracking; });
 
@@ -449,7 +453,8 @@ class SettingsManager {
       customUa: document.getElementById('custom-ua').value,
       dohToggle: document.getElementById('doh-toggle').checked,
       proxyUrl: document.getElementById('proxy-url').value,
-      liveAutocomplete: document.getElementById('live-autocomplete').checked
+      liveAutocomplete: document.getElementById('live-autocomplete').checked,
+      gpc: document.getElementById('flag-gpc').checked
     };
 
     this.applyVisualSettings();
@@ -466,7 +471,7 @@ class SettingsManager {
 
       // Update adblock badge immediately based on current mode
       this.updateAdblockBadge(this.currentSettings.adBlockerMode);
-      
+
       // Sync Privacy Manager UI (v0.3.3)
       if (window.privacyManager) window.privacyManager.updateUI();
     } catch (e) { console.log("IPC not available", e); }
@@ -749,17 +754,67 @@ class NewsService {
   constructor() {
     this.container = document.getElementById('dynamic-news-container');
     this.isLoading = false;
+    this.isManualTrigger = false;
     this.allItems = [];     // All parsed RSS items
     this.shownIndices = []; // Indices of the 3 currently shown items
-    this.skippedSet = new Set(); // Indices dismissed by user
+
+    // Persistent Dismissed Headlines (Link -> Timestamp)
+    this.dismissedHeadlines = this.loadDismissed();
+    this.pruneOldDismissals();
+
     this.loadNews();
+
+    // Bind Privacy Info Modal
+    const infoTrigger = document.querySelector('.news-info-trigger');
+    const privacyModal = document.getElementById('news-privacy-modal');
+    const privacyClose = document.getElementById('news-privacy-close');
+
+    if (infoTrigger && privacyModal) {
+      infoTrigger.style.cursor = 'pointer';
+      infoTrigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        privacyModal.style.display = 'flex';
+      });
+    }
+
+    if (privacyClose && privacyModal) {
+      privacyClose.addEventListener('click', () => {
+        privacyModal.style.display = 'none';
+      });
+      privacyModal.addEventListener('click', (e) => {
+        if (e.target === privacyModal) privacyModal.style.display = 'none';
+      });
+    }
+  }
+
+  loadDismissed() {
+    try {
+      return JSON.parse(localStorage.getItem('leef_dismissed_news') || '{}');
+    } catch (e) { return {}; }
+  }
+
+  saveDismissed() {
+    localStorage.setItem('leef_dismissed_news', JSON.stringify(this.dismissedHeadlines));
+  }
+
+  pruneOldDismissals() {
+    const now = Date.now();
+    const ONE_DAY = 24 * 60 * 60 * 1000;
+    let changed = false;
+    for (const link in this.dismissedHeadlines) {
+      if (now - this.dismissedHeadlines[link] > ONE_DAY) {
+        delete this.dismissedHeadlines[link];
+        changed = true;
+      }
+    }
+    if (changed) this.saveDismissed();
   }
 
   refresh() {
     if (this.isLoading) return;
     this.allItems = [];
     this.shownIndices = [];
-    this.skippedSet.clear();
+    this.isManualTrigger = true; // Allow fetch even if manual mode is on
     if (this.container) this.container.innerHTML = '<p style="opacity: 0.6; padding-left: 10px;">Refreshing...</p>';
     this.loadNews();
   }
@@ -768,12 +823,38 @@ class NewsService {
     const container = this.container;
     if (!container) return;
     if (this.isLoading) return;
+
+    // Respect Manual Refresh setting
+    const settings = window.settingsManager?.currentSettings || {};
+    if (settings.newsManualRefresh && this.allItems.length === 0 && !this.isManualTrigger) {
+      container.innerHTML = `
+        <div style="padding: 20px; text-align: center; border: 1px dashed rgba(0,0,0,0.1); border-radius: 12px;">
+          <p style="font-size: 0.85rem; opacity: 0.7; margin-bottom: 12px;">Manual Refresh is enabled for privacy.</p>
+          <button id="btn-load-news-now" class="settings-btn" style="width: auto; background: var(--primary-color); color: white; border: none; padding: 6px 15px;">Load News Now</button>
+        </div>
+      `;
+      document.getElementById('btn-load-news-now')?.addEventListener('click', () => {
+        this.isManualTrigger = true;
+        this.loadNews();
+      });
+      return;
+    }
+
     this.isLoading = true;
     try {
       const https = window.require('https');
-      // Cache-bust: append timestamp so we don't get stale cached RSS
       const rssUrl = `https://news.yahoo.com/rss/?_t=${Date.now()}`;
-      https.get(rssUrl, (res) => {
+
+      // Hardened Request Headers
+      const options = {
+        headers: {
+          'User-Agent': 'LeefBrowser-PrivacySync/1.0 (SafeFetch)',
+          'Accept': 'application/rss+xml, text/xml',
+          'Cache-Control': 'no-cache'
+        }
+      };
+
+      https.get(rssUrl, options, (res) => {
         let data = '';
         let dataSize = 0;
         const MAX_BYTES = 512 * 1024;
@@ -792,6 +873,10 @@ class NewsService {
               const title = item.querySelector('title')?.textContent || 'Breaking News';
               const rawLink = item.querySelector('link')?.textContent || 'https://news.yahoo.com';
               const link = rawLink.startsWith('http') ? rawLink : 'https://news.yahoo.com';
+
+              // Filter out dismissed headlines
+              if (this.dismissedHeadlines[link]) continue;
+
               let imgSrc = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=300&h=200&fit=crop';
               const mediaCont = item.getElementsByTagName('media:content');
               if (mediaCont && mediaCont.length > 0 && mediaCont[0].getAttribute('url')) {
@@ -845,14 +930,23 @@ class NewsService {
   }
 
   dismissCard(slotIdx) {
-    const currentIdx = this.shownIndices[slotIdx];
-    this.skippedSet.add(currentIdx);
-    // Find the next unused item
-    const usedSet = new Set([...this.shownIndices, ...this.skippedSet]);
+    const itemIdx = this.shownIndices[slotIdx];
+    const item = this.allItems[itemIdx];
+    if (item) {
+      this.dismissedHeadlines[item.link] = Date.now();
+      this.saveDismissed();
+    }
+
+    // Find the next unused item from allItems (which are already pre-filtered for dismissals)
+    const currentShownIndices = new Set(this.shownIndices);
     let replacement = -1;
     for (let i = 0; i < this.allItems.length; i++) {
-      if (!usedSet.has(i)) { replacement = i; break; }
+      if (!currentShownIndices.has(i) && !this.dismissedHeadlines[this.allItems[i].link]) {
+        replacement = i;
+        break;
+      }
     }
+
     if (replacement !== -1) {
       this.shownIndices[slotIdx] = replacement;
       this.renderCards();
@@ -1015,6 +1109,8 @@ class TabManager {
     tabEl.appendChild(tabPinIcon);
     tabObj.pinIconEl = tabPinIcon;
 
+
+
     // Initial Routing setup
     if (!isInternal) {
       this.mountWebview(tabObj);
@@ -1054,6 +1150,21 @@ class TabManager {
 
     this.switchTab(tabId);
 
+    // Auto-focus search box for new tabs (v0.4.2)
+    setTimeout(() => {
+      if (route === 'home') {
+        const homeSearch = document.getElementById('home-search');
+        if (homeSearch) {
+          homeSearch.focus();
+        } else {
+          UI.inputs.address.focus();
+        }
+      } else if (isInternal) {
+        // Focus address bar for other internal pages if they don't have their own focus logic
+        UI.inputs.address.focus();
+      }
+    }, 50);
+
     // Resource Freezer Loop (Labs)
     if (!this._freezerInited) {
       this._freezerInited = true;
@@ -1083,7 +1194,7 @@ class TabManager {
     tab.webviewEl.id = 'webview-' + tab.id;
     tab.webviewEl.setAttribute('allowpopups', '');
     tab.webviewEl.setAttribute('partition', 'persist:leef-session'); // CRITICAL: must match session in main.js
-    
+
     // Background Tab Performance (v0.4.0)
     // Prevent throttling unless the user explicitly enabled the background limiter.
     if (!this.settings.currentSettings.backgroundLimit) {
@@ -1181,6 +1292,7 @@ class TabManager {
         })();
       `);
 
+
       // ROBUST AI OVERVIEW BLOCKER (v2.0)
       if (this.settings.currentSettings.blockAIOverview && tab.url.includes('google.com')) {
         tab.webviewEl.executeJavaScript(`
@@ -1246,6 +1358,24 @@ class TabManager {
             });
             observer.observe(document.body, { childList: true, subtree: true });
             document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
+          })();
+        `);
+      }
+
+      // GLOBAL PRIVACY CONTROL (GPC)
+      if (this.settings.currentSettings.gpc !== false) {
+        tab.webviewEl.executeJavaScript(`
+          (function() {
+            if (window.__leefGPCHooked) return;
+            window.__leefGPCHooked = true;
+            if (typeof navigator !== 'undefined') {
+              Object.defineProperty(navigator, 'globalPrivacyControl', {
+                get: () => true,
+                configurable: true,
+                enumerable: true
+              });
+            }
+            console.log('Leef: Global Privacy Control Active');
           })();
         `);
       }
@@ -1389,7 +1519,7 @@ class TabManager {
       // YouTube Ad-Protection (Standard + Labs Warp Speed)
       if (tab.url && tab.url.includes('youtube.com')) {
         const isWarpEnabled = window.labsManager && window.labsManager.isFlagEnabled('yt_warp_speed');
-        
+
         const injectYTAdBlock = () => {
           tab.webviewEl.executeJavaScript(`
             (function() {
@@ -1450,8 +1580,11 @@ class TabManager {
                 }
               }
 
-              setInterval(skipAd, 300);
-              skipAd();
+              (function loop() {
+                skipAd();
+                // Performance Optimization: Slow down checks when tab is backgrounded to save CPU.
+                setTimeout(loop, document.hidden ? 2000 : 300);
+              })();
             })();
           `).catch(() => { });
         };
@@ -1637,6 +1770,16 @@ class TabManager {
       tab.audioIconEl.style.display = tab.isAudioPlaying ? 'block' : 'none';
       tab.audioIconEl.style.color = tab.isMuted ? 'rgba(0,0,0,0.3)' : 'var(--primary-color)';
     }
+
+    // Resource Indicator (Labs)
+    if (tab.resourceIconEl) {
+      tab.resourceIconEl.style.display = tab.isHighMemory ? 'block' : 'none';
+    }
+
+    // Panic Indicator (Labs)
+    if (tab.panicIconEl) {
+      tab.panicIconEl.style.display = this.isPanicActive ? 'block' : 'none';
+    }
   }
 
   switchTab(tabId) {
@@ -1664,7 +1807,7 @@ class TabManager {
               if (!m.paused) { m.pause(); m.dataset.wasPlayingByLeef = "true"; }
             });
           `);
-          
+
           // Resource Freezer (Labs): Record time backgrounded
           if (window.labsManager && window.labsManager.isFlagEnabled('resource_freezer')) {
             prevTab.lastActiveTime = Date.now();
@@ -1783,6 +1926,17 @@ class TabManager {
     if (UI.buttons.whatsNew) UI.buttons.whatsNew.addEventListener('click', () => this.createTab('changelog'));
     if (UI.buttons.credits) UI.buttons.credits.addEventListener('click', () => this.createTab('credits'));
 
+    // Global link interceptor for internal pages (v0.4.1)
+    window.addEventListener('click', (e) => {
+      const link = e.target.closest('a');
+      if (link && link.href && link.href.startsWith('http')) {
+        // Only intercept if the link is in the browser UI (not a webview)
+        // Webview links are handled by their own 'new-window' listeners.
+        e.preventDefault();
+        this.createTab(link.href);
+      }
+    });
+
     // Handle Context Menu and Popup commands from Main Process
     try {
       window.require('electron').ipcRenderer.on('open-new-tab', (event, url) => {
@@ -1821,10 +1975,17 @@ class TabManager {
           case 'save-page':
             if (tab.webviewEl) tab.webviewEl.downloadURL(tab.webviewEl.getURL());
             break;
+          case 'check-slop':
+            this.analyzeTextForSlop(data.text);
+            break;
         }
       });
 
       window.require('electron').ipcRenderer.on('tab-command', (event, data) => {
+        if (data.command === 'new-tab') {
+          this.createTab('home');
+          return;
+        }
         const tab = this.tabs.find(t => t.id === data.tabId);
         if (!tab) return;
 
@@ -1850,6 +2011,8 @@ class TabManager {
       window.require('electron').ipcRenderer.on('reopen-closed-tab', () => {
         this.reopenLastClosedTab();
       });
+
+
     } catch (e) { }
 
     // Global context menu for non-webview areas (Home, Settings, etc.)
@@ -1871,7 +2034,8 @@ class TabManager {
         canGoBack: false,
         canGoForward: false,
         editFlags: {},
-        isBrowserUI: true
+        isBrowserUI: true,
+        newsManualRefresh: false
       };
 
       try {
@@ -1977,6 +2141,79 @@ class TabManager {
     } catch (e) { }
     this.updateTabUI(tab);
   }
+
+  analyzeTextForSlop(text) {
+    if (!text || !window.toastManager) return;
+
+    const SLOP_WORDS = [
+      'delve', 'meticulous', 'comprehensive', 'tapestry', 'embark',
+      'furthermore', 'in conclusion', 'important to note', 'ever-evolving',
+      'unlock the potential', 'pave the way', 'demystify', 'seamlessly',
+      'vital', 'crucial', 'harness', 'leverage', 'beacon', 'testament',
+      'unwavering', 'underscores', 'invaluable', 'shines a light',
+      'in today\'s digital age', 'at its core', 'look no further',
+      'it is worth noting', 'notably', 'moreover', 'indeed', 'ultimately',
+      'pivotal', 'transformative', 'unparalleled', 'essential', 'landscape',
+      'dynamic', 'integration', 'paradigm shift', 'synergy', 'bespoke',
+      'robust', 'enhanced', 'optimized', 'ensure', 'proactive', 'streamlined',
+      'critical', 'policy', 'discover', 'vulnerability'
+    ];
+
+    const lowerText = text.toLowerCase();
+    let found = [];
+    SLOP_WORDS.forEach(word => {
+      if (lowerText.includes(word)) {
+        found.push(word);
+      }
+    });
+
+    // Structural check: Em-dash density (GPT-4 hallmark)
+    const emDashes = (text.match(/—/g) || []).length;
+    if (emDashes >= 1) {
+      found.push(`Structural marker (em-dash)`);
+    }
+
+    const score = found.length;
+    let confidence = "No Patterns Detected";
+    let icon = "✅";
+    let titleMsg = "Audit Complete";
+
+    if (score >= 3) {
+      titleMsg = "Highly Possible AI";
+      confidence = "High Probability Synthesis";
+      icon = "🚨";
+    } else if (score >= 2) {
+      titleMsg = "Likely Synthetic";
+      confidence = "Moderate Linguistic Signal";
+      icon = "⚠️";
+    } else if (score === 1) {
+      titleMsg = "Suspicious Outlier";
+      confidence = "Low/Vague Signal";
+      icon = "🧐";
+    }
+
+    window.toastManager.show("✨ Analyzing...", "Auditing linguistic indicators...", 1000);
+    setTimeout(() => {
+      let summary = score >= 1 ? `Found ${score} linguistic markers.` : `No synthetic patterns found.`;
+      window.toastManager.show(titleMsg, summary, 12000);
+
+      const toastAction = document.getElementById('leef-toast-action');
+      const primaryBtn = document.getElementById('btn-toast-primary');
+      const secondaryBtn = document.getElementById('btn-toast-secondary');
+
+      if (toastAction && primaryBtn && score >= 1) {
+        toastAction.style.display = 'flex';
+        primaryBtn.style.display = 'block';
+        primaryBtn.textContent = 'View Diagnostic Report';
+        primaryBtn.onclick = () => {
+          window.labsManager.showAuditWindow(confidence, found, icon);
+        };
+        if (secondaryBtn) secondaryBtn.style.display = 'none';
+      }
+    }, 800);
+  }
+
+
 }
 
 class ToastManager {
@@ -2051,6 +2288,15 @@ class DownloadManager {
     window.require('electron').ipcRenderer.on('download-status', (event, data) => {
       const id = String(data.id);
       if (data.status === 'started') {
+        // Memory Optimization: Prune download history (v0.4.3)
+        // Keeps the list from growing indefinitely during long sessions.
+        if (this.downloads.size > 50) {
+          const oldestId = this.downloads.keys().next().value;
+          this.downloads.delete(oldestId);
+          const oldestEl = document.getElementById(`dl-${oldestId}`);
+          if (oldestEl) oldestEl.remove();
+        }
+
         this.downloads.set(id, { ...data, id, received: 0, startTime: Date.now() });
         this.renderItem(id);
         // Show dropdown when download starts
@@ -2070,9 +2316,6 @@ class DownloadManager {
             this.updateItemProgress(id);
           }
         }
-
-
-
       } else if (data.status === 'completed') {
         const dl = this.downloads.get(data.id);
         if (dl) {
@@ -2621,7 +2864,7 @@ class LabsManager {
     if (chkMaster) {
       chkMaster.checked = !!this.flags.fingerprint_master;
       if (subContainer) subContainer.style.display = chkMaster.checked ? 'block' : 'none';
-      
+
       chkMaster.addEventListener('change', (e) => {
         this.flags.fingerprint_master = e.target.checked;
         if (subContainer) subContainer.style.display = e.target.checked ? 'block' : 'none';
@@ -2641,6 +2884,11 @@ class LabsManager {
     bindFlag('flag-font-mask', 'font_mask');
     bindFlag('flag-dnt-header', 'dnt_header');
     bindFlag('flag-yt-warp-speed', 'yt_warp_speed');
+
+    // New Lab Flags
+    bindFlag('flag-css-exorcist', 'css_exorcist');
+
+    bindFlag('flag-slop-scanner', 'slop_scanner');
   }
 
   syncUI() {
@@ -2648,11 +2896,42 @@ class LabsManager {
   }
 
   isFlagEnabled(key) {
-    const fingerprintFlags = ['ghost_mode', 'stealth_ua', 'audio_scrambler', 'hardware_cloak', 'timezone_spoof', 'font_mask', 'dnt_header'];
+    const fingerprintFlags = ['ghost_mode', 'stealth_ua', 'audio_scrambler', 'hardware_cloak', 'timezone_spoof', 'font_mask', 'dnt_header', 'css_exorcist'];
     if (fingerprintFlags.includes(key)) {
       return !!(this.flags.fingerprint_master && this.flags[key]);
     }
     return !!this.flags[key];
+  }
+
+  showAuditWindow(confidence, foundMarkers, icon) {
+    const modal = document.getElementById('audit-modal');
+    const summaryEl = document.getElementById('audit-confidence-summary');
+    const tableBody = document.getElementById('audit-table-body');
+    const iconEl = document.getElementById('audit-icon');
+    const dotEl = document.getElementById('audit-indicator-dot');
+
+    if (modal && summaryEl && tableBody && iconEl) {
+      summaryEl.innerHTML = `<div id="audit-indicator-dot" style="width: 12px; height: 12px; border-radius: 50%; background: ${icon === '🚨' ? '#d32f2f' : (icon === '⚠️' ? '#ff9800' : '#17b340')};"></div> Confidence: ${confidence}`;
+      iconEl.textContent = icon;
+
+      tableBody.innerHTML = '';
+      foundMarkers.forEach(m => {
+        const row = document.createElement('tr');
+        row.style.borderBottom = '1px solid #eee';
+
+        let category = "Linguistic Marker";
+        if (m.includes('Structural')) category = "Structural Pattern";
+        if (m.includes('Formatting')) category = "Formatting Signature";
+
+        row.innerHTML = `
+          <td style="padding: 12px; font-family: monospace; font-size: 0.85rem; color: #111;">"${m}"</td>
+          <td style="padding: 12px; font-size: 0.85rem; color: #666;">${category}</td>
+        `;
+        tableBody.appendChild(row);
+      });
+
+      modal.style.display = 'flex';
+    }
   }
 }
 
@@ -2702,7 +2981,7 @@ class AddressBarManager {
     document.body.appendChild(this.suggestionsEl);
 
     this.selectedIndex = -1;
-    this.currentFetchCtrl = null;
+    this.currentFetchId = 0; // Track requests to ignore stale results
     this.bindEvents();
 
     // Re-position on resize
@@ -2760,11 +3039,12 @@ class AddressBarManager {
     this.suggestionsEl.style.display = 'block';
 
     // 2. Fetch Live Autocomplete from Main Process (Bypass CORS)
+    const requestId = ++this.currentFetchId;
     try {
       const webSuggestions = await window.require('electron').ipcRenderer.invoke('fetch-autocomplete', val);
 
-      // Re-render with both bookmarks and web suggestions
-      if (this.input.value.trim() === val) { // Prevent race conditions
+      // Re-render only if this is still the most recent request
+      if (this.currentFetchId === requestId && this.input.value.trim() === val) {
         this.renderSuggestions(val, bookmarkMatches, webSuggestions.slice(0, 6));
       }
     } catch (err) {
@@ -2885,6 +3165,8 @@ class PermissionManager {
     if (this.btnDeny) this.btnDeny.addEventListener('click', () => this.handleResponse(false));
 
     // Manager bindings
+    document.getElementById('enable-volume-boost')?.addEventListener('change', (e) => this.updateSetting('enableVolumeBoost', e.target.checked));
+    document.getElementById('news-manual-refresh')?.addEventListener('change', (e) => this.updateSetting('newsManualRefresh', e.target.checked));
     document.getElementById('btn-camera-mic')?.addEventListener('click', () => this.openManager());
     document.getElementById('btn-location')?.addEventListener('click', () => this.openManager());
     document.getElementById('btn-allowed-sites')?.addEventListener('click', () => this.openManager());
@@ -2995,7 +3277,7 @@ class PrivacyManager {
     this.view = document.getElementById('privacy-view');
     this.disabledState = document.getElementById('privacy-disabled-state');
     this.enabledState = document.getElementById('privacy-enabled-state');
-    
+
     this.elTotal = document.getElementById('stat-total-blocked');
     this.elSecure = document.getElementById('stat-secure-percent');
     this.elRecentList = document.getElementById('privacy-recent-list');
@@ -3029,7 +3311,7 @@ class PrivacyManager {
     this.totalBlocked++;
     this.recentBlocks.unshift({ domain, time: Date.now() });
     if (this.recentBlocks.length > 30) this.recentBlocks.pop();
-    
+
     localStorage.setItem('leef_privacy_total_blocked', this.totalBlocked);
     this.updateUI();
   }
@@ -3037,16 +3319,16 @@ class PrivacyManager {
   recordRequest(isSecure) {
     this.totalRequests++;
     if (isSecure) this.secureRequests++;
-    
+
     localStorage.setItem('leef_privacy_total_requests', this.totalRequests);
     localStorage.setItem('leef_privacy_secure_requests', this.secureRequests);
-    
+
     if (this.totalRequests % 5 === 0) this.updateUI(); // Throttled UI update
   }
 
   updateUI() {
     const isBlockerEnabled = this.settingsManager.currentSettings.adBlockerMode !== 'none';
-    
+
     if (this.disabledState && this.enabledState) {
       this.disabledState.style.display = isBlockerEnabled ? 'none' : 'block';
       this.enabledState.style.display = isBlockerEnabled ? 'block' : 'none';

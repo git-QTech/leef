@@ -66,6 +66,8 @@ function safeSend(channel, ...args) {
 
 
 
+
+
 async function initAdBlocker(enabled = false) {
   const sess = session.fromPartition('persist:leef-session');
 
@@ -262,19 +264,26 @@ async function generateDiagnosticLog(error = 'None') {
 }
 
 
-// Windows-specific Shift detection at startup
 
-try {
+function runKeyCheck() {
+  // Recovery Mode: Triggered via --recovery flag or Shift key detection
+  if (process.argv.includes('--recovery')) {
+    isRecoveryMode = true;
+    return;
+  }
+
   if (process.platform === 'win32') {
-    const output = execSync('powershell -Command "[Reflection.Assembly]::LoadWithPartialName(\'System.Windows.Forms\') | Out-Null; [Windows.Forms.Control]::ModifierKeys"', { encoding: 'utf8' }).trim();
-    if (output.includes('Shift')) {
-      isRecoveryMode = true;
-      console.log('Recovery Mode Triggered (Shift Held)');
+    try {
+      const { execSync } = require('child_process');
+      const cmd = 'powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Control]::ModifierKeys"';
+      const output = execSync(cmd, { timeout: 4000, encoding: 'utf8' });
+      if (output && (output.includes('Shift') || output.includes('Control') || output.includes('Alt'))) {
+        isRecoveryMode = true;
+      }
+    } catch (e) {
+      isRecoveryMode = false;
     }
   }
-} catch (e) {
-
-  console.error('Failed to check modifier keys:', e);
 }
 
 function createWindow() {
@@ -357,6 +366,29 @@ function createWindow() {
         safeSend('trigger-offline-game');
         e.preventDefault();
       }
+
+
+    });
+
+    // CSS Exorcist (Labs): Strip tracking pixels
+    contents.on('did-stop-loading', () => {
+      if (globalSettings.labs?.css_exorcist) {
+        const exorcistCSS = `
+          img[width="1"][height="1"], 
+          img[style*="width: 1px"][style*="height: 1px"],
+          img[style*="width:1px"][style*="height:1px"],
+          iframe[width="1"][height="1"],
+          iframe[style*="display: none"],
+          [style*="opacity: 0"][style*="pointer-events: none"],
+          [style*="opacity:0"][style*="pointer-events:none"] {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+          }
+        `;
+        contents.insertCSS(exorcistCSS).catch(() => {});
+      }
     });
 
     // DRM Detection: Triggered when Widevine/CDM is requested
@@ -395,22 +427,28 @@ ipcMain.on('apply-settings', async (event, settings) => {
   if (settings.language === 'it') acceptLang = 'it-IT,it,en;q=0.9';
 
   // Custom User Agent & Language
-  let ua = settings.customUa || sess.getUserAgent().replace(/Electron\/[0-9.]+\s/g, '');
-  
+  // We explicitly regenerate the UA to ensure that turning off "Stealth UA" actually
+  // restores the "Leef Browser" identifier, as sess.getUserAgent() might have been 
+  // modified in a previous apply-settings call.
+  const DEFAULT_UA = sess.getUserAgent().replace(/Leef\s?Browser\/[0-9.]+\s?/gi, '').replace(/Electron\/[0-9.]+\s/g, '');
+  let ua = settings.customUa || DEFAULT_UA;
+
   // Stealth User Agent (Labs): Remove "Leef Browser/vX.X.X" if flag is enabled
-  if (settings.labs?.fingerprint_master && settings.labs?.stealth_ua) {
-    ua = ua.replace(/Leef\s?Browser\/[0-9.]+\s?/gi, '');
+  // Default behavior is to INCLUDE Leef Browser if stealth is OFF and no custom UA is set.
+  if (!settings.customUa && !(settings.labs?.fingerprint_master && settings.labs?.stealth_ua)) {
+    ua = `${DEFAULT_UA} Leef Browser/${app.getVersion()}`;
   }
-  
+
   console.log('Applying User Agent:', ua);
   sess.setUserAgent(ua, acceptLang);
 
-  // Initialize Ghostery if Comprehensive mode is selected — await so the handler
-  // is installed before we apply the rest of the session rules.
+  // Initialize Ghostery if Comprehensive mode is selected
+  // We no longer 'await' this so that the browser can finish applying other settings 
+  // and become interactive while the adblocker engine loads in the background.
   if (settings.adBlockerMode === 'comprehensive') {
-    await initAdBlocker(true);
+    initAdBlocker(true).catch(err => console.error('Background AdBlocker init failed:', err));
   } else {
-    await initAdBlocker(false);
+    initAdBlocker(false).catch(err => console.error('Background AdBlocker disable failed:', err));
   }
 
   // Ad Blocking:
@@ -462,6 +500,11 @@ ipcMain.on('apply-settings', async (event, settings) => {
       headers['DNT'] = '1';
     }
 
+    // Global Privacy Control (GPC)
+    if (settings.gpc !== false) {
+      headers['Sec-GPC'] = '1';
+    }
+
     callback({ requestHeaders: headers });
   });
 
@@ -500,17 +543,30 @@ ipcMain.on('apply-settings', async (event, settings) => {
       }
 
       // Dynamic Prompt
-      const reqId = ++permReqId;
-      permissionCallbacks[reqId] = callback;
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        safeSend('permission-request', {
-          id: reqId,
-          permission,
-          origin
-        });
-      } else {
-        callback(false);
-      }
+        // Dynamic Prompt with 30s expiry to prevent memory leaks
+        const reqId = ++permReqId;
+        const timeout = setTimeout(() => {
+          if (permissionCallbacks[reqId]) {
+            permissionCallbacks[reqId](false);
+            delete permissionCallbacks[reqId];
+            console.log(`Permission request ${reqId} timed out.`);
+          }
+        }, 30000);
+
+        permissionCallbacks[reqId] = (granted) => {
+          clearTimeout(timeout);
+          callback(granted);
+        };
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          safeSend('permission-request', {
+            id: reqId,
+            permission,
+            origin
+          });
+        } else {
+          permissionCallbacks[reqId](false);
+        }
     } else {
       callback(true); // allow other benign permissions
     }
@@ -523,6 +579,8 @@ ipcMain.on('apply-settings', async (event, settings) => {
     sess.setProxy({ proxyRules: 'direct://' });
   }
 });
+
+
 
 ipcMain.on('refresh-adblock', async () => {
   // Force re-download by deleting cache and re-initializing
@@ -691,6 +749,15 @@ ipcMain.on('show-context-menu', (event, params) => {
       label: `Search Google for "${displaySelection}"`,
       click: () => event.sender.send('context-menu-command', { command: 'search-google', text: cleanText })
     }));
+    
+    // AI Analysis (Labs)
+    if (globalSettings.labs?.slop_scanner) {
+      menu.append(new MenuItem({
+        label: '✨ Analyze AI Heuristics',
+        click: () => event.sender.send('context-menu-command', { command: 'check-slop', text: cleanText })
+      }));
+    }
+    
     menu.append(new MenuItem({ type: 'separator' }));
 
     menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
@@ -1012,7 +1079,23 @@ app.on('web-contents-created', (event, contents) => {
 
 app.whenReady().then(async () => {
   try {
+    // Show splash and check for recovery keys
+    const splash = new BrowserWindow({
+      width: 300, height: 150, transparent: true, frame: false, alwaysOnTop: true, center: true,
+      webPreferences: { nodeIntegration: true, contextIsolation: false }
+    });
+    splash.loadURL(`data:text/html;charset=utf-8,
+      <body style="background:%235aef7e;color:black;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;border-radius:20px;border:2px solid black;margin:0;overflow:hidden;">
+        <h2 style="margin:0;">Leef</h2>
+        <p style="font-size:12px;opacity:0.8;margin-top:5px;">Checking for Recovery...</p>
+      </body>
+    `);
+
+    // Brief delay to allow splash to render before blocking key check
+    await new Promise(r => setTimeout(r, 200));
+    runKeyCheck();
     createWindow();
+    splash.close();
 
     // Unified Download Manager (v0.1.5) - Initialized once on boot
 
@@ -1041,39 +1124,27 @@ app.whenReady().then(async () => {
       });
 
 
-      const progressInterval = setInterval(() => {
-        try {
-          const state = item.getState();
-
-          safeSend('download-status', {
-            id: dlId,
-            received: item.getReceivedBytes(),
-            total: item.getTotalBytes(),
-            status: 'progressing',
-            state: state
-          });
-        } catch (e) {
-          clearInterval(progressInterval);
-        }
-      }, 500);
-
-
-
-
-
       item.on('updated', (event, state) => {
         if (state === 'interrupted') {
           safeSend('download-status', { id: dlId, status: 'interrupted' });
         } else if (state === 'progressing') {
           if (item.isPaused()) {
             safeSend('download-status', { id: dlId, status: 'paused' });
+          } else {
+            // Send progress update on every chunk received
+            safeSend('download-status', {
+              id: dlId,
+              received: item.getReceivedBytes(),
+              total: item.getTotalBytes(),
+              status: 'progressing',
+              state: state
+            });
           }
         }
       });
 
 
       item.once('done', (event, state) => {
-        clearInterval(progressInterval);
         activeDownloads.delete(dlId);
         if (state === 'completed') {
           safeSend('download-status', {
