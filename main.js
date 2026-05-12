@@ -1,4 +1,5 @@
-import { app, BrowserWindow, session, ipcMain, Menu, MenuItem, clipboard, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, session, ipcMain, Menu, MenuItem, clipboard, nativeImage, shell, webContents } from 'electron';
+// webContents is explicitly imported for fromId lookups (v0.5.0)
 
 import updater from 'electron-updater';
 const { autoUpdater } = updater;
@@ -116,9 +117,25 @@ async function initAdBlocker(enabled = false) {
 
     // Enable cosmetic filtering and IPC handlers (Once)
     blocker.enableBlockingInSession(sess);
+    // IPC Batching: Throttled updates to reduce CPU usage (v0.5.0)
+    const pendingBlocks = new Map(); // tabId -> { count, lastUrl }
     blocker.on('request-blocked', (request) => {
-      safeSend('adblock-item-blocked', { tabId: request.tabId, url: request.url });
+      const tabId = request.tabId;
+      const stats = pendingBlocks.get(tabId) || { count: 0, lastUrl: '' };
+      stats.count++;
+      stats.lastUrl = request.url;
+      pendingBlocks.set(tabId, stats);
     });
+
+    setInterval(() => {
+      if (pendingBlocks.size > 0) {
+        pendingBlocks.forEach((stats, tabId) => {
+          safeSend('adblock-items-blocked-batch', { tabId, count: stats.count, url: stats.lastUrl });
+        });
+        pendingBlocks.clear();
+      }
+    }, 1000);
+
     adblockerEnabled = true;
   } catch (err) {
     console.error('AdBlocker error:', err);
@@ -237,7 +254,7 @@ async function generateDiagnosticLog(error = 'None') {
     `user credentials, and browsing history are NOT stored.`,
     `All local system paths have been anonymized.`,
     `----------------------------------------------------`,
-    `App Version: ${app.isPackaged ? app.getVersion() : '0.3.0 (Beta)'}`,
+    `App Version: ${app.isPackaged ? app.getVersion() : '0.5.1'}`,
 
 
     `Electron Version: ${process.versions.electron}`,
@@ -263,10 +280,7 @@ async function generateDiagnosticLog(error = 'None') {
   fs.writeFileSync(logPath, logContent);
 }
 
-
-
-function runKeyCheck() {
-  // Recovery Mode: Triggered via --recovery flag or Shift key detection
+async function runKeyCheck() {
   if (process.argv.includes('--recovery')) {
     isRecoveryMode = true;
     return;
@@ -274,17 +288,21 @@ function runKeyCheck() {
 
   if (process.platform === 'win32') {
     try {
-      const { execSync } = require('child_process');
-      const cmd = 'powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Control]::ModifierKeys"';
-      const output = execSync(cmd, { timeout: 4000, encoding: 'utf8' });
-      if (output && (output.includes('Shift') || output.includes('Control') || output.includes('Alt'))) {
+      // Fast check using partial assembly loading
+      const cmd = 'powershell -NoProfile -NonInteractive -Command "[Reflection.Assembly]::LoadWithPartialName(\'System.Windows.Forms\') | Out-Null; [System.Windows.Forms.Control]::ModifierKeys"';
+      const output = execSync(cmd, { timeout: 2000, encoding: 'utf8' }).trim();
+      if (output && output !== 'None' && output.includes('Shift')) {
         isRecoveryMode = true;
+        console.log('Leef Browser: Recovery Mode activated via Shift key.');
       }
     } catch (e) {
+      console.error('Leef Browser: Shift key check failed:', e.message);
       isRecoveryMode = false;
     }
   }
 }
+
+
 
 function createWindow() {
 
@@ -387,7 +405,7 @@ function createWindow() {
             height: 0 !important;
           }
         `;
-        contents.insertCSS(exorcistCSS).catch(() => {});
+        contents.insertCSS(exorcistCSS).catch(() => { });
       }
     });
 
@@ -501,7 +519,7 @@ ipcMain.on('apply-settings', async (event, settings) => {
     }
 
     // Global Privacy Control (GPC)
-    if (settings.gpc !== false) {
+    if (settings.gpc !== false && (url.startsWith('http:') || url.startsWith('https:'))) {
       headers['Sec-GPC'] = '1';
     }
 
@@ -543,30 +561,30 @@ ipcMain.on('apply-settings', async (event, settings) => {
       }
 
       // Dynamic Prompt
-        // Dynamic Prompt with 30s expiry to prevent memory leaks
-        const reqId = ++permReqId;
-        const timeout = setTimeout(() => {
-          if (permissionCallbacks[reqId]) {
-            permissionCallbacks[reqId](false);
-            delete permissionCallbacks[reqId];
-            console.log(`Permission request ${reqId} timed out.`);
-          }
-        }, 30000);
-
-        permissionCallbacks[reqId] = (granted) => {
-          clearTimeout(timeout);
-          callback(granted);
-        };
-
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          safeSend('permission-request', {
-            id: reqId,
-            permission,
-            origin
-          });
-        } else {
+      // Dynamic Prompt with 30s expiry to prevent memory leaks
+      const reqId = ++permReqId;
+      const timeout = setTimeout(() => {
+        if (permissionCallbacks[reqId]) {
           permissionCallbacks[reqId](false);
+          delete permissionCallbacks[reqId];
+          console.log(`Permission request ${reqId} timed out.`);
         }
+      }, 30000);
+
+      permissionCallbacks[reqId] = (granted) => {
+        clearTimeout(timeout);
+        callback(granted);
+      };
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        safeSend('permission-request', {
+          id: reqId,
+          permission,
+          origin
+        });
+      } else {
+        permissionCallbacks[reqId](false);
+      }
     } else {
       callback(true); // allow other benign permissions
     }
@@ -687,37 +705,38 @@ ipcMain.on('recovery-action', async (event, action) => {
 });
 
 ipcMain.on('show-context-menu', (event, params) => {
-
   const menu = new Menu();
 
   // Navigation Group
   if (!params.isBrowserUI) {
     menu.append(new MenuItem({
-      label: 'Back',
+      label: '⬅️ Back',
+      accelerator: 'Alt+Left',
       enabled: params.editFlags.canGoBack || params.canGoBack,
       click: () => event.sender.send('context-menu-command', { command: 'go-back' })
     }));
     menu.append(new MenuItem({
-      label: 'Forward',
+      label: '➡️ Forward',
+      accelerator: 'Alt+Right',
       enabled: params.editFlags.canGoForward || params.canGoForward,
       click: () => event.sender.send('context-menu-command', { command: 'go-forward' })
     }));
     menu.append(new MenuItem({
-      label: 'Reload',
+      label: '🔄 Reload',
+      accelerator: 'CmdOrCtrl+R',
       click: () => event.sender.send('context-menu-command', { command: 'reload' })
     }));
     menu.append(new MenuItem({ type: 'separator' }));
   }
 
-
   // Link actions
   if (params.linkURL) {
     menu.append(new MenuItem({
-      label: 'Open Link in New Tab',
+      label: '🔗 Open Link in New Tab',
       click: () => event.sender.send('context-menu-command', { command: 'create-tab', url: params.linkURL })
     }));
     menu.append(new MenuItem({
-      label: 'Copy Link Address',
+      label: '📋 Copy Link Address',
       click: () => clipboard.writeText(params.linkURL)
     }));
     menu.append(new MenuItem({ type: 'separator' }));
@@ -726,15 +745,28 @@ ipcMain.on('show-context-menu', (event, params) => {
   // Image actions
   if (params.hasImageContents || params.mediaType === 'image') {
     menu.append(new MenuItem({
-      label: 'Open Image in New Tab',
+      label: '🖼️ Open Image in New Tab',
       click: () => event.sender.send('context-menu-command', { command: 'create-tab', url: params.srcURL })
     }));
     menu.append(new MenuItem({
-      label: 'Copy Image',
+      label: '💾 Save Image As...',
+      click: () => {
+        if (mainWindow) mainWindow.webContents.downloadURL(params.srcURL);
+      }
+    }));
+    menu.append(new MenuItem({
+      label: '🔍 Search Image on Google',
+      click: () => {
+        const searchUrl = `https://www.google.com/searchbyimage?image_url=${encodeURIComponent(params.srcURL)}`;
+        event.sender.send('context-menu-command', { command: 'create-tab', url: searchUrl });
+      }
+    }));
+    menu.append(new MenuItem({
+      label: '📋 Copy Image',
       click: () => event.sender.send('context-menu-command', { command: 'copy-image', x: params.x, y: params.y })
     }));
     menu.append(new MenuItem({
-      label: 'Copy Image Address',
+      label: '🔗 Copy Image Address',
       click: () => clipboard.writeText(params.srcURL)
     }));
     menu.append(new MenuItem({ type: 'separator' }));
@@ -746,10 +778,18 @@ ipcMain.on('show-context-menu', (event, params) => {
     const displaySelection = cleanText.length > 15 ? cleanText.substring(0, 15) + '...' : cleanText;
 
     menu.append(new MenuItem({
-      label: `Search Google for "${displaySelection}"`,
+      label: `🔍 Search Google for "${displaySelection}"`,
       click: () => event.sender.send('context-menu-command', { command: 'search-google', text: cleanText })
     }));
-    
+
+    menu.append(new MenuItem({
+      label: '🌐 Translate to English',
+      click: () => {
+        const translateUrl = `https://translate.google.com/?sl=auto&tl=en&text=${encodeURIComponent(cleanText)}&op=translate`;
+        event.sender.send('context-menu-command', { command: 'create-tab', url: translateUrl });
+      }
+    }));
+
     // AI Analysis (Labs)
     if (globalSettings.labs?.slop_scanner) {
       menu.append(new MenuItem({
@@ -757,12 +797,12 @@ ipcMain.on('show-context-menu', (event, params) => {
         click: () => event.sender.send('context-menu-command', { command: 'check-slop', text: cleanText })
       }));
     }
-    
+
     menu.append(new MenuItem({ type: 'separator' }));
 
-    menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+    menu.append(new MenuItem({ label: '📋 Copy', role: 'copy' }));
     menu.append(new MenuItem({
-      label: 'Raw Copy (No formatting)',
+      label: '📝 Raw Copy (No formatting)',
       click: () => clipboard.writeText(cleanText)
     }));
     menu.append(new MenuItem({ type: 'separator' }));
@@ -770,34 +810,37 @@ ipcMain.on('show-context-menu', (event, params) => {
 
   // Input actions (if editable)
   if (params.isEditable) {
-    menu.append(new MenuItem({ label: 'Cut', role: 'cut' }));
-    menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
-    menu.append(new MenuItem({ label: 'Paste', role: 'paste' }));
+    menu.append(new MenuItem({ label: '✂️ Cut', role: 'cut' }));
+    menu.append(new MenuItem({ label: '📋 Copy', role: 'copy' }));
+    menu.append(new MenuItem({ label: '📥 Paste', role: 'paste' }));
     menu.append(new MenuItem({ type: 'separator' }));
-    menu.append(new MenuItem({ label: 'Select All', role: 'selectAll' }));
+    menu.append(new MenuItem({ label: '✅ Select All', role: 'selectAll' }));
     menu.append(new MenuItem({ type: 'separator' }));
   }
 
   // Page Global Actions
   if (!params.selectionText && !params.linkURL && !params.mediaType && !params.isBrowserUI) {
     menu.append(new MenuItem({
-      label: 'Save Page As...',
+      label: '💾 Save Page As...',
+      accelerator: 'CmdOrCtrl+S',
       click: () => event.sender.send('context-menu-command', { command: 'save-page' })
     }));
     menu.append(new MenuItem({
-      label: 'Print...',
+      label: '🖨️ Print...',
+      accelerator: 'CmdOrCtrl+P',
       click: () => event.sender.send('context-menu-command', { command: 'print' })
     }));
     menu.append(new MenuItem({ type: 'separator' }));
     menu.append(new MenuItem({
-      label: 'View Page Source',
+      label: '📄 View Page Source',
+      accelerator: 'CmdOrCtrl+U',
       click: () => event.sender.send('context-menu-command', { command: 'view-source' })
     }));
   }
 
-
   menu.append(new MenuItem({
-    label: 'Inspect Element',
+    label: '🛠️ Inspect Element',
+    accelerator: 'F12',
     click: () => {
       event.sender.inspectElement(params.x, params.y);
       if (event.sender.isDevToolsOpened()) {
@@ -815,38 +858,49 @@ ipcMain.on('show-tab-context-menu', (event, data) => {
 
   if (data.tabId) {
     menu.append(new MenuItem({
-      label: 'Duplicate Tab',
+      label: '🔄 Reload Tab',
+      click: () => event.sender.send('tab-command', { command: 'reload', tabId: data.tabId })
+    }));
+
+    menu.append(new MenuItem({
+      label: '📑 Duplicate Tab',
       click: () => event.sender.send('tab-command', { command: 'duplicate', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({ type: 'separator' }));
 
     menu.append(new MenuItem({
-      label: data.isPinned ? 'Unpin Tab' : 'Pin Tab',
+      label: data.isPinned ? '📍 Unpin Tab' : '📌 Pin Tab',
       click: () => event.sender.send('tab-command', { command: 'toggle-pin', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({
-      label: data.isMuted ? 'Unmute Tab' : 'Mute Tab',
+      label: data.isMuted ? '🔊 Unmute Tab' : '🔇 Mute Tab',
       click: () => event.sender.send('tab-command', { command: 'toggle-mute', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({ type: 'separator' }));
 
     menu.append(new MenuItem({
-      label: 'Close Tab',
+      label: '❌ Close Tab',
+      accelerator: 'CmdOrCtrl+W',
       click: () => event.sender.send('tab-command', { command: 'close', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({
-      label: 'Close Other Tabs',
+      label: '🚫 Close Other Tabs',
       click: () => event.sender.send('tab-command', { command: 'close-others', tabId: data.tabId })
+    }));
+
+    menu.append(new MenuItem({
+      label: '➡️ Close Tabs to the Right',
+      click: () => event.sender.send('tab-command', { command: 'close-right', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({ type: 'separator' }));
   } else {
     menu.append(new MenuItem({
-      label: 'New Tab',
+      label: '➕ New Tab',
       accelerator: 'CmdOrCtrl+T',
       click: () => event.sender.send('tab-command', { command: 'new-tab' })
     }));
@@ -854,7 +908,7 @@ ipcMain.on('show-tab-context-menu', (event, data) => {
   }
 
   menu.append(new MenuItem({
-    label: 'Reopen Closed Tab',
+    label: '🕒 Reopen Closed Tab',
     enabled: closedTabsCount > 0,
     accelerator: 'CmdOrCtrl+Shift+T',
     click: () => event.sender.send('reopen-closed-tab')
@@ -977,6 +1031,22 @@ END OF LOG
   }
 });
 
+ipcMain.on('set-cpu-throttle', (event, data) => {
+  const { webContentsId, factor } = data;
+  console.log(`Leef Limiter: Setting CPU throttle for ${webContentsId} to ${factor}`);
+  if (webContentsId) {
+    const contents = webContents.fromId(webContentsId);
+    if (contents) {
+      try {
+        // factor: 1.0 (no throttling) down to ~0.1 (extreme throttling)
+        contents.setCPUThrottling(factor);
+      } catch (e) {
+        console.error('Failed to set CPU throttle:', e);
+      }
+    }
+  }
+});
+
 ipcMain.on('capture-page', async (event, data) => {
   if (!mainWindow) return;
   try {
@@ -1079,23 +1149,8 @@ app.on('web-contents-created', (event, contents) => {
 
 app.whenReady().then(async () => {
   try {
-    // Show splash and check for recovery keys
-    const splash = new BrowserWindow({
-      width: 300, height: 150, transparent: true, frame: false, alwaysOnTop: true, center: true,
-      webPreferences: { nodeIntegration: true, contextIsolation: false }
-    });
-    splash.loadURL(`data:text/html;charset=utf-8,
-      <body style="background:%235aef7e;color:black;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;border-radius:20px;border:2px solid black;margin:0;overflow:hidden;">
-        <h2 style="margin:0;">Leef</h2>
-        <p style="font-size:12px;opacity:0.8;margin-top:5px;">Checking for Recovery...</p>
-      </body>
-    `);
-
-    // Brief delay to allow splash to render before blocking key check
-    await new Promise(r => setTimeout(r, 200));
-    runKeyCheck();
+    await runKeyCheck();
     createWindow();
-    splash.close();
 
     // Unified Download Manager (v0.1.5) - Initialized once on boot
 

@@ -2280,14 +2280,14 @@ body.modal-open .browser-top {
 .si-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px;
+  gap: 16px;
+  padding: 18px 20px;
   background: #f8f9fa;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .si-section {
-  padding: 12px 16px;
+  padding: 14px 20px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
@@ -2298,9 +2298,14 @@ body.modal-open .browser-top {
 .si-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   font-size: 0.9rem;
   color: #333;
+  margin-bottom: 8px;
+}
+
+.si-row:last-child {
+  margin-bottom: 0;
 }
 
 .si-btn-danger {
@@ -2308,11 +2313,11 @@ body.modal-open .browser-top {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 10px;
+  gap: 10px;
+  padding: 12px;
   background: #fff;
   border: 1px solid #ffcccc;
-  border-radius: 8px;
+  border-radius: 10px;
   color: #d32f2f;
   font-weight: 600;
   cursor: pointer;
@@ -2878,4 +2883,51 @@ body.modal-open .browser-top {
   font-size: 0.8rem;
   color: #777;
   line-height: 1.5;
+}
+
+/* --- EFFICIENCY MODE OPTIMIZATIONS (v0.5.0) --- */
+body.efficiency-mode {
+  --topbar-bg: #4ac96a; /* slightly darker/muted topbar */
+}
+
+body.efficiency-mode * {
+  animation-duration: 0.1s !important; /* snap animations or disable them */
+  transition-duration: 0.1s !important;
+}
+
+body.efficiency-mode .quick-settings-dropdown,
+body.efficiency-mode .site-identity-dropdown,
+body.efficiency-mode .bookmarks-dropdown,
+body.efficiency-mode .downloads-dropdown,
+body.efficiency-mode .address-suggestions {
+  backdrop-filter: none !important;
+  background: #fff !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+}
+
+body.efficiency-mode .nav-btn:hover,
+body.efficiency-mode .action-btn:hover {
+  background: rgba(0,0,0,0.1) !important;
+}
+
+body.efficiency-mode .news-card {
+  box-shadow: none !important;
+  border: 1.5px solid rgba(0,0,0,0.05);
+}
+
+body.efficiency-mode .news-card:hover {
+  transform: none !important;
+  background: rgba(0,0,0,0.02) !important;
+}
+
+body.efficiency-mode .tab-audio-icon {
+  animation: none !important;
+}
+
+body.efficiency-mode .privacy-stat-card:hover {
+  transform: none !important;
+}
+
+body.efficiency-mode .hub-tile:hover {
+  transform: none !important;
 }

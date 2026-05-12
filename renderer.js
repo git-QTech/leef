@@ -3,7 +3,7 @@
  * Renderer Process Core Architecture
  */
 
-let APP_VERSION = '0.2.1'; // Fallback
+let APP_VERSION = '0.5.1'; // Fallback
 
 async function initVersion() {
   try {
@@ -103,6 +103,9 @@ class SettingsManager {
       enableVolumeBoost: false,
       gpc: true,
       newsManualRefresh: false,
+      efficiencyMode: false,
+      cpuLimit: 100,
+      ramLimit: 0,
       sitePermissions: {}
     };
     // Load previously saved settings and merge with defaults
@@ -171,6 +174,16 @@ class SettingsManager {
     if (el('flag-gpc')) el('flag-gpc').checked = s.gpc !== false; // Default to true
     document.querySelectorAll(`input[name="startup"]`).forEach(r => { r.checked = r.value === s.startup; });
     document.querySelectorAll(`input[name="tracking"]`).forEach(r => { r.checked = r.value === s.tracking; });
+    
+    if (el('efficiency-mode')) el('efficiency-mode').checked = !!s.efficiencyMode;
+    if (el('cpu-limit-slider')) {
+      el('cpu-limit-slider').value = s.cpuLimit || 100;
+      el('cpu-limit-value').textContent = (s.cpuLimit || 100) + '%';
+    }
+    if (el('ram-limit-slider')) {
+      el('ram-limit-slider').value = s.ramLimit || 0;
+      el('ram-limit-value').textContent = s.ramLimit > 0 ? s.ramLimit + ' MB' : 'Off';
+    }
 
     // Show adblock badge based on saved setting
     this.updateAdblockBadge(s.adBlockerMode || 'none');
@@ -205,6 +218,12 @@ class SettingsManager {
     // Auto-save settings on change because i fucked up the first 3 times
     let saveDebounce = null;
     document.querySelectorAll('.settings-layout input, .settings-layout select').forEach(el => {
+      el.addEventListener('input', () => {
+        // Live feedback for sliders
+        if (el.id === 'cpu-limit-slider') document.getElementById('cpu-limit-value').textContent = el.value + '%';
+        if (el.id === 'ram-limit-slider') document.getElementById('ram-limit-value').textContent = el.value > 0 ? el.value + ' MB' : 'Off';
+      });
+
       el.addEventListener('change', () => {
         clearTimeout(saveDebounce);
         saveDebounce = setTimeout(() => this.saveSettings(), 500);
@@ -454,7 +473,11 @@ class SettingsManager {
       dohToggle: document.getElementById('doh-toggle').checked,
       proxyUrl: document.getElementById('proxy-url').value,
       liveAutocomplete: document.getElementById('live-autocomplete').checked,
-      gpc: document.getElementById('flag-gpc').checked
+      gpc: document.getElementById('flag-gpc').checked,
+      newsManualRefresh: document.getElementById('news-manual-refresh').checked,
+      efficiencyMode: document.getElementById('efficiency-mode').checked,
+      cpuLimit: parseInt(document.getElementById('cpu-limit-slider').value),
+      ramLimit: parseInt(document.getElementById('ram-limit-slider').value)
     };
 
     this.applyVisualSettings();
@@ -503,6 +526,13 @@ class SettingsManager {
     // Zoom propagates via TabManager later
     if (window.tabManager) {
       window.tabManager.applyZoomToAll(parseFloat(this.currentSettings.zoom) || 1.0);
+    }
+
+    // Efficiency Class
+    if (this.currentSettings.efficiencyMode) {
+      document.body.classList.add('efficiency-mode');
+    } else {
+      document.body.classList.remove('efficiency-mode');
     }
   }
 }
@@ -762,7 +792,9 @@ class NewsService {
     this.dismissedHeadlines = this.loadDismissed();
     this.pruneOldDismissals();
 
-    this.loadNews();
+    if (localStorage.getItem('leef_onboarding_done')) {
+      this.loadNews();
+    }
 
     // Bind Privacy Info Modal
     const infoTrigger = document.querySelector('.news-info-trigger');
@@ -1165,22 +1197,49 @@ class TabManager {
       }
     }, 50);
 
-    // Resource Freezer Loop (Labs)
+    // Resource Freezer Loop (Leef Limiter v0.5.0)
     if (!this._freezerInited) {
       this._freezerInited = true;
       setInterval(() => {
-        if (!window.labsManager || !window.labsManager.isFlagEnabled('resource_freezer')) return;
+        const limiter = this.settings.currentSettings;
+        const labs = window.labsManager;
+        const isFreezerOn = labs && labs.isFlagEnabled('resource_freezer');
+        const isEfficiencyOn = limiter.efficiencyMode;
+        
+        if (!isFreezerOn && !isEfficiencyOn && limiter.ramLimit <= 0) return;
+
         const now = Date.now();
+        
+        // RAM Limiter Check: Get total memory usage if limit is set
+        let currentRssMb = 0;
+        if (limiter.ramLimit > 0) {
+          try {
+            // Electron process.memoryUsage() returns bytes
+            currentRssMb = Math.round(process.memoryUsage().rss / (1024 * 1024));
+          } catch(e) {}
+        }
+
         this.tabs.forEach(t => {
-          if (t.id !== this.activeTabId && !t.isInternal && !t.isPinned && !t.isHibernated && t.lastActiveTime) {
-            const idleTime = now - t.lastActiveTime;
-            if (idleTime > 5 * 60 * 1000) { // 5 minutes
-              console.log(`Leef Labs: Hibernating tab ${t.id} (${t.title})`);
+          if (t.id !== this.activeTabId && !t.isInternal && !t.isPinned && !t.isHibernated) {
+            const idleTime = t.lastActiveTime ? now - t.lastActiveTime : 0;
+            
+            // Hibernation conditions:
+            // 1. Efficiency Mode + 1 minute idle
+            // 2. RAM Limit Exceeded
+            // 3. Labs Freezer + 5 minutes idle
+            
+            let shouldFreeze = false;
+            if (isEfficiencyOn && idleTime > 1 * 60 * 1000) shouldFreeze = true;
+            if (limiter.ramLimit > 0 && currentRssMb > limiter.ramLimit) shouldFreeze = true;
+            if (isFreezerOn && idleTime > 5 * 60 * 1000) shouldFreeze = true;
+
+            if (shouldFreeze && t.webviewEl) {
+              console.log(`Leef Limiter: Hibernating tab ${t.id} (${t.title})`);
               t.isHibernated = true;
               t.hibernateUrl = t.webviewEl.getURL();
               t.webviewEl.stop();
               t.webviewEl.src = 'about:blank';
-              if (window.toastManager) window.toastManager.show('🧊 Tab Hibernated', `"${t.title}" was frozen to save RAM.`, 3000);
+              if (window.toastManager) window.toastManager.show('🧊 Efficiency Freeze', `"${t.title}" was frozen to save system resources.`, 3000);
             }
           }
         });
@@ -1210,8 +1269,8 @@ class TabManager {
     if (window.findManager) window.findManager.attachToWebview(tab.webviewEl);
 
     tab.webviewEl.addEventListener('did-start-loading', () => {
-      tab.title = 'Loading...';
       tab.url = tab.webviewEl.src;
+      tab.gpcStartTime = Date.now(); // START TIMER: from when navigation begins
       tab.volumeBoost = 1; // Reset volume on moving to a new tab
       tab.blockedAds = 0; // Reset adblock stats on moving to a new tab
       tab.hasDRM = false; // Reset DRM status
@@ -1241,21 +1300,44 @@ class TabManager {
 
     // Catch the manual tab interceptor messages
     tab.webviewEl.addEventListener('console-message', (e) => {
-      if (e.message && e.message.startsWith('LEEF_NEW_TAB:')) {
+      if (!e.message) return;
+
+      if (e.message.startsWith('LEEF_NEW_TAB:')) {
         const url = e.message.replace('LEEF_NEW_TAB:', '');
         this.createTab(url);
       }
     });
 
     tab.webviewEl.addEventListener('did-start-navigation', (e) => {
-      if (e.isMainFrame && window.privacyManager) {
-        window.privacyManager.recordRequest(e.url.startsWith('https:'));
+      if (e.isMainFrame) {
+        tab.title = 'Loading...';
+        tab.url = e.url; // Update URL identity immediately to prevent state leaks
+        tab.isInternal = e.url.startsWith('leef:') || e.url.startsWith('file:') || e.url.startsWith('chrome:');
+        tab.gpcVerified = undefined; // CLEAR verification state for the new domain
+        tab.gpcVerifiedTime = null;
+        this.updateTabUI(tab);
+        if (window.siteIdentityManager && window.siteIdentityManager.dropdown && window.siteIdentityManager.dropdown.style.display !== 'none') {
+          window.siteIdentityManager.updateUI();
+        }
+        if (window.privacyManager) {
+          window.privacyManager.recordRequest(e.url.startsWith('https:'));
+        }
       }
     });
 
     tab.webviewEl.addEventListener('did-stop-loading', () => {
+      // Final title sync once everything is done
+      const currentTitle = tab.webviewEl.getTitle();
+      if (currentTitle && currentTitle !== 'Loading...') {
+        tab.title = currentTitle;
+        this.updateTabUI(tab);
+      }
+    });
+
+    tab.webviewEl.addEventListener('dom-ready', () => {
       tab.title = tab.webviewEl.getTitle() || tab.url;
       tab.url = tab.webviewEl.getURL();
+      tab.isInternal = tab.url.startsWith('leef:') || tab.url.startsWith('file:') || tab.url.startsWith('chrome:');
       tab.canGoBack = tab.webviewEl.canGoBack();
       tab.canGoForward = tab.webviewEl.canGoForward();
       if (typeof tab.webviewEl.setZoomFactor === 'function') {
@@ -1263,28 +1345,35 @@ class TabManager {
       }
       this.updateTabUI(tab);
 
-      // GUARANTEED NEW TAB INTERCEPTOR
-      // Bypasses Electron's unpredictable native popup handlers.
-      tab.webviewEl.executeJavaScript(`
+      // BATCHED JS INJECTION (Performance: single IPC round-trip per page load)
+      // All per-page scripts are assembled here and fired in ONE executeJavaScript call.
+      const s = this.settings.currentSettings;
+      const labs = window.labsManager;
+      const tabUrl = tab.url || '';
+      const isGoogle = tabUrl.includes('google.com');
+      const isYouTube = tabUrl.includes('youtube.com');
+      const isWarpEnabled = !!(labs && labs.isFlagEnabled('yt_warp_speed'));
+
+      // Build the injection payload conditionally
+      const chunks = [];
+
+      // 1. New-tab interceptor (always)
+      chunks.push(`
         (function() {
           if (window.__leefHooked) return;
           window.__leefHooked = true;
-          
           document.addEventListener('click', (e) => {
             const a = e.target.closest('a');
             if (a && a.href && a.target === '_blank') {
-              e.preventDefault();
-              e.stopPropagation();
+              e.preventDefault(); e.stopPropagation();
               console.log('LEEF_NEW_TAB:' + a.href);
             }
           }, true);
-
           document.addEventListener('auxclick', (e) => {
-            if (e.button === 1) { // Middle click
+            if (e.button === 1) {
               const a = e.target.closest('a');
               if (a && a.href) {
-                e.preventDefault();
-                e.stopPropagation();
+                e.preventDefault(); e.stopPropagation();
                 console.log('LEEF_NEW_TAB:' + a.href);
               }
             }
@@ -1292,67 +1381,37 @@ class TabManager {
         })();
       `);
 
-
-      // ROBUST AI OVERVIEW BLOCKER (v2.0)
-      if (this.settings.currentSettings.blockAIOverview && tab.url.includes('google.com')) {
-        tab.webviewEl.executeJavaScript(`
+      // 2. AI Overview Blocker (Google only, when enabled)
+      if (s.blockAIOverview && isGoogle) {
+        chunks.push(`
           (function() {
             if (window.__leefAIHooked) return;
             window.__leefAIHooked = true;
-
             const NOAI_TAG = ' -noai';
             const NOAI_REGEX = /( ?)-noai/gi;
-
-            // 1. Intercept search inputs to keep the tag hidden from user view
             const hookInput = (input) => {
               if (input.dataset.leefHooked) return;
               input.dataset.leefHooked = "true";
-              
               const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value');
               if (!descriptor) return;
-
               Object.defineProperty(input, 'value', {
-                get: function() {
-                  const val = descriptor.get.call(this);
-                  return val ? val.replace(NOAI_REGEX, '') : val;
-                },
-                set: function(val) {
-                  const cleanVal = (val && typeof val === 'string') ? val.replace(NOAI_REGEX, '') : val;
-                  descriptor.set.call(this, cleanVal);
-                }
+                get: function() { const v = descriptor.get.call(this); return v ? v.replace(NOAI_REGEX, '') : v; },
+                set: function(val) { descriptor.set.call(this, (val && typeof val === 'string') ? val.replace(NOAI_REGEX, '') : val); }
               });
-              
-              // Clean initial value
               const initial = descriptor.get.call(input);
               if (initial) descriptor.set.call(input, initial.replace(NOAI_REGEX, ''));
             };
-
-            // 2. Intercept Form Submissions (Most robust way to catch dynamic searches)
             const interceptSearch = (query) => {
               if (!query) return;
-              const clean = query.replace(NOAI_REGEX, '').trim();
-              window.location.href = '/search?q=' + encodeURIComponent(clean + NOAI_TAG);
+              window.location.href = '/search?q=' + encodeURIComponent(query.replace(NOAI_REGEX, '').trim() + NOAI_TAG);
             };
-
             document.addEventListener('submit', (e) => {
-              const qInput = e.target.querySelector('input[name="q"], textarea[name="q"]');
-              if (qInput) {
-                e.preventDefault();
-                e.stopPropagation();
-                interceptSearch(qInput.value);
-              }
+              const q = e.target.querySelector('input[name="q"], textarea[name="q"]');
+              if (q) { e.preventDefault(); e.stopPropagation(); interceptSearch(q.value); }
             }, true);
-
-            // 3. Catch Enter Key as a fallback
             document.addEventListener('keydown', (e) => {
-              if (e.key === 'Enter' && e.target.name === 'q') {
-                e.preventDefault();
-                e.stopPropagation();
-                interceptSearch(e.target.value);
-              }
+              if (e.key === 'Enter' && e.target.name === 'q') { e.preventDefault(); e.stopPropagation(); interceptSearch(e.target.value); }
             }, true);
-
-            // 4. Watch for dynamic search bars (Google swaps them often)
             const observer = new MutationObserver(() => {
               document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
             });
@@ -1362,246 +1421,189 @@ class TabManager {
         `);
       }
 
-      // GLOBAL PRIVACY CONTROL (GPC)
-      if (this.settings.currentSettings.gpc !== false) {
-        tab.webviewEl.executeJavaScript(`
+      if (s.gpc !== false) {
+        chunks.push(`
           (function() {
             if (window.__leefGPCHooked) return;
             window.__leefGPCHooked = true;
             if (typeof navigator !== 'undefined') {
               Object.defineProperty(navigator, 'globalPrivacyControl', {
-                get: () => true,
+                get: () => {
+                  window.__leefGPCRead = true;
+                  return true;
+                },
                 configurable: true,
                 enumerable: true
               });
             }
-            console.log('Leef: Global Privacy Control Active');
           })();
         `);
       }
 
-      // GHOST MODE (Labs)
-      if (window.labsManager && window.labsManager.isFlagEnabled('ghost_mode')) {
-        tab.webviewEl.executeJavaScript(`
+      // 4. Labs: Ghost Mode
+      if (labs && labs.isFlagEnabled('ghost_mode')) {
+        chunks.push(`
           (function() {
             if (window.__leefGhostHooked) return;
             window.__leefGhostHooked = true;
-            const originalGetContext = HTMLCanvasElement.prototype.getContext;
-            HTMLCanvasElement.prototype.getContext = function(type, attributes) {
-              const context = originalGetContext.apply(this, arguments);
-              if (type === '2d' && context) {
-                const originalGetImageData = context.getImageData;
-                context.getImageData = function(x, y, w, h) {
-                  const imageData = originalGetImageData.apply(this, arguments);
-                  const idx = Math.floor(Math.random() * (imageData.data.length / 4)) * 4;
-                  imageData.data[idx] = (imageData.data[idx] + (Math.random() > 0.5 ? 1 : -1)) % 256;
-                  return imageData;
+            const orig = HTMLCanvasElement.prototype.getContext;
+            HTMLCanvasElement.prototype.getContext = function(type, attrs) {
+              const ctx = orig.apply(this, arguments);
+              if (type === '2d' && ctx) {
+                const origGID = ctx.getImageData;
+                ctx.getImageData = function(x, y, w, h) {
+                  const d = origGID.apply(this, arguments);
+                  const i = Math.floor(Math.random() * (d.data.length / 4)) * 4;
+                  d.data[i] = (d.data[i] + (Math.random() > 0.5 ? 1 : -1)) % 256;
+                  return d;
                 };
               }
-              return context;
+              return ctx;
             };
-            const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
-            HTMLCanvasElement.prototype.toDataURL = function() {
-              const ctx = this.getContext('2d');
-              if (ctx) {
-                const imageData = ctx.getImageData(0, 0, this.width, this.height);
-                const idx = Math.floor(Math.random() * (imageData.data.length / 4)) * 4;
-                imageData.data[idx] = (imageData.data[idx] + 1) % 256;
-                ctx.putImageData(imageData, 0, 0);
-              }
-              return originalToDataURL.apply(this, arguments);
-            };
-            console.log('Leef Labs: Ghost Mode Active');
           })();
         `);
       }
 
-      // AUDIO SCRAMBLER (Labs) - Hardened
-      if (window.labsManager && window.labsManager.isFlagEnabled('audio_scrambler')) {
-        tab.webviewEl.executeJavaScript(`
+      // 5. Labs: Audio Scrambler
+      if (labs && labs.isFlagEnabled('audio_scrambler')) {
+        chunks.push(`
           (function() {
             if (window.__leefAudioHooked) return;
             window.__leefAudioHooked = true;
-            
-            // Hook AudioBuffer
-            const originalGetChannelData = AudioBuffer.prototype.getChannelData;
+            const orig = AudioBuffer.prototype.getChannelData;
             AudioBuffer.prototype.getChannelData = function() {
-              const data = originalGetChannelData.apply(this, arguments);
-              const idx = Math.floor(Math.random() * data.length);
-              data[idx] += (Math.random() - 0.5) * 1e-7;
-              return data;
+              const d = orig.apply(this, arguments);
+              d[Math.floor(Math.random() * d.length)] += (Math.random() - 0.5) * 1e-7;
+              return d;
             };
-
-            // Hook AnalyserNode (frequency data)
-            const originalGetByteFreq = AnalyserNode.prototype.getByteFrequencyData;
-            AnalyserNode.prototype.getByteFrequencyData = function(array) {
-              originalGetByteFreq.apply(this, arguments);
-              for (let i = 0; i < array.length; i += 100) {
-                array[i] = (array[i] + Math.floor(Math.random() * 2)) % 256;
-              }
-            };
-
-            console.log('Leef Labs: Audio Scrambler (Hardened) Active');
           })();
         `);
       }
 
-      // HARDWARE CLOAK (Labs) - Hardened with WebGL and Screen Masking
-      if (window.labsManager && window.labsManager.isFlagEnabled('hardware_cloak')) {
-        tab.webviewEl.executeJavaScript(`
+      // 6. Labs: Hardware Cloak
+      if (labs && labs.isFlagEnabled('hardware_cloak')) {
+        chunks.push(`
           (function() {
             if (window.__leefHardwareHooked) return;
             window.__leefHardwareHooked = true;
-            
-            // 1. Spec Spoofing
             Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
             Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-            
-            // 2. Screen Normalization
-            const s = window.screen;
-            Object.defineProperty(s, 'width', { get: () => 1920 });
-            Object.defineProperty(s, 'height', { get: () => 1080 });
-            Object.defineProperty(s, 'availWidth', { get: () => 1920 });
-            Object.defineProperty(s, 'availHeight', { get: () => 1040 });
-            
-            // 3. WebGL Masking
-            const maskWebGL = (proto) => {
-              const originalGetParameter = proto.getParameter;
-              proto.getParameter = function(parameter) {
-                // UNMASKED_VENDOR_WEBGL = 0x9245, UNMASKED_RENDERER_WEBGL = 0x9246
-                if (parameter === 0x9245) return 'Intel Inc.';
-                if (parameter === 0x9246) return 'Intel(R) UHD Graphics 620';
-                return originalGetParameter.apply(this, arguments);
+            const sc = window.screen;
+            Object.defineProperty(sc, 'width', { get: () => 1920 });
+            Object.defineProperty(sc, 'height', { get: () => 1080 });
+            Object.defineProperty(sc, 'availWidth', { get: () => 1920 });
+            Object.defineProperty(sc, 'availHeight', { get: () => 1040 });
+            const maskWGL = (p) => {
+              const og = p.getParameter;
+              p.getParameter = function(param) {
+                if (param === 0x9245) return 'Intel Inc.';
+                if (param === 0x9246) return 'Intel(R) UHD Graphics 620';
+                return og.apply(this, arguments);
               };
             };
-            if (window.WebGLRenderingContext) maskWebGL(WebGLRenderingContext.prototype);
-            if (window.WebGL2RenderingContext) maskWebGL(WebGL2RenderingContext.prototype);
+            if (window.WebGLRenderingContext) maskWGL(WebGLRenderingContext.prototype);
+            if (window.WebGL2RenderingContext) maskWGL(WebGL2RenderingContext.prototype);
           })();
         `);
       }
 
-      // TIMEZONE SPOOF (Labs)
-      if (window.labsManager && window.labsManager.isFlagEnabled('timezone_spoof')) {
-        tab.webviewEl.executeJavaScript(`
+      // 7. Labs: Timezone Spoof
+      if (labs && labs.isFlagEnabled('timezone_spoof')) {
+        chunks.push(`
           (function() {
             if (window.__leefTimezoneHooked) return;
             window.__leefTimezoneHooked = true;
-            const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
+            const orig = Intl.DateTimeFormat.prototype.resolvedOptions;
             Intl.DateTimeFormat.prototype.resolvedOptions = function() {
-              const options = originalResolvedOptions.apply(this, arguments);
-              options.timeZone = 'UTC';
-              return options;
+              const o = orig.apply(this, arguments); o.timeZone = 'UTC'; return o;
             };
-            const originalDateToString = Date.prototype.toString;
-            Date.prototype.toString = function() {
-              return this.toUTCString();
-            };
-            console.log('Leef Labs: Timezone Spoof (UTC) Active');
+            Date.prototype.toString = function() { return this.toUTCString(); };
           })();
         `);
       }
 
-      // FONT MASKING (Labs)
-      if (window.labsManager && window.labsManager.isFlagEnabled('font_mask')) {
-        tab.webviewEl.executeJavaScript(`
+      // 8. Labs: Font Masking
+      if (labs && labs.isFlagEnabled('font_mask')) {
+        chunks.push(`
           (function() {
             if (window.__leefFontHooked) return;
             window.__leefFontHooked = true;
-            if (window.FontFaceSet) {
-              const originalCheck = FontFaceSet.prototype.check;
-              FontFaceSet.prototype.check = function() { return true; };
-            }
-            console.log('Leef Labs: Font Masking Active');
+            if (window.FontFaceSet) FontFaceSet.prototype.check = function() { return true; };
           })();
         `);
       }
 
-      // YouTube Ad-Protection (Standard + Labs Warp Speed)
-      if (tab.url && tab.url.includes('youtube.com')) {
-        const isWarpEnabled = window.labsManager && window.labsManager.isFlagEnabled('yt_warp_speed');
-
-        const injectYTAdBlock = () => {
-          tab.webviewEl.executeJavaScript(`
-            (function() {
-              if (window.__leefYTAdBlock) return;
-              window.__leefYTAdBlock = true;
-
-              function skipAd() {
-                const video = document.querySelector('video');
-                const adShowing = document.querySelector('.ad-showing, .ad-interrupting, .video-ads');
-                const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern');
-
-                // 1. Standard Skip (Default)
-                if (skipBtn) skipBtn.click();
-
-                // 2. Unskippable Ads Handling
-                const isAd = document.querySelector('.ad-showing, .ad-interrupting');
-                if (isAd && video) {
-                  if (${isWarpEnabled}) {
-                    // Warp Speed Mode: 16x playback
-                    if (video.playbackRate !== 16) {
-                      video.dataset.leefPrevRate = video.playbackRate;
-                      video.muted = true;
-                      video.playbackRate = 16;
-                    }
-                  } else {
-                    // Standard Mode: Seek to end
-                    if (video.duration > 0 && isFinite(video.duration) && video.currentTime < video.duration - 0.2) {
-                      video.muted = true;
-                      video.currentTime = video.duration;
-                    }
-                  }
-                } else if (video && video.playbackRate === 16) {
-                  // Restore state only if we were the ones who warped it
-                  video.playbackRate = parseFloat(video.dataset.leefPrevRate || 1);
-                  video.muted = false;
-                  delete video.dataset.leefPrevRate;
+      // 9. YouTube Ad-Protection (YouTube only)
+      if (isYouTube) {
+        chunks.push(`
+          (function() {
+            if (window.__leefYTAdBlock) return;
+            window.__leefYTAdBlock = true;
+            const WARP = ${isWarpEnabled};
+            function skipAd() {
+              const video = document.querySelector('video');
+              const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern');
+              if (skipBtn) skipBtn.click();
+              const isAd = document.querySelector('.ad-showing, .ad-interrupting');
+              if (isAd && video) {
+                if (WARP) {
+                  if (video.playbackRate !== 16) { video.dataset.leefPrevRate = video.playbackRate; video.muted = true; video.playbackRate = 16; }
+                } else {
+                  if (video.duration > 0 && isFinite(video.duration) && video.currentTime < video.duration - 0.2) { video.muted = true; video.currentTime = video.duration; }
                 }
-
-                // 3. Dismiss Popups (Default)
-                const enforceBtn = document.querySelector('ytd-enforcement-message-view-model button[class*="dismiss"], tp-yt-paper-dialog .style-scope ytd-button-renderer:last-child button');
-                if (enforceBtn) enforceBtn.click();
-
-                // 4. Hide Overlay Ads (Default)
-                if (!document.getElementById('__leef_yt_css')) {
-                  const s = document.createElement('style');
-                  s.id = '__leef_yt_css';
-                  s.textContent = \`
-                    .ytp-ad-overlay-container, .ytp-ad-text-overlay,
-                    .ytp-ad-image-overlay, .ytp-ce-element,
-                    #masthead-ad, ytd-banner-promo-renderer,
-                    ytd-statement-banner-renderer, ytd-ad-slot-renderer,
-                    ytd-in-feed-ad-layout-renderer, ytd-promoted-sparkles-web-renderer,
-                    ytd-search-pyv-renderer, #player-ads { 
-                      display: none !important; 
-                    }
-                  \`;
-                  document.head.appendChild(s);
-                }
+              } else if (video && video.playbackRate === 16) {
+                video.playbackRate = parseFloat(video.dataset.leefPrevRate || 1);
+                video.muted = false;
+                delete video.dataset.leefPrevRate;
               }
-
-              (function loop() {
-                skipAd();
-                // Performance Optimization: Slow down checks when tab is backgrounded to save CPU.
-                setTimeout(loop, document.hidden ? 2000 : 300);
-              })();
-            })();
-          `).catch(() => { });
-        };
-
-        // Inject on initial load
-        injectYTAdBlock();
-
-        // Re-inject on every SPA navigation (clicking a video within YouTube)
-        if (!tab._ytNavHooked) {
-          tab._ytNavHooked = true;
-          tab.webviewEl.addEventListener('did-navigate-in-page', () => {
-            if (tab.webviewEl.getURL().includes('youtube.com')) {
-              tab.webviewEl.executeJavaScript('window.__leefYTAdBlock = false;').catch(() => { });
-              setTimeout(injectYTAdBlock, 500);
+              const enforceBtn = document.querySelector('ytd-enforcement-message-view-model button[class*="dismiss"], tp-yt-paper-dialog .style-scope ytd-button-renderer:last-child button');
+              if (enforceBtn) enforceBtn.click();
+              if (!document.getElementById('__leef_yt_css')) {
+                const s = document.createElement('style');
+                s.id = '__leef_yt_css';
+                s.textContent = '.ytp-ad-overlay-container,.ytp-ad-text-overlay,.ytp-ad-image-overlay,.ytp-ce-element,#masthead-ad,ytd-banner-promo-renderer,ytd-statement-banner-renderer,ytd-ad-slot-renderer,ytd-in-feed-ad-layout-renderer,ytd-promoted-sparkles-web-renderer,ytd-search-pyv-renderer,#player-ads{display:none!important}';
+                document.head.appendChild(s);
+              }
             }
-          });
-        }
+            (function loop() { skipAd(); setTimeout(loop, document.hidden ? 2000 : 300); })();
+          })();
+        `);
+      }
+
+      // Fire all chunks in a single IPC call
+      if (chunks.length > 0) {
+        tab.webviewEl.executeJavaScript(chunks.join('\n')).catch(() => {});
+      }
+
+      // YouTube SPA re-injection hook (event listener, not a JS injection)
+      if (isYouTube && !tab._ytNavHooked) {
+        tab._ytNavHooked = true;
+        tab.webviewEl.addEventListener('did-navigate-in-page', () => {
+          if (tab.webviewEl.getURL().includes('youtube.com')) {
+            const s2 = this.settings.currentSettings;
+            const labs2 = window.labsManager;
+            const isWarp2 = !!(labs2 && labs2.isFlagEnabled('yt_warp_speed'));
+            tab.webviewEl.executeJavaScript(`
+              window.__leefYTAdBlock = false;
+              (function() {
+                if (window.__leefYTAdBlock) return;
+                window.__leefYTAdBlock = true;
+                const WARP = ${isWarpEnabled};
+                function skipAd() {
+                  const video = document.querySelector('video');
+                  const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern');
+                  if (skipBtn) skipBtn.click();
+                  const isAd = document.querySelector('.ad-showing, .ad-interrupting');
+                  if (isAd && video) {
+                    if (WARP) { if (video.playbackRate !== 16) { video.muted = true; video.playbackRate = 16; } }
+                    else if (video.duration > 0 && isFinite(video.duration) && video.currentTime < video.duration - 0.2) { video.muted = true; video.currentTime = video.duration; }
+                  } else if (video && video.playbackRate === 16) { video.playbackRate = 1; video.muted = false; }
+                }
+                (function loop() { skipAd(); setTimeout(loop, document.hidden ? 2000 : 300); })();
+              })();
+            `).catch(() => {});
+          }
+        });
       }
     });
 
@@ -1797,16 +1799,36 @@ class TabManager {
     }
 
     // Only suspend the previously active tab
-    if (prevTabId && prevTabId !== tabId && this.settings.currentSettings.backgroundLimit) {
+    const limiterSettings = this.settings.currentSettings;
+    if (prevTabId && prevTabId !== tabId) {
       const prevTab = this.tabs.find(t => t.id === prevTabId);
       if (prevTab && prevTab.webviewEl) {
         try {
-          prevTab.webviewEl.setAudioMuted(true);
-          prevTab.webviewEl.executeJavaScript(`
-            document.querySelectorAll('video, audio').forEach(m => {
-              if (!m.paused) { m.pause(); m.dataset.wasPlayingByLeef = "true"; }
-            });
-          `);
+          if (limiterSettings.backgroundLimit) {
+            prevTab.webviewEl.setAudioMuted(true);
+            prevTab.webviewEl.executeJavaScript(`
+              document.querySelectorAll('video, audio').forEach(m => {
+                if (!m.paused) { m.pause(); m.dataset.wasPlayingByLeef = "true"; }
+              });
+            `);
+          }
+
+          // Leef Limiter: CPU Throttling (v0.5.0)
+          if (!prevTab.isInternal) {
+            const cpuFactor = (limiterSettings.cpuLimit || 100) / 100.0;
+            // Background tabs get throttled even more if Efficiency Mode is on
+            const finalFactor = limiterSettings.efficiencyMode ? Math.min(cpuFactor, 0.3) : cpuFactor;
+            
+            if (finalFactor < 1.0) {
+              const wcId = prevTab.webviewEl.getWebContentsId();
+              if (wcId) {
+                window.require('electron').ipcRenderer.send('set-cpu-throttle', {
+                  webContentsId: wcId,
+                  factor: finalFactor
+                });
+              }
+            }
+          }
 
           // Resource Freezer (Labs): Record time backgrounded
           if (window.labsManager && window.labsManager.isFlagEnabled('resource_freezer')) {
@@ -1814,6 +1836,19 @@ class TabManager {
           }
         } catch (e) { }
       }
+    }
+
+    // Wake up current tab CPU (v0.5.0)
+    if (tab.webviewEl && !tab.isInternal) {
+      try {
+        const wcId = tab.webviewEl.getWebContentsId();
+        if (wcId) {
+          window.require('electron').ipcRenderer.send('set-cpu-throttle', {
+            webContentsId: wcId,
+            factor: 1.0 // Unthrottle active tab
+          });
+        }
+      } catch (e) { }
     }
 
     // Update tab strip UI
@@ -1926,7 +1961,7 @@ class TabManager {
     if (UI.buttons.whatsNew) UI.buttons.whatsNew.addEventListener('click', () => this.createTab('changelog'));
     if (UI.buttons.credits) UI.buttons.credits.addEventListener('click', () => this.createTab('credits'));
 
-    // Global link interceptor for internal pages (v0.4.1)
+    // Global link interceptor for internal pages (v0.5.1)
     window.addEventListener('click', (e) => {
       const link = e.target.closest('a');
       if (link && link.href && link.href.startsWith('http')) {
@@ -2005,6 +2040,16 @@ class TabManager {
           case 'close-others':
             this.tabs.filter(t => t.id !== tab.id).forEach(t => this.closeTab(t.id));
             break;
+          case 'close-right':
+            const index = this.tabs.indexOf(tab);
+            if (index !== -1) {
+              const toClose = this.tabs.slice(index + 1);
+              toClose.forEach(t => this.closeTab(t.id));
+            }
+            break;
+          case 'reload':
+            if (tab.webviewEl) tab.webviewEl.reload();
+            break;
         }
       });
 
@@ -2065,19 +2110,21 @@ class TabManager {
       if (tab && !tab.isInternal && tab.webviewEl) tab.webviewEl.reload();
     });
 
-    // Adblock Tracking
+    // Adblock Tracking (Batched v0.5.0)
     try {
-      window.require('electron').ipcRenderer.on('adblock-item-blocked', (event, data) => {
+      window.require('electron').ipcRenderer.on('adblock-items-blocked-batch', (event, data) => {
         const tab = this.tabs.find(t => t.webviewEl && t.webviewEl.getWebContentsId() === data.tabId);
         if (tab) {
-          tab.blockedAds = (tab.blockedAds || 0) + 1;
+          tab.blockedAds = (tab.blockedAds || 0) + data.count;
           if (this.activeTabId === tab.id && window.siteIdentityManager) {
             window.siteIdentityManager.updateUI();
           }
           if (window.privacyManager) {
             try {
+              // Record one event per batch to save CPU, but increment the total counter
               const domain = new URL(data.url).hostname;
-              window.privacyManager.recordBlock(domain);
+              window.privacyManager.totalBlocked += data.count;
+              window.privacyManager.recordBlock(domain); // Record last domain for recent list
             } catch (e) { }
           }
         }
@@ -2698,7 +2745,11 @@ class SiteIdentityManager {
     this.domainEl = document.getElementById('si-domain');
     this.statusEl = document.getElementById('si-status');
     this.adblockCountEl = document.getElementById('si-adblock-count');
+    this.gpcStatusEl = document.getElementById('si-gpc-status');
+    this.gpcTimerEl = document.getElementById('si-gpc-timer');
+    this.gpcRowEl = document.getElementById('si-gpc-row');
     this.btnClearCookies = document.getElementById('btn-clear-site-cookies');
+    this._gpcCache = new Map(); // domain -> { verified: bool, fetchedAt: ts }
 
     this.bindEvents();
   }
@@ -2717,12 +2768,35 @@ class SiteIdentityManager {
         if (d3) d3.style.display = 'none';
 
         this.updateUI();
+
+        // Real-time updates while open, but only while the answer is still pending
+        if (this.dropdown.style.display === 'block') {
+          if (this._updateInterval) clearInterval(this._updateInterval);
+          this._updateInterval = setInterval(() => {
+            // Stop if closed
+            if (this.dropdown.style.display === 'none') {
+              clearInterval(this._updateInterval);
+              this._updateInterval = null;
+              return;
+            }
+            const t = window.tabManager?.getActiveTab();
+            // Stop polling once we have a definitive answer (true or false)
+            if (t && (t.gpcVerified !== undefined || (Date.now() - (t.gpcStartTime || 0)) > 10000)) {
+              clearInterval(this._updateInterval);
+              this._updateInterval = null;
+            }
+            this.updateUI();
+          }, 1000);
+        } else {
+          if (this._updateInterval) { clearInterval(this._updateInterval); this._updateInterval = null; }
+        }
       });
     }
 
     document.addEventListener('click', (e) => {
       if (this.dropdown && !this.dropdown.contains(e.target) && e.target !== this.btnGlobe && !this.btnGlobe.contains(e.target)) {
         this.dropdown.style.display = 'none';
+        if (this._updateInterval) { clearInterval(this._updateInterval); this._updateInterval = null; }
       }
     });
 
@@ -2771,13 +2845,16 @@ class SiteIdentityManager {
     const tab = window.tabManager.getActiveTab();
     if (!tab) return;
 
-    if (tab.isInternal) {
+    const isInternal = tab.isInternal || tab.url.startsWith('leef:') || tab.url.startsWith('file:') || tab.url.startsWith('chrome:');
+
+    if (isInternal) {
       if (this.domainEl) this.domainEl.textContent = 'Leef Browser';
       if (this.statusEl) {
         this.statusEl.textContent = 'Local Application Page';
         this.statusEl.style.color = '#777';
       }
       if (this.adblockCountEl) this.adblockCountEl.textContent = '0';
+      this._updateGPCStatus(tab); // This will handle the 'Disabled' state
     } else {
       try {
         const urlObj = new URL(tab.url);
@@ -2785,7 +2862,11 @@ class SiteIdentityManager {
 
         if (urlObj.protocol === 'https:') {
           if (this.statusEl) {
-            this.statusEl.textContent = 'Connection is secure';
+            if (tab.gpcVerified) {
+              this.statusEl.textContent = 'Your connection is secure & Leef privacy measures are in place';
+            } else {
+              this.statusEl.textContent = 'Connection is secure';
+            }
             this.statusEl.style.color = '#4caf50';
           }
         } else {
@@ -2795,12 +2876,109 @@ class SiteIdentityManager {
           }
         }
 
-        // Adblock stats logic (using tab.blockedAds array if we had one, but let's mock it for MVP or use 0)
+        // Adblock stats
         if (this.adblockCountEl) this.adblockCountEl.textContent = tab.blockedAds || '0';
+
+        // GPC indicator
+        this._updateGPCStatus(tab);
 
       } catch (e) {
         if (this.domainEl) this.domainEl.textContent = 'Unknown';
       }
+    }
+  }
+
+  _updateGPCStatus(tab) {
+    const el = this.gpcStatusEl;
+    const timer = this.gpcTimerEl;
+    const row = this.gpcRowEl;
+    if (!el || !row) return;
+
+    const gpcEnabled = window.settingsManager?.currentSettings?.gpc !== false;
+    if (!gpcEnabled || !tab || tab.isInternal) {
+      el.textContent = 'Disabled';
+      el.style.color = '#999';
+      if (timer) timer.textContent = '';
+      if (row) row.style.opacity = '0.5';
+      return;
+    }
+
+    if (row) row.style.opacity = '1';
+
+    // Already settled this navigation — update DOM unconditionally
+    if (tab.gpcVerified !== undefined) {
+      if (tab.gpcVerified) {
+        el.textContent = 'Verified ✓';
+        el.style.color = '#4caf50';
+        if (timer) {
+          const diff = tab.gpcVerifiedTime
+            ? (tab.gpcVerifiedTime - (tab.gpcStartTime || tab.gpcVerifiedTime)) / 1000
+            : null;
+          timer.textContent = diff === null ? '' : diff > 10 ? '(>10s)' : '(' + Math.max(0.1, diff).toFixed(1) + 's)';
+        }
+        return;
+      } else {
+        el.textContent = 'Unverified';
+        el.style.color = '#ff9800';
+        if (timer) timer.textContent = '(no response)';
+        return;
+      }
+    }
+
+    // Show pending state while we look it up
+    el.textContent = 'Sent';
+    el.style.color = '#888';
+    if (timer) timer.textContent = '(checking...)';
+
+    // Check /.well-known/gpc.json — the GPC spec's official compliance declaration
+    let domain;
+    try { domain = new URL(tab.url).hostname; } catch { return; }
+
+    const cached = this._gpcCache.get(domain);
+    if (cached) {
+      tab.gpcVerified = cached.verified;
+      tab.gpcVerifiedTime = cached.fetchedAt;
+      this._updateGPCStatus(tab);
+      return;
+    }
+
+    // Use the webview to fetch to avoid CORS issues from the renderer process
+    if (tab.webviewEl) {
+      tab.webviewEl.executeJavaScript(`
+        (function() {
+          if (window.location.hostname !== '${domain}') return { error: 'wrong origin' };
+          return fetch('/.well-known/gpc.json', { method: 'GET', cache: 'no-store' })
+            .then(res => res.ok ? res.json() : null)
+            .catch(() => null);
+        })();
+      `).then(json => {
+        if (json && json.error === 'wrong origin') return; // Webview hasn't navigated yet, wait for next poll
+
+        const respected = json && json.gpc === true;
+        const now = Date.now();
+        this._gpcCache.set(domain, { verified: respected, fetchedAt: now });
+        
+        if (respected) {
+          tab.gpcVerified = true;
+          tab.gpcVerifiedTime = now;
+        } else if (tab.gpcVerified === undefined) {
+          tab.gpcVerified = false;
+        }
+        
+        // Trigger a full UI update to refresh the top status text too
+        if (this.dropdown && this.dropdown.style.display !== 'none') {
+          this.updateUI();
+        }
+      }).catch(() => {
+        if (tab.gpcVerified === undefined) {
+          const now = Date.now();
+          this._gpcCache.set(domain, { verified: false, fetchedAt: now });
+          tab.gpcVerified = false;
+          if (this.dropdown && this.dropdown.style.display !== 'none') {
+            this.updateUI();
+          }
+        }
+      });
     }
   }
 }
@@ -2950,6 +3128,14 @@ class HeroManager {
   }
 
   update() {
+    // Efficiency: Slow down or skip clock updates if not visible (v0.5.0)
+    const limiter = window.settingsManager?.currentSettings;
+    const isEfficiency = limiter?.efficiencyMode;
+    const homeView = document.getElementById('home-view');
+    const isHomeVisible = homeView && homeView.style.display === 'flex';
+    
+    if (isEfficiency && !isHomeVisible) return;
+
     const now = new Date();
     const hours = now.getHours();
     const minutes = String(now.getMinutes()).padStart(2, '0');
@@ -3461,6 +3647,7 @@ window.onload = () => {
   window.toastManager = new ToastManager();
 
   const settingsMgr = new SettingsManager();
+  window.settingsManager = settingsMgr;
 
   // First-Time Startup Onboarding
   if (!localStorage.getItem('leef_onboarding_done')) {
@@ -3490,6 +3677,10 @@ window.onload = () => {
         const langEl = document.getElementById('language-select');
         if (langEl) langEl.value = langVal;
 
+        const newsChecked = document.getElementById('onboard-news').checked;
+        const newsEl = document.getElementById('news-manual-refresh');
+        if (newsEl) newsEl.checked = !newsChecked;
+
         // Adblock is radio buttons ('none', 'basic', 'comprehensive')
         document.querySelectorAll('input[name="adblock-tier"]').forEach(r => {
           r.checked = r.value === adblockVal;
@@ -3500,6 +3691,9 @@ window.onload = () => {
         localStorage.setItem('leef_onboarding_done', 'true');
         overlay.style.display = 'none';
         if (bg) bg.style.display = 'none';
+
+        // Start loading news now that we have consent/settings
+        if (window.newsSvc) window.newsSvc.loadNews();
       });
     }
   }

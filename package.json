@@ -1,9 +1,9 @@
 {
   "name": "private-browser",
-  "version": "0.4.1",
+  "version": "0.5.1",
   "private": true,
   "description": "Leef is a fast, private, and modern Electron-based web browser built for everyday use.",
-  "homepage": "https://github.com/git-QTech/leef#readme",
+  "homepage": "https://leefbrowser.site",
   "bugs": {
     "url": "https://github.com/git-QTech/leef/issues"
   },

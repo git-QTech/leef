@@ -1,4 +1,6 @@
 # Leef Browser
+**[leefbrowser.site](https://leefbrowser.site)**
+
 A fast, lightweight Chromium browser built with one purpose. No AI overviews, no slop, no bloat, just browsing.
 
 ## Features
@@ -18,8 +20,10 @@ it. See [SECURITY](SECURITY.md) for full details.
 - **Also Bluesky:** [QTech](https://bsky.app/profile/qtech.bsky.social)
 
 ## Download
-1. Go to the [Releases](https://github.com/git-QTech/leef/releases) page.
-2. Download the latest `.exe` installer and run it.
+- **Official Website:** [leefbrowser.site](https://leefbrowser.site)
+- **GitHub Releases:** [Releases](https://github.com/git-QTech/leef/releases)
+
+1. Download the latest `.exe` installer and run it.
 
 > [!NOTE]
 > You may see a "Windows protected your PC" SmartScreen warning on first run. Click **More Info → Run Anyway** to proceed.
