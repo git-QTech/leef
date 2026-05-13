@@ -174,7 +174,7 @@ class SettingsManager {
     if (el('flag-gpc')) el('flag-gpc').checked = s.gpc !== false; // Default to true
     document.querySelectorAll(`input[name="startup"]`).forEach(r => { r.checked = r.value === s.startup; });
     document.querySelectorAll(`input[name="tracking"]`).forEach(r => { r.checked = r.value === s.tracking; });
-    
+
     if (el('efficiency-mode')) el('efficiency-mode').checked = !!s.efficiencyMode;
     if (el('cpu-limit-slider')) {
       el('cpu-limit-slider').value = s.cpuLimit || 100;
@@ -1203,35 +1203,32 @@ class TabManager {
       setInterval(() => {
         const limiter = this.settings.currentSettings;
         const labs = window.labsManager;
-        const isFreezerOn = labs && labs.isFlagEnabled('resource_freezer');
         const isEfficiencyOn = limiter.efficiencyMode;
-        
-        if (!isFreezerOn && !isEfficiencyOn && limiter.ramLimit <= 0) return;
+
+        if (!isEfficiencyOn && limiter.ramLimit <= 0) return;
 
         const now = Date.now();
-        
+
         // RAM Limiter Check: Get total memory usage if limit is set
         let currentRssMb = 0;
         if (limiter.ramLimit > 0) {
           try {
             // Electron process.memoryUsage() returns bytes
             currentRssMb = Math.round(process.memoryUsage().rss / (1024 * 1024));
-          } catch(e) {}
+          } catch (e) { }
         }
 
         this.tabs.forEach(t => {
           if (t.id !== this.activeTabId && !t.isInternal && !t.isPinned && !t.isHibernated) {
             const idleTime = t.lastActiveTime ? now - t.lastActiveTime : 0;
-            
+
             // Hibernation conditions:
-            // 1. Efficiency Mode + 1 minute idle
+            // 1. Efficiency Mode + 5 minutes idle
             // 2. RAM Limit Exceeded
-            // 3. Labs Freezer + 5 minutes idle
-            
+
             let shouldFreeze = false;
-            if (isEfficiencyOn && idleTime > 1 * 60 * 1000) shouldFreeze = true;
+            if (isEfficiencyOn && idleTime > 5 * 60 * 1000) shouldFreeze = true;
             if (limiter.ramLimit > 0 && currentRssMb > limiter.ramLimit) shouldFreeze = true;
-            if (isFreezerOn && idleTime > 5 * 60 * 1000) shouldFreeze = true;
 
             if (shouldFreeze && t.webviewEl) {
               console.log(`Leef Limiter: Hibernating tab ${t.id} (${t.title})`);
@@ -1256,12 +1253,7 @@ class TabManager {
 
     // Background Tab Performance (v0.4.0)
     // Prevent throttling unless the user explicitly enabled the background limiter.
-    if (!this.settings.currentSettings.backgroundLimit) {
-      tab.webviewEl.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=no, nodeIntegration=no, backgroundThrottling=false');
-      tab.webviewEl.setAttribute('disableblinkfeatures', 'Throttling,TimerThrottling,IntersectionObserverThrottling');
-    } else {
-      tab.webviewEl.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=no, nodeIntegration=no');
-    }
+    tab.webviewEl.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=no, nodeIntegration=no');
 
     UI.views.webviewsContainer.appendChild(tab.webviewEl);
 
@@ -1412,8 +1404,12 @@ class TabManager {
             document.addEventListener('keydown', (e) => {
               if (e.key === 'Enter' && e.target.name === 'q') { e.preventDefault(); e.stopPropagation(); interceptSearch(e.target.value); }
             }, true);
+            let aiTimer;
             const observer = new MutationObserver(() => {
-              document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
+              clearTimeout(aiTimer);
+              aiTimer = setTimeout(() => {
+                document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
+              }, 300);
             });
             observer.observe(document.body, { childList: true, subtree: true });
             document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
@@ -1565,43 +1561,47 @@ class TabManager {
                 document.head.appendChild(s);
               }
             }
-            (function loop() { skipAd(); setTimeout(loop, document.hidden ? 2000 : 300); })();
+            (function loop() { skipAd(); setTimeout(loop, document.hidden ? 2000 : 1000); })();
           })();
         `);
       }
 
       // Fire all chunks in a single IPC call
       if (chunks.length > 0) {
-        tab.webviewEl.executeJavaScript(chunks.join('\n')).catch(() => {});
+        tab.webviewEl.executeJavaScript(chunks.join('\n')).catch(() => { });
       }
 
       // YouTube SPA re-injection hook (event listener, not a JS injection)
       if (isYouTube && !tab._ytNavHooked) {
         tab._ytNavHooked = true;
-        tab.webviewEl.addEventListener('did-navigate-in-page', () => {
+        let ytNavTimer;
+        tab.webviewEl.addEventListener('did-navigate-in-page', (e) => {
+          if (!e.isMainFrame) return; // Prevent iframe navigation IPC floods!
           if (tab.webviewEl.getURL().includes('youtube.com')) {
-            const s2 = this.settings.currentSettings;
-            const labs2 = window.labsManager;
-            const isWarp2 = !!(labs2 && labs2.isFlagEnabled('yt_warp_speed'));
-            tab.webviewEl.executeJavaScript(`
-              window.__leefYTAdBlock = false;
-              (function() {
-                if (window.__leefYTAdBlock) return;
-                window.__leefYTAdBlock = true;
-                const WARP = ${isWarpEnabled};
-                function skipAd() {
-                  const video = document.querySelector('video');
-                  const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern');
-                  if (skipBtn) skipBtn.click();
-                  const isAd = document.querySelector('.ad-showing, .ad-interrupting');
-                  if (isAd && video) {
-                    if (WARP) { if (video.playbackRate !== 16) { video.muted = true; video.playbackRate = 16; } }
-                    else if (video.duration > 0 && isFinite(video.duration) && video.currentTime < video.duration - 0.2) { video.muted = true; video.currentTime = video.duration; }
-                  } else if (video && video.playbackRate === 16) { video.playbackRate = 1; video.muted = false; }
-                }
-                (function loop() { skipAd(); setTimeout(loop, document.hidden ? 2000 : 300); })();
-              })();
-            `).catch(() => {});
+            clearTimeout(ytNavTimer);
+            ytNavTimer = setTimeout(() => {
+              const s2 = this.settings.currentSettings;
+              const labs2 = window.labsManager;
+              const isWarp2 = !!(labs2 && labs2.isFlagEnabled('yt_warp_speed'));
+              tab.webviewEl.executeJavaScript(`
+                (function() {
+                  if (window.__leefYTAdBlock) return;
+                  window.__leefYTAdBlock = true;
+                  const WARP = ${isWarp2};
+                  function skipAd() {
+                    const video = document.querySelector('video');
+                    const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern');
+                    if (skipBtn) skipBtn.click();
+                    const isAd = document.querySelector('.ad-showing, .ad-interrupting');
+                    if (isAd && video) {
+                      if (WARP) { if (video.playbackRate !== 16) { video.muted = true; video.playbackRate = 16; } }
+                      else if (video.duration > 0 && isFinite(video.duration) && video.currentTime < video.duration - 0.2) { video.muted = true; video.currentTime = video.duration; }
+                    } else if (video && video.playbackRate === 16) { video.playbackRate = 1; video.muted = false; }
+                  }
+                  (function loop() { skipAd(); setTimeout(loop, document.hidden ? 2000 : 1000); })();
+                })();
+              `).catch(() => { });
+            }, 500);
           }
         });
       }
@@ -1810,7 +1810,7 @@ class TabManager {
               document.querySelectorAll('video, audio').forEach(m => {
                 if (!m.paused) { m.pause(); m.dataset.wasPlayingByLeef = "true"; }
               });
-            `);
+            `).catch(() => { });
           }
 
           // Leef Limiter: CPU Throttling (v0.5.0)
@@ -1818,7 +1818,7 @@ class TabManager {
             const cpuFactor = (limiterSettings.cpuLimit || 100) / 100.0;
             // Background tabs get throttled even more if Efficiency Mode is on
             const finalFactor = limiterSettings.efficiencyMode ? Math.min(cpuFactor, 0.3) : cpuFactor;
-            
+
             if (finalFactor < 1.0) {
               const wcId = prevTab.webviewEl.getWebContentsId();
               if (wcId) {
@@ -1831,9 +1831,7 @@ class TabManager {
           }
 
           // Resource Freezer (Labs): Record time backgrounded
-          if (window.labsManager && window.labsManager.isFlagEnabled('resource_freezer')) {
-            prevTab.lastActiveTime = Date.now();
-          }
+          prevTab.lastActiveTime = Date.now();
         } catch (e) { }
       }
     }
@@ -1872,7 +1870,7 @@ class TabManager {
             document.querySelectorAll('video, audio').forEach(m => {
               if (m.dataset.wasPlayingByLeef === "true") { m.play(); delete m.dataset.wasPlayingByLeef; }
             });
-          `);
+          `).catch(() => { });
         }
       } catch (e) { }
     }
@@ -2678,13 +2676,12 @@ class QuickSettingsManager {
 
               document.querySelectorAll('video, audio').forEach(routeMedia);
 
-              const observer = new MutationObserver(mutations => {
-                mutations.forEach(m => {
-                  m.addedNodes.forEach(n => {
-                    if (n.tagName === 'VIDEO' || n.tagName === 'AUDIO') routeMedia(n);
-                    if (n.querySelectorAll) n.querySelectorAll('video, audio').forEach(routeMedia);
-                  });
-                });
+              let volTimer;
+              const observer = new MutationObserver(() => {
+                clearTimeout(volTimer);
+                volTimer = setTimeout(() => {
+                  document.querySelectorAll('video, audio').forEach(routeMedia);
+                }, 500);
               });
               observer.observe(document.body, { childList: true, subtree: true });
             }
@@ -2957,14 +2954,14 @@ class SiteIdentityManager {
         const respected = json && json.gpc === true;
         const now = Date.now();
         this._gpcCache.set(domain, { verified: respected, fetchedAt: now });
-        
+
         if (respected) {
           tab.gpcVerified = true;
           tab.gpcVerifiedTime = now;
         } else if (tab.gpcVerified === undefined) {
           tab.gpcVerified = false;
         }
-        
+
         // Trigger a full UI update to refresh the top status text too
         if (this.dropdown && this.dropdown.style.display !== 'none') {
           this.updateUI();
@@ -3051,9 +3048,8 @@ class LabsManager {
       });
     }
 
-    bindFlag('flag-force-safe-off', 'force_safe_off');
+    bindFlag('flag-fingerprint-master', 'fingerprint_master');
     bindFlag('flag-ghost-mode', 'ghost_mode');
-    bindFlag('flag-resource-freezer', 'resource_freezer');
     bindFlag('flag-wayback-suggest', 'wayback_suggest');
     bindFlag('flag-stealth-ua', 'stealth_ua');
     bindFlag('flag-audio-scrambler', 'audio_scrambler');
@@ -3133,7 +3129,7 @@ class HeroManager {
     const isEfficiency = limiter?.efficiencyMode;
     const homeView = document.getElementById('home-view');
     const isHomeVisible = homeView && homeView.style.display === 'flex';
-    
+
     if (isEfficiency && !isHomeVisible) return;
 
     const now = new Date();
@@ -3148,6 +3144,66 @@ class HeroManager {
       else if (hours < 17) greet = 'Good Afternoon';
       else if (hours > 21) greet = 'Good Night';
       this.greetingEl.textContent = greet;
+    }
+  }
+}
+
+class EmergencyAnnouncer {
+  constructor() {
+    this.announcementUrl = 'https://gist.githubusercontent.com/Zexerif/f2481fb446ae22d2e21cfc266a8d24c4/raw/gistfile1.txt';
+    setTimeout(() => this.check(), 5000);
+  }
+
+  async check() {
+    try {
+      const cacheBuster = this.announcementUrl.includes('?') ? '&t=' : '?t=';
+      const res = await fetch(this.announcementUrl + cacheBuster + Date.now(), { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (!data.active) return;
+
+      const currentVersion = window.require('electron').ipcRenderer.sendSync('get-app-version') || '0.0.0';
+      if (data.targetVersion && data.targetVersion !== 'all' && data.targetVersion !== currentVersion) return;
+
+      const modal = document.getElementById('emergency-modal');
+      const titleEl = document.getElementById('emergency-title');
+      const msgEl = document.getElementById('emergency-msg');
+      const actionsEl = document.getElementById('emergency-actions');
+
+      if (modal && titleEl && msgEl && actionsEl) {
+        titleEl.textContent = data.title || 'Announcement';
+        msgEl.textContent = data.message || '';
+        actionsEl.innerHTML = ''; // Clear previous buttons
+
+        if (data.buttons && Array.isArray(data.buttons)) {
+          data.buttons.forEach((btn, index) => {
+            const button = document.createElement('button');
+            button.className = index === 0 ? 'hub-modal-btn hub-modal-confirm' : 'hub-modal-btn hub-modal-cancel';
+            button.style.flex = '1';
+            button.textContent = btn.text;
+            button.onclick = () => {
+              if (btn.action === 'url' && btn.value) {
+                if (window.tabManager) window.tabManager.createTab(btn.value);
+              }
+              modal.style.display = 'none';
+            };
+            actionsEl.appendChild(button);
+          });
+        } else {
+          // Default close button if none provided
+          const closeBtn = document.createElement('button');
+          closeBtn.className = 'hub-modal-btn hub-modal-confirm';
+          closeBtn.style.flex = '1';
+          closeBtn.textContent = 'Dismiss';
+          closeBtn.onclick = () => { modal.style.display = 'none'; };
+          actionsEl.appendChild(closeBtn);
+        }
+
+        modal.style.display = 'flex';
+      }
+    } catch (e) {
+      console.warn("EmergencyAnnouncer failed to check for updates:", e);
     }
   }
 }
@@ -3729,6 +3785,9 @@ window.onload = () => {
 
   // Labs/Experimental
   window.labsManager = new LabsManager();
+
+  // Emergency Announcements
+  window.emergencyAnnouncer = new EmergencyAnnouncer();
 
   // Downloads
   window.downloadManager = new DownloadManager();

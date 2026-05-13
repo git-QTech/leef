@@ -1131,6 +1131,23 @@
     </div>
   </div>
 
+  <!-- Emergency Announcement Modal -->
+  <div id="emergency-modal" class="hub-modal-overlay" style="display:none; z-index: 10000000;">
+    <div class="hub-modal" style="max-width: 450px;">
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+        <span style="font-size: 1.5rem;">⚠️</span>
+        <h3 id="emergency-title" style="margin: 0;">Announcement</h3>
+      </div>
+      <p id="emergency-msg" style="font-size: 0.95rem; color: #444; line-height: 1.5; margin-bottom: 25px;"></p>
+      <div id="emergency-actions" class="hub-modal-actions" style="gap: 10px;">
+        <!-- Buttons injected here -->
+      </div>
+      <p style="font-size: 0.75rem; color: #999; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px; font-style: italic;">
+        <strong>Leef Privacy:</strong> This announcement was fetched from a secure public GitHub Gist. No personal data or browser info was sent or shared during this check.
+      </p>
+    </div>
+  </div>
+
   <!-- Dynamic Permission Prompt Modal -->
   <div id="permission-prompt-overlay" class="hub-modal-overlay"
     style="display:none; align-items: flex-start; padding-top: 60px;">
@@ -1286,14 +1303,6 @@
           </div>
           <label class="switch"><input type="checkbox" id="flag-css-exorcist"><span class="slider"></span></label>
         </div>
-      </div>
-
-      <div class="flag-card">
-        <div class="flag-info">
-          <h3>Resource Freezer</h3>
-          <p>Automatically hibernate tabs inactive for more than 5 minutes to drastically reduce RAM usage.</p>
-        </div>
-        <label class="switch"><input type="checkbox" id="flag-resource-freezer"><span class="slider"></span></label>
       </div>
 
       <div class="flag-card">

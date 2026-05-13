@@ -23,15 +23,9 @@ if (process.platform === 'win32') {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Fix "grayness" / color-shift on Windows — caused by GPU overlay planes
-// using a different color pipeline than the rest of the compositor.
+// Targeted fix for "grayness" / color-shift on Windows HDR displays.
+// Forces sRGB color profile globally.
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
-// Switch from D3D11 to OpenGL via ANGLE — fixes the color path mismatch
-app.commandLine.appendSwitch('use-angle', 'gl');
-// Disable overlay planes entirely so video goes through the same path as everything else
-app.commandLine.appendSwitch('disable-features', 'DirectComposition,VideoToolboxVideoDecoder,UseSkiaRenderer');
-app.commandLine.appendSwitch('disable-direct-composition');
-app.commandLine.appendSwitch('disable-gpu-driver-bug-workarounds');
 
 const isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
 console.log('Leef Browser: isDev =', isDev, '| app.isPackaged =', app.isPackaged);
@@ -206,6 +200,10 @@ async function checkForUpdates(manual = false) {
 }
 
 
+
+ipcMain.on('get-app-version', (event) => {
+  event.returnValue = app.getVersion();
+});
 
 ipcMain.handle('fetch-autocomplete', async (event, query) => {
   try {
