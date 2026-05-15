@@ -3,7 +3,7 @@
  * Renderer Process Core Architecture
  */
 
-let APP_VERSION = '0.2.1'; // Fallback
+let APP_VERSION = '0.5.1'; // Fallback
 
 async function initVersion() {
   try {
@@ -101,6 +101,11 @@ class SettingsManager {
       proxyUrl: '',
       liveAutocomplete: false,
       enableVolumeBoost: false,
+      gpc: true,
+      newsManualRefresh: false,
+      efficiencyMode: false,
+      cpuLimit: 100,
+      ramLimit: 0,
       sitePermissions: {}
     };
     // Load previously saved settings and merge with defaults
@@ -157,7 +162,8 @@ class SettingsManager {
     if (el('auto-check-updates')) el('auto-check-updates').checked = s.autoCheckUpdates;
     document.querySelectorAll(`input[name="adblock-tier"]`).forEach(r => { r.checked = r.value === (s.adBlockerMode || 'none'); });
     if (el('background-limit')) el('background-limit').checked = s.backgroundLimit;
-    if (el('enable-volume-boost')) el('enable-volume-boost').checked = s.enableVolumeBoost;
+    if (document.getElementById('enable-volume-boost')) document.getElementById('enable-volume-boost').checked = s.enableVolumeBoost;
+    if (document.getElementById('news-manual-refresh')) document.getElementById('news-manual-refresh').checked = s.newsManualRefresh;
     if (el('allow-notifications')) el('allow-notifications').checked = s.allowNotifications;
     if (el('ask-download')) el('ask-download').checked = s.askDownload;
     if (el('block-ai')) el('block-ai').checked = s.blockAIOverview;
@@ -165,8 +171,19 @@ class SettingsManager {
     if (el('doh-toggle')) el('doh-toggle').checked = s.dohToggle;
     if (el('proxy-url')) el('proxy-url').value = s.proxyUrl || '';
     if (el('live-autocomplete')) el('live-autocomplete').checked = s.liveAutocomplete;
+    if (el('flag-gpc')) el('flag-gpc').checked = s.gpc !== false; // Default to true
     document.querySelectorAll(`input[name="startup"]`).forEach(r => { r.checked = r.value === s.startup; });
     document.querySelectorAll(`input[name="tracking"]`).forEach(r => { r.checked = r.value === s.tracking; });
+
+    if (el('efficiency-mode')) el('efficiency-mode').checked = !!s.efficiencyMode;
+    if (el('cpu-limit-slider')) {
+      el('cpu-limit-slider').value = s.cpuLimit || 100;
+      el('cpu-limit-value').textContent = (s.cpuLimit || 100) + '%';
+    }
+    if (el('ram-limit-slider')) {
+      el('ram-limit-slider').value = s.ramLimit || 0;
+      el('ram-limit-value').textContent = s.ramLimit > 0 ? s.ramLimit + ' MB' : 'Off';
+    }
 
     // Show adblock badge based on saved setting
     this.updateAdblockBadge(s.adBlockerMode || 'none');
@@ -201,6 +218,12 @@ class SettingsManager {
     // Auto-save settings on change because i fucked up the first 3 times
     let saveDebounce = null;
     document.querySelectorAll('.settings-layout input, .settings-layout select').forEach(el => {
+      el.addEventListener('input', () => {
+        // Live feedback for sliders
+        if (el.id === 'cpu-limit-slider') document.getElementById('cpu-limit-value').textContent = el.value + '%';
+        if (el.id === 'ram-limit-slider') document.getElementById('ram-limit-value').textContent = el.value > 0 ? el.value + ' MB' : 'Off';
+      });
+
       el.addEventListener('change', () => {
         clearTimeout(saveDebounce);
         saveDebounce = setTimeout(() => this.saveSettings(), 500);
@@ -449,7 +472,12 @@ class SettingsManager {
       customUa: document.getElementById('custom-ua').value,
       dohToggle: document.getElementById('doh-toggle').checked,
       proxyUrl: document.getElementById('proxy-url').value,
-      liveAutocomplete: document.getElementById('live-autocomplete').checked
+      liveAutocomplete: document.getElementById('live-autocomplete').checked,
+      gpc: document.getElementById('flag-gpc').checked,
+      newsManualRefresh: document.getElementById('news-manual-refresh').checked,
+      efficiencyMode: document.getElementById('efficiency-mode').checked,
+      cpuLimit: parseInt(document.getElementById('cpu-limit-slider').value),
+      ramLimit: parseInt(document.getElementById('ram-limit-slider').value)
     };
 
     this.applyVisualSettings();
@@ -466,7 +494,7 @@ class SettingsManager {
 
       // Update adblock badge immediately based on current mode
       this.updateAdblockBadge(this.currentSettings.adBlockerMode);
-      
+
       // Sync Privacy Manager UI (v0.3.3)
       if (window.privacyManager) window.privacyManager.updateUI();
     } catch (e) { console.log("IPC not available", e); }
@@ -498,6 +526,13 @@ class SettingsManager {
     // Zoom propagates via TabManager later
     if (window.tabManager) {
       window.tabManager.applyZoomToAll(parseFloat(this.currentSettings.zoom) || 1.0);
+    }
+
+    // Efficiency Class
+    if (this.currentSettings.efficiencyMode) {
+      document.body.classList.add('efficiency-mode');
+    } else {
+      document.body.classList.remove('efficiency-mode');
     }
   }
 }
@@ -749,17 +784,69 @@ class NewsService {
   constructor() {
     this.container = document.getElementById('dynamic-news-container');
     this.isLoading = false;
+    this.isManualTrigger = false;
     this.allItems = [];     // All parsed RSS items
     this.shownIndices = []; // Indices of the 3 currently shown items
-    this.skippedSet = new Set(); // Indices dismissed by user
-    this.loadNews();
+
+    // Persistent Dismissed Headlines (Link -> Timestamp)
+    this.dismissedHeadlines = this.loadDismissed();
+    this.pruneOldDismissals();
+
+    if (localStorage.getItem('leef_onboarding_done')) {
+      this.loadNews();
+    }
+
+    // Bind Privacy Info Modal
+    const infoTrigger = document.querySelector('.news-info-trigger');
+    const privacyModal = document.getElementById('news-privacy-modal');
+    const privacyClose = document.getElementById('news-privacy-close');
+
+    if (infoTrigger && privacyModal) {
+      infoTrigger.style.cursor = 'pointer';
+      infoTrigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        privacyModal.style.display = 'flex';
+      });
+    }
+
+    if (privacyClose && privacyModal) {
+      privacyClose.addEventListener('click', () => {
+        privacyModal.style.display = 'none';
+      });
+      privacyModal.addEventListener('click', (e) => {
+        if (e.target === privacyModal) privacyModal.style.display = 'none';
+      });
+    }
+  }
+
+  loadDismissed() {
+    try {
+      return JSON.parse(localStorage.getItem('leef_dismissed_news') || '{}');
+    } catch (e) { return {}; }
+  }
+
+  saveDismissed() {
+    localStorage.setItem('leef_dismissed_news', JSON.stringify(this.dismissedHeadlines));
+  }
+
+  pruneOldDismissals() {
+    const now = Date.now();
+    const ONE_DAY = 24 * 60 * 60 * 1000;
+    let changed = false;
+    for (const link in this.dismissedHeadlines) {
+      if (now - this.dismissedHeadlines[link] > ONE_DAY) {
+        delete this.dismissedHeadlines[link];
+        changed = true;
+      }
+    }
+    if (changed) this.saveDismissed();
   }
 
   refresh() {
     if (this.isLoading) return;
     this.allItems = [];
     this.shownIndices = [];
-    this.skippedSet.clear();
+    this.isManualTrigger = true; // Allow fetch even if manual mode is on
     if (this.container) this.container.innerHTML = '<p style="opacity: 0.6; padding-left: 10px;">Refreshing...</p>';
     this.loadNews();
   }
@@ -768,12 +855,38 @@ class NewsService {
     const container = this.container;
     if (!container) return;
     if (this.isLoading) return;
+
+    // Respect Manual Refresh setting
+    const settings = window.settingsManager?.currentSettings || {};
+    if (settings.newsManualRefresh && this.allItems.length === 0 && !this.isManualTrigger) {
+      container.innerHTML = `
+        <div style="padding: 20px; text-align: center; border: 1px dashed rgba(0,0,0,0.1); border-radius: 12px;">
+          <p style="font-size: 0.85rem; opacity: 0.7; margin-bottom: 12px;">Manual Refresh is enabled for privacy.</p>
+          <button id="btn-load-news-now" class="settings-btn" style="width: auto; background: var(--primary-color); color: white; border: none; padding: 6px 15px;">Load News Now</button>
+        </div>
+      `;
+      document.getElementById('btn-load-news-now')?.addEventListener('click', () => {
+        this.isManualTrigger = true;
+        this.loadNews();
+      });
+      return;
+    }
+
     this.isLoading = true;
     try {
       const https = window.require('https');
-      // Cache-bust: append timestamp so we don't get stale cached RSS
       const rssUrl = `https://news.yahoo.com/rss/?_t=${Date.now()}`;
-      https.get(rssUrl, (res) => {
+
+      // Hardened Request Headers
+      const options = {
+        headers: {
+          'User-Agent': 'LeefBrowser-PrivacySync/1.0 (SafeFetch)',
+          'Accept': 'application/rss+xml, text/xml',
+          'Cache-Control': 'no-cache'
+        }
+      };
+
+      https.get(rssUrl, options, (res) => {
         let data = '';
         let dataSize = 0;
         const MAX_BYTES = 512 * 1024;
@@ -792,6 +905,10 @@ class NewsService {
               const title = item.querySelector('title')?.textContent || 'Breaking News';
               const rawLink = item.querySelector('link')?.textContent || 'https://news.yahoo.com';
               const link = rawLink.startsWith('http') ? rawLink : 'https://news.yahoo.com';
+
+              // Filter out dismissed headlines
+              if (this.dismissedHeadlines[link]) continue;
+
               let imgSrc = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=300&h=200&fit=crop';
               const mediaCont = item.getElementsByTagName('media:content');
               if (mediaCont && mediaCont.length > 0 && mediaCont[0].getAttribute('url')) {
@@ -845,14 +962,23 @@ class NewsService {
   }
 
   dismissCard(slotIdx) {
-    const currentIdx = this.shownIndices[slotIdx];
-    this.skippedSet.add(currentIdx);
-    // Find the next unused item
-    const usedSet = new Set([...this.shownIndices, ...this.skippedSet]);
+    const itemIdx = this.shownIndices[slotIdx];
+    const item = this.allItems[itemIdx];
+    if (item) {
+      this.dismissedHeadlines[item.link] = Date.now();
+      this.saveDismissed();
+    }
+
+    // Find the next unused item from allItems (which are already pre-filtered for dismissals)
+    const currentShownIndices = new Set(this.shownIndices);
     let replacement = -1;
     for (let i = 0; i < this.allItems.length; i++) {
-      if (!usedSet.has(i)) { replacement = i; break; }
+      if (!currentShownIndices.has(i) && !this.dismissedHeadlines[this.allItems[i].link]) {
+        replacement = i;
+        break;
+      }
     }
+
     if (replacement !== -1) {
       this.shownIndices[slotIdx] = replacement;
       this.renderCards();
@@ -1015,6 +1141,8 @@ class TabManager {
     tabEl.appendChild(tabPinIcon);
     tabObj.pinIconEl = tabPinIcon;
 
+
+
     // Initial Routing setup
     if (!isInternal) {
       this.mountWebview(tabObj);
@@ -1054,22 +1182,61 @@ class TabManager {
 
     this.switchTab(tabId);
 
-    // Resource Freezer Loop (Labs)
+    // Auto-focus search box for new tabs (v0.4.2)
+    setTimeout(() => {
+      if (route === 'home') {
+        const homeSearch = document.getElementById('home-search');
+        if (homeSearch) {
+          homeSearch.focus();
+        } else {
+          UI.inputs.address.focus();
+        }
+      } else if (isInternal) {
+        // Focus address bar for other internal pages if they don't have their own focus logic
+        UI.inputs.address.focus();
+      }
+    }, 50);
+
+    // Resource Freezer Loop (Leef Limiter v0.5.0)
     if (!this._freezerInited) {
       this._freezerInited = true;
       setInterval(() => {
-        if (!window.labsManager || !window.labsManager.isFlagEnabled('resource_freezer')) return;
+        const limiter = this.settings.currentSettings;
+        const labs = window.labsManager;
+        const isEfficiencyOn = limiter.efficiencyMode;
+
+        if (!isEfficiencyOn && limiter.ramLimit <= 0) return;
+
         const now = Date.now();
+
+        // RAM Limiter Check: Get total memory usage if limit is set
+        let currentRssMb = 0;
+        if (limiter.ramLimit > 0) {
+          try {
+            // Electron process.memoryUsage() returns bytes
+            currentRssMb = Math.round(process.memoryUsage().rss / (1024 * 1024));
+          } catch (e) { }
+        }
+
         this.tabs.forEach(t => {
-          if (t.id !== this.activeTabId && !t.isInternal && !t.isPinned && !t.isHibernated && t.lastActiveTime) {
-            const idleTime = now - t.lastActiveTime;
-            if (idleTime > 5 * 60 * 1000) { // 5 minutes
-              console.log(`Leef Labs: Hibernating tab ${t.id} (${t.title})`);
+          if (t.id !== this.activeTabId && !t.isInternal && !t.isPinned && !t.isHibernated) {
+            const idleTime = t.lastActiveTime ? now - t.lastActiveTime : 0;
+
+            // Hibernation conditions:
+            // 1. Efficiency Mode + 5 minutes idle
+            // 2. RAM Limit Exceeded
+
+            let shouldFreeze = false;
+            if (isEfficiencyOn && idleTime > 5 * 60 * 1000) shouldFreeze = true;
+            if (limiter.ramLimit > 0 && currentRssMb > limiter.ramLimit) shouldFreeze = true;
+
+            if (shouldFreeze && t.webviewEl) {
+              console.log(`Leef Limiter: Hibernating tab ${t.id} (${t.title})`);
               t.isHibernated = true;
               t.hibernateUrl = t.webviewEl.getURL();
               t.webviewEl.stop();
               t.webviewEl.src = 'about:blank';
-              if (window.toastManager) window.toastManager.show('🧊 Tab Hibernated', `"${t.title}" was frozen to save RAM.`, 3000);
+              if (window.toastManager) window.toastManager.show('🧊 Efficiency Freeze', `"${t.title}" was frozen to save system resources.`, 3000);
             }
           }
         });
@@ -1083,15 +1250,10 @@ class TabManager {
     tab.webviewEl.id = 'webview-' + tab.id;
     tab.webviewEl.setAttribute('allowpopups', '');
     tab.webviewEl.setAttribute('partition', 'persist:leef-session'); // CRITICAL: must match session in main.js
-    
+
     // Background Tab Performance (v0.4.0)
     // Prevent throttling unless the user explicitly enabled the background limiter.
-    if (!this.settings.currentSettings.backgroundLimit) {
-      tab.webviewEl.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=no, nodeIntegration=no, backgroundThrottling=false');
-      tab.webviewEl.setAttribute('disableblinkfeatures', 'Throttling,TimerThrottling,IntersectionObserverThrottling');
-    } else {
-      tab.webviewEl.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=no, nodeIntegration=no');
-    }
+    tab.webviewEl.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=no, nodeIntegration=no');
 
     UI.views.webviewsContainer.appendChild(tab.webviewEl);
 
@@ -1099,8 +1261,8 @@ class TabManager {
     if (window.findManager) window.findManager.attachToWebview(tab.webviewEl);
 
     tab.webviewEl.addEventListener('did-start-loading', () => {
-      tab.title = 'Loading...';
       tab.url = tab.webviewEl.src;
+      tab.gpcStartTime = Date.now(); // START TIMER: from when navigation begins
       tab.volumeBoost = 1; // Reset volume on moving to a new tab
       tab.blockedAds = 0; // Reset adblock stats on moving to a new tab
       tab.hasDRM = false; // Reset DRM status
@@ -1130,21 +1292,44 @@ class TabManager {
 
     // Catch the manual tab interceptor messages
     tab.webviewEl.addEventListener('console-message', (e) => {
-      if (e.message && e.message.startsWith('LEEF_NEW_TAB:')) {
+      if (!e.message) return;
+
+      if (e.message.startsWith('LEEF_NEW_TAB:')) {
         const url = e.message.replace('LEEF_NEW_TAB:', '');
         this.createTab(url);
       }
     });
 
     tab.webviewEl.addEventListener('did-start-navigation', (e) => {
-      if (e.isMainFrame && window.privacyManager) {
-        window.privacyManager.recordRequest(e.url.startsWith('https:'));
+      if (e.isMainFrame) {
+        tab.title = 'Loading...';
+        tab.url = e.url; // Update URL identity immediately to prevent state leaks
+        tab.isInternal = e.url.startsWith('leef:') || e.url.startsWith('file:') || e.url.startsWith('chrome:');
+        tab.gpcVerified = undefined; // CLEAR verification state for the new domain
+        tab.gpcVerifiedTime = null;
+        this.updateTabUI(tab);
+        if (window.siteIdentityManager && window.siteIdentityManager.dropdown && window.siteIdentityManager.dropdown.style.display !== 'none') {
+          window.siteIdentityManager.updateUI();
+        }
+        if (window.privacyManager) {
+          window.privacyManager.recordRequest(e.url.startsWith('https:'));
+        }
       }
     });
 
     tab.webviewEl.addEventListener('did-stop-loading', () => {
+      // Final title sync once everything is done
+      const currentTitle = tab.webviewEl.getTitle();
+      if (currentTitle && currentTitle !== 'Loading...') {
+        tab.title = currentTitle;
+        this.updateTabUI(tab);
+      }
+    });
+
+    tab.webviewEl.addEventListener('dom-ready', () => {
       tab.title = tab.webviewEl.getTitle() || tab.url;
       tab.url = tab.webviewEl.getURL();
+      tab.isInternal = tab.url.startsWith('leef:') || tab.url.startsWith('file:') || tab.url.startsWith('chrome:');
       tab.canGoBack = tab.webviewEl.canGoBack();
       tab.canGoForward = tab.webviewEl.canGoForward();
       if (typeof tab.webviewEl.setZoomFactor === 'function') {
@@ -1152,28 +1337,35 @@ class TabManager {
       }
       this.updateTabUI(tab);
 
-      // GUARANTEED NEW TAB INTERCEPTOR
-      // Bypasses Electron's unpredictable native popup handlers.
-      tab.webviewEl.executeJavaScript(`
+      // BATCHED JS INJECTION (Performance: single IPC round-trip per page load)
+      // All per-page scripts are assembled here and fired in ONE executeJavaScript call.
+      const s = this.settings.currentSettings;
+      const labs = window.labsManager;
+      const tabUrl = tab.url || '';
+      const isGoogle = tabUrl.includes('google.com');
+      const isYouTube = tabUrl.includes('youtube.com');
+      const isWarpEnabled = !!(labs && labs.isFlagEnabled('yt_warp_speed'));
+
+      // Build the injection payload conditionally
+      const chunks = [];
+
+      // 1. New-tab interceptor (always)
+      chunks.push(`
         (function() {
           if (window.__leefHooked) return;
           window.__leefHooked = true;
-          
           document.addEventListener('click', (e) => {
             const a = e.target.closest('a');
             if (a && a.href && a.target === '_blank') {
-              e.preventDefault();
-              e.stopPropagation();
+              e.preventDefault(); e.stopPropagation();
               console.log('LEEF_NEW_TAB:' + a.href);
             }
           }, true);
-
           document.addEventListener('auxclick', (e) => {
-            if (e.button === 1) { // Middle click
+            if (e.button === 1) {
               const a = e.target.closest('a');
               if (a && a.href) {
-                e.preventDefault();
-                e.stopPropagation();
+                e.preventDefault(); e.stopPropagation();
                 console.log('LEEF_NEW_TAB:' + a.href);
               }
             }
@@ -1181,68 +1373,43 @@ class TabManager {
         })();
       `);
 
-      // ROBUST AI OVERVIEW BLOCKER (v2.0)
-      if (this.settings.currentSettings.blockAIOverview && tab.url.includes('google.com')) {
-        tab.webviewEl.executeJavaScript(`
+      // 2. AI Overview Blocker (Google only, when enabled)
+      if (s.blockAIOverview && isGoogle) {
+        chunks.push(`
           (function() {
             if (window.__leefAIHooked) return;
             window.__leefAIHooked = true;
-
             const NOAI_TAG = ' -noai';
             const NOAI_REGEX = /( ?)-noai/gi;
-
-            // 1. Intercept search inputs to keep the tag hidden from user view
             const hookInput = (input) => {
               if (input.dataset.leefHooked) return;
               input.dataset.leefHooked = "true";
-              
               const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value');
               if (!descriptor) return;
-
               Object.defineProperty(input, 'value', {
-                get: function() {
-                  const val = descriptor.get.call(this);
-                  return val ? val.replace(NOAI_REGEX, '') : val;
-                },
-                set: function(val) {
-                  const cleanVal = (val && typeof val === 'string') ? val.replace(NOAI_REGEX, '') : val;
-                  descriptor.set.call(this, cleanVal);
-                }
+                get: function() { const v = descriptor.get.call(this); return v ? v.replace(NOAI_REGEX, '') : v; },
+                set: function(val) { descriptor.set.call(this, (val && typeof val === 'string') ? val.replace(NOAI_REGEX, '') : val); }
               });
-              
-              // Clean initial value
               const initial = descriptor.get.call(input);
               if (initial) descriptor.set.call(input, initial.replace(NOAI_REGEX, ''));
             };
-
-            // 2. Intercept Form Submissions (Most robust way to catch dynamic searches)
             const interceptSearch = (query) => {
               if (!query) return;
-              const clean = query.replace(NOAI_REGEX, '').trim();
-              window.location.href = '/search?q=' + encodeURIComponent(clean + NOAI_TAG);
+              window.location.href = '/search?q=' + encodeURIComponent(query.replace(NOAI_REGEX, '').trim() + NOAI_TAG);
             };
-
             document.addEventListener('submit', (e) => {
-              const qInput = e.target.querySelector('input[name="q"], textarea[name="q"]');
-              if (qInput) {
-                e.preventDefault();
-                e.stopPropagation();
-                interceptSearch(qInput.value);
-              }
+              const q = e.target.querySelector('input[name="q"], textarea[name="q"]');
+              if (q) { e.preventDefault(); e.stopPropagation(); interceptSearch(q.value); }
             }, true);
-
-            // 3. Catch Enter Key as a fallback
             document.addEventListener('keydown', (e) => {
-              if (e.key === 'Enter' && e.target.name === 'q') {
-                e.preventDefault();
-                e.stopPropagation();
-                interceptSearch(e.target.value);
-              }
+              if (e.key === 'Enter' && e.target.name === 'q') { e.preventDefault(); e.stopPropagation(); interceptSearch(e.target.value); }
             }, true);
-
-            // 4. Watch for dynamic search bars (Google swaps them often)
+            let aiTimer;
             const observer = new MutationObserver(() => {
-              document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
+              clearTimeout(aiTimer);
+              aiTimer = setTimeout(() => {
+                document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
+              }, 300);
             });
             observer.observe(document.body, { childList: true, subtree: true });
             document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
@@ -1250,225 +1417,193 @@ class TabManager {
         `);
       }
 
-      // GHOST MODE (Labs)
-      if (window.labsManager && window.labsManager.isFlagEnabled('ghost_mode')) {
-        tab.webviewEl.executeJavaScript(`
+      if (s.gpc !== false) {
+        chunks.push(`
+          (function() {
+            if (window.__leefGPCHooked) return;
+            window.__leefGPCHooked = true;
+            if (typeof navigator !== 'undefined') {
+              Object.defineProperty(navigator, 'globalPrivacyControl', {
+                get: () => {
+                  window.__leefGPCRead = true;
+                  return true;
+                },
+                configurable: true,
+                enumerable: true
+              });
+            }
+          })();
+        `);
+      }
+
+      // 4. Labs: Ghost Mode
+      if (labs && labs.isFlagEnabled('ghost_mode')) {
+        chunks.push(`
           (function() {
             if (window.__leefGhostHooked) return;
             window.__leefGhostHooked = true;
-            const originalGetContext = HTMLCanvasElement.prototype.getContext;
-            HTMLCanvasElement.prototype.getContext = function(type, attributes) {
-              const context = originalGetContext.apply(this, arguments);
-              if (type === '2d' && context) {
-                const originalGetImageData = context.getImageData;
-                context.getImageData = function(x, y, w, h) {
-                  const imageData = originalGetImageData.apply(this, arguments);
-                  const idx = Math.floor(Math.random() * (imageData.data.length / 4)) * 4;
-                  imageData.data[idx] = (imageData.data[idx] + (Math.random() > 0.5 ? 1 : -1)) % 256;
-                  return imageData;
+            const orig = HTMLCanvasElement.prototype.getContext;
+            HTMLCanvasElement.prototype.getContext = function(type, attrs) {
+              const ctx = orig.apply(this, arguments);
+              if (type === '2d' && ctx) {
+                const origGID = ctx.getImageData;
+                ctx.getImageData = function(x, y, w, h) {
+                  const d = origGID.apply(this, arguments);
+                  const i = Math.floor(Math.random() * (d.data.length / 4)) * 4;
+                  d.data[i] = (d.data[i] + (Math.random() > 0.5 ? 1 : -1)) % 256;
+                  return d;
                 };
               }
-              return context;
+              return ctx;
             };
-            const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
-            HTMLCanvasElement.prototype.toDataURL = function() {
-              const ctx = this.getContext('2d');
-              if (ctx) {
-                const imageData = ctx.getImageData(0, 0, this.width, this.height);
-                const idx = Math.floor(Math.random() * (imageData.data.length / 4)) * 4;
-                imageData.data[idx] = (imageData.data[idx] + 1) % 256;
-                ctx.putImageData(imageData, 0, 0);
-              }
-              return originalToDataURL.apply(this, arguments);
-            };
-            console.log('Leef Labs: Ghost Mode Active');
           })();
         `);
       }
 
-      // AUDIO SCRAMBLER (Labs) - Hardened
-      if (window.labsManager && window.labsManager.isFlagEnabled('audio_scrambler')) {
-        tab.webviewEl.executeJavaScript(`
+      // 5. Labs: Audio Scrambler
+      if (labs && labs.isFlagEnabled('audio_scrambler')) {
+        chunks.push(`
           (function() {
             if (window.__leefAudioHooked) return;
             window.__leefAudioHooked = true;
-            
-            // Hook AudioBuffer
-            const originalGetChannelData = AudioBuffer.prototype.getChannelData;
+            const orig = AudioBuffer.prototype.getChannelData;
             AudioBuffer.prototype.getChannelData = function() {
-              const data = originalGetChannelData.apply(this, arguments);
-              const idx = Math.floor(Math.random() * data.length);
-              data[idx] += (Math.random() - 0.5) * 1e-7;
-              return data;
+              const d = orig.apply(this, arguments);
+              d[Math.floor(Math.random() * d.length)] += (Math.random() - 0.5) * 1e-7;
+              return d;
             };
-
-            // Hook AnalyserNode (frequency data)
-            const originalGetByteFreq = AnalyserNode.prototype.getByteFrequencyData;
-            AnalyserNode.prototype.getByteFrequencyData = function(array) {
-              originalGetByteFreq.apply(this, arguments);
-              for (let i = 0; i < array.length; i += 100) {
-                array[i] = (array[i] + Math.floor(Math.random() * 2)) % 256;
-              }
-            };
-
-            console.log('Leef Labs: Audio Scrambler (Hardened) Active');
           })();
         `);
       }
 
-      // HARDWARE CLOAK (Labs) - Hardened with WebGL and Screen Masking
-      if (window.labsManager && window.labsManager.isFlagEnabled('hardware_cloak')) {
-        tab.webviewEl.executeJavaScript(`
+      // 6. Labs: Hardware Cloak
+      if (labs && labs.isFlagEnabled('hardware_cloak')) {
+        chunks.push(`
           (function() {
             if (window.__leefHardwareHooked) return;
             window.__leefHardwareHooked = true;
-            
-            // 1. Spec Spoofing
             Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
             Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-            
-            // 2. Screen Normalization
-            const s = window.screen;
-            Object.defineProperty(s, 'width', { get: () => 1920 });
-            Object.defineProperty(s, 'height', { get: () => 1080 });
-            Object.defineProperty(s, 'availWidth', { get: () => 1920 });
-            Object.defineProperty(s, 'availHeight', { get: () => 1040 });
-            
-            // 3. WebGL Masking
-            const maskWebGL = (proto) => {
-              const originalGetParameter = proto.getParameter;
-              proto.getParameter = function(parameter) {
-                // UNMASKED_VENDOR_WEBGL = 0x9245, UNMASKED_RENDERER_WEBGL = 0x9246
-                if (parameter === 0x9245) return 'Intel Inc.';
-                if (parameter === 0x9246) return 'Intel(R) UHD Graphics 620';
-                return originalGetParameter.apply(this, arguments);
+            const sc = window.screen;
+            Object.defineProperty(sc, 'width', { get: () => 1920 });
+            Object.defineProperty(sc, 'height', { get: () => 1080 });
+            Object.defineProperty(sc, 'availWidth', { get: () => 1920 });
+            Object.defineProperty(sc, 'availHeight', { get: () => 1040 });
+            const maskWGL = (p) => {
+              const og = p.getParameter;
+              p.getParameter = function(param) {
+                if (param === 0x9245) return 'Intel Inc.';
+                if (param === 0x9246) return 'Intel(R) UHD Graphics 620';
+                return og.apply(this, arguments);
               };
             };
-            if (window.WebGLRenderingContext) maskWebGL(WebGLRenderingContext.prototype);
-            if (window.WebGL2RenderingContext) maskWebGL(WebGL2RenderingContext.prototype);
+            if (window.WebGLRenderingContext) maskWGL(WebGLRenderingContext.prototype);
+            if (window.WebGL2RenderingContext) maskWGL(WebGL2RenderingContext.prototype);
           })();
         `);
       }
 
-      // TIMEZONE SPOOF (Labs)
-      if (window.labsManager && window.labsManager.isFlagEnabled('timezone_spoof')) {
-        tab.webviewEl.executeJavaScript(`
+      // 7. Labs: Timezone Spoof
+      if (labs && labs.isFlagEnabled('timezone_spoof')) {
+        chunks.push(`
           (function() {
             if (window.__leefTimezoneHooked) return;
             window.__leefTimezoneHooked = true;
-            const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
+            const orig = Intl.DateTimeFormat.prototype.resolvedOptions;
             Intl.DateTimeFormat.prototype.resolvedOptions = function() {
-              const options = originalResolvedOptions.apply(this, arguments);
-              options.timeZone = 'UTC';
-              return options;
+              const o = orig.apply(this, arguments); o.timeZone = 'UTC'; return o;
             };
-            const originalDateToString = Date.prototype.toString;
-            Date.prototype.toString = function() {
-              return this.toUTCString();
-            };
-            console.log('Leef Labs: Timezone Spoof (UTC) Active');
+            Date.prototype.toString = function() { return this.toUTCString(); };
           })();
         `);
       }
 
-      // FONT MASKING (Labs)
-      if (window.labsManager && window.labsManager.isFlagEnabled('font_mask')) {
-        tab.webviewEl.executeJavaScript(`
+      // 8. Labs: Font Masking
+      if (labs && labs.isFlagEnabled('font_mask')) {
+        chunks.push(`
           (function() {
             if (window.__leefFontHooked) return;
             window.__leefFontHooked = true;
-            if (window.FontFaceSet) {
-              const originalCheck = FontFaceSet.prototype.check;
-              FontFaceSet.prototype.check = function() { return true; };
-            }
-            console.log('Leef Labs: Font Masking Active');
+            if (window.FontFaceSet) FontFaceSet.prototype.check = function() { return true; };
           })();
         `);
       }
 
-      // YouTube Ad-Protection (Standard + Labs Warp Speed)
-      if (tab.url && tab.url.includes('youtube.com')) {
-        const isWarpEnabled = window.labsManager && window.labsManager.isFlagEnabled('yt_warp_speed');
-        
-        const injectYTAdBlock = () => {
-          tab.webviewEl.executeJavaScript(`
-            (function() {
-              if (window.__leefYTAdBlock) return;
-              window.__leefYTAdBlock = true;
-
-              function skipAd() {
-                const video = document.querySelector('video');
-                const adShowing = document.querySelector('.ad-showing, .ad-interrupting, .video-ads');
-                const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern');
-
-                // 1. Standard Skip (Default)
-                if (skipBtn) skipBtn.click();
-
-                // 2. Unskippable Ads Handling
-                const isAd = document.querySelector('.ad-showing, .ad-interrupting');
-                if (isAd && video) {
-                  if (${isWarpEnabled}) {
-                    // Warp Speed Mode: 16x playback
-                    if (video.playbackRate !== 16) {
-                      video.dataset.leefPrevRate = video.playbackRate;
-                      video.muted = true;
-                      video.playbackRate = 16;
-                    }
-                  } else {
-                    // Standard Mode: Seek to end
-                    if (video.duration > 0 && isFinite(video.duration) && video.currentTime < video.duration - 0.2) {
-                      video.muted = true;
-                      video.currentTime = video.duration;
-                    }
-                  }
-                } else if (video && video.playbackRate === 16) {
-                  // Restore state only if we were the ones who warped it
-                  video.playbackRate = parseFloat(video.dataset.leefPrevRate || 1);
-                  video.muted = false;
-                  delete video.dataset.leefPrevRate;
+      // 9. YouTube Ad-Protection (YouTube only)
+      if (isYouTube) {
+        chunks.push(`
+          (function() {
+            if (window.__leefYTAdBlock) return;
+            window.__leefYTAdBlock = true;
+            const WARP = ${isWarpEnabled};
+            function skipAd() {
+              const video = document.querySelector('video');
+              const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern');
+              if (skipBtn) skipBtn.click();
+              const isAd = document.querySelector('.ad-showing, .ad-interrupting');
+              if (isAd && video) {
+                if (WARP) {
+                  if (video.playbackRate !== 16) { video.dataset.leefPrevRate = video.playbackRate; video.muted = true; video.playbackRate = 16; }
+                } else {
+                  if (video.duration > 0 && isFinite(video.duration) && video.currentTime < video.duration - 0.2) { video.muted = true; video.currentTime = video.duration; }
                 }
-
-                // 3. Dismiss Popups (Default)
-                const enforceBtn = document.querySelector('ytd-enforcement-message-view-model button[class*="dismiss"], tp-yt-paper-dialog .style-scope ytd-button-renderer:last-child button');
-                if (enforceBtn) enforceBtn.click();
-
-                // 4. Hide Overlay Ads (Default)
-                if (!document.getElementById('__leef_yt_css')) {
-                  const s = document.createElement('style');
-                  s.id = '__leef_yt_css';
-                  s.textContent = \`
-                    .ytp-ad-overlay-container, .ytp-ad-text-overlay,
-                    .ytp-ad-image-overlay, .ytp-ce-element,
-                    #masthead-ad, ytd-banner-promo-renderer,
-                    ytd-statement-banner-renderer, ytd-ad-slot-renderer,
-                    ytd-in-feed-ad-layout-renderer, ytd-promoted-sparkles-web-renderer,
-                    ytd-search-pyv-renderer, #player-ads { 
-                      display: none !important; 
-                    }
-                  \`;
-                  document.head.appendChild(s);
-                }
+              } else if (video && video.playbackRate === 16) {
+                video.playbackRate = parseFloat(video.dataset.leefPrevRate || 1);
+                video.muted = false;
+                delete video.dataset.leefPrevRate;
               }
-
-              setInterval(skipAd, 300);
-              skipAd();
-            })();
-          `).catch(() => { });
-        };
-
-        // Inject on initial load
-        injectYTAdBlock();
-
-        // Re-inject on every SPA navigation (clicking a video within YouTube)
-        if (!tab._ytNavHooked) {
-          tab._ytNavHooked = true;
-          tab.webviewEl.addEventListener('did-navigate-in-page', () => {
-            if (tab.webviewEl.getURL().includes('youtube.com')) {
-              tab.webviewEl.executeJavaScript('window.__leefYTAdBlock = false;').catch(() => { });
-              setTimeout(injectYTAdBlock, 500);
+              const enforceBtn = document.querySelector('ytd-enforcement-message-view-model button[class*="dismiss"], tp-yt-paper-dialog .style-scope ytd-button-renderer:last-child button');
+              if (enforceBtn) enforceBtn.click();
+              if (!document.getElementById('__leef_yt_css')) {
+                const s = document.createElement('style');
+                s.id = '__leef_yt_css';
+                s.textContent = '.ytp-ad-overlay-container,.ytp-ad-text-overlay,.ytp-ad-image-overlay,.ytp-ce-element,#masthead-ad,ytd-banner-promo-renderer,ytd-statement-banner-renderer,ytd-ad-slot-renderer,ytd-in-feed-ad-layout-renderer,ytd-promoted-sparkles-web-renderer,ytd-search-pyv-renderer,#player-ads{display:none!important}';
+                document.head.appendChild(s);
+              }
             }
-          });
-        }
+            (function loop() { skipAd(); setTimeout(loop, document.hidden ? 2000 : 1000); })();
+          })();
+        `);
+      }
+
+      // Fire all chunks in a single IPC call
+      if (chunks.length > 0) {
+        tab.webviewEl.executeJavaScript(chunks.join('\n')).catch(() => { });
+      }
+
+      // YouTube SPA re-injection hook (event listener, not a JS injection)
+      if (isYouTube && !tab._ytNavHooked) {
+        tab._ytNavHooked = true;
+        let ytNavTimer;
+        tab.webviewEl.addEventListener('did-navigate-in-page', (e) => {
+          if (!e.isMainFrame) return; // Prevent iframe navigation IPC floods!
+          if (tab.webviewEl.getURL().includes('youtube.com')) {
+            clearTimeout(ytNavTimer);
+            ytNavTimer = setTimeout(() => {
+              const s2 = this.settings.currentSettings;
+              const labs2 = window.labsManager;
+              const isWarp2 = !!(labs2 && labs2.isFlagEnabled('yt_warp_speed'));
+              tab.webviewEl.executeJavaScript(`
+                (function() {
+                  if (window.__leefYTAdBlock) return;
+                  window.__leefYTAdBlock = true;
+                  const WARP = ${isWarp2};
+                  function skipAd() {
+                    const video = document.querySelector('video');
+                    const skipBtn = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern');
+                    if (skipBtn) skipBtn.click();
+                    const isAd = document.querySelector('.ad-showing, .ad-interrupting');
+                    if (isAd && video) {
+                      if (WARP) { if (video.playbackRate !== 16) { video.muted = true; video.playbackRate = 16; } }
+                      else if (video.duration > 0 && isFinite(video.duration) && video.currentTime < video.duration - 0.2) { video.muted = true; video.currentTime = video.duration; }
+                    } else if (video && video.playbackRate === 16) { video.playbackRate = 1; video.muted = false; }
+                  }
+                  (function loop() { skipAd(); setTimeout(loop, document.hidden ? 2000 : 1000); })();
+                })();
+              `).catch(() => { });
+            }, 500);
+          }
+        });
       }
     });
 
@@ -1637,6 +1772,16 @@ class TabManager {
       tab.audioIconEl.style.display = tab.isAudioPlaying ? 'block' : 'none';
       tab.audioIconEl.style.color = tab.isMuted ? 'rgba(0,0,0,0.3)' : 'var(--primary-color)';
     }
+
+    // Resource Indicator (Labs)
+    if (tab.resourceIconEl) {
+      tab.resourceIconEl.style.display = tab.isHighMemory ? 'block' : 'none';
+    }
+
+    // Panic Indicator (Labs)
+    if (tab.panicIconEl) {
+      tab.panicIconEl.style.display = this.isPanicActive ? 'block' : 'none';
+    }
   }
 
   switchTab(tabId) {
@@ -1654,23 +1799,54 @@ class TabManager {
     }
 
     // Only suspend the previously active tab
-    if (prevTabId && prevTabId !== tabId && this.settings.currentSettings.backgroundLimit) {
+    const limiterSettings = this.settings.currentSettings;
+    if (prevTabId && prevTabId !== tabId) {
       const prevTab = this.tabs.find(t => t.id === prevTabId);
       if (prevTab && prevTab.webviewEl) {
         try {
-          prevTab.webviewEl.setAudioMuted(true);
-          prevTab.webviewEl.executeJavaScript(`
-            document.querySelectorAll('video, audio').forEach(m => {
-              if (!m.paused) { m.pause(); m.dataset.wasPlayingByLeef = "true"; }
-            });
-          `);
-          
-          // Resource Freezer (Labs): Record time backgrounded
-          if (window.labsManager && window.labsManager.isFlagEnabled('resource_freezer')) {
-            prevTab.lastActiveTime = Date.now();
+          if (limiterSettings.backgroundLimit) {
+            prevTab.webviewEl.setAudioMuted(true);
+            prevTab.webviewEl.executeJavaScript(`
+              document.querySelectorAll('video, audio').forEach(m => {
+                if (!m.paused) { m.pause(); m.dataset.wasPlayingByLeef = "true"; }
+              });
+            `).catch(() => { });
           }
+
+          // Leef Limiter: CPU Throttling (v0.5.0)
+          if (!prevTab.isInternal) {
+            const cpuFactor = (limiterSettings.cpuLimit || 100) / 100.0;
+            // Background tabs get throttled even more if Efficiency Mode is on
+            const finalFactor = limiterSettings.efficiencyMode ? Math.min(cpuFactor, 0.3) : cpuFactor;
+
+            if (finalFactor < 1.0) {
+              const wcId = prevTab.webviewEl.getWebContentsId();
+              if (wcId) {
+                window.require('electron').ipcRenderer.send('set-cpu-throttle', {
+                  webContentsId: wcId,
+                  factor: finalFactor
+                });
+              }
+            }
+          }
+
+          // Resource Freezer (Labs): Record time backgrounded
+          prevTab.lastActiveTime = Date.now();
         } catch (e) { }
       }
+    }
+
+    // Wake up current tab CPU (v0.5.0)
+    if (tab.webviewEl && !tab.isInternal) {
+      try {
+        const wcId = tab.webviewEl.getWebContentsId();
+        if (wcId) {
+          window.require('electron').ipcRenderer.send('set-cpu-throttle', {
+            webContentsId: wcId,
+            factor: 1.0 // Unthrottle active tab
+          });
+        }
+      } catch (e) { }
     }
 
     // Update tab strip UI
@@ -1694,7 +1870,7 @@ class TabManager {
             document.querySelectorAll('video, audio').forEach(m => {
               if (m.dataset.wasPlayingByLeef === "true") { m.play(); delete m.dataset.wasPlayingByLeef; }
             });
-          `);
+          `).catch(() => { });
         }
       } catch (e) { }
     }
@@ -1783,6 +1959,17 @@ class TabManager {
     if (UI.buttons.whatsNew) UI.buttons.whatsNew.addEventListener('click', () => this.createTab('changelog'));
     if (UI.buttons.credits) UI.buttons.credits.addEventListener('click', () => this.createTab('credits'));
 
+    // Global link interceptor for internal pages (v0.5.1)
+    window.addEventListener('click', (e) => {
+      const link = e.target.closest('a');
+      if (link && link.href && link.href.startsWith('http')) {
+        // Only intercept if the link is in the browser UI (not a webview)
+        // Webview links are handled by their own 'new-window' listeners.
+        e.preventDefault();
+        this.createTab(link.href);
+      }
+    });
+
     // Handle Context Menu and Popup commands from Main Process
     try {
       window.require('electron').ipcRenderer.on('open-new-tab', (event, url) => {
@@ -1821,10 +2008,17 @@ class TabManager {
           case 'save-page':
             if (tab.webviewEl) tab.webviewEl.downloadURL(tab.webviewEl.getURL());
             break;
+          case 'check-slop':
+            this.analyzeTextForSlop(data.text);
+            break;
         }
       });
 
       window.require('electron').ipcRenderer.on('tab-command', (event, data) => {
+        if (data.command === 'new-tab') {
+          this.createTab('home');
+          return;
+        }
         const tab = this.tabs.find(t => t.id === data.tabId);
         if (!tab) return;
 
@@ -1844,12 +2038,24 @@ class TabManager {
           case 'close-others':
             this.tabs.filter(t => t.id !== tab.id).forEach(t => this.closeTab(t.id));
             break;
+          case 'close-right':
+            const index = this.tabs.indexOf(tab);
+            if (index !== -1) {
+              const toClose = this.tabs.slice(index + 1);
+              toClose.forEach(t => this.closeTab(t.id));
+            }
+            break;
+          case 'reload':
+            if (tab.webviewEl) tab.webviewEl.reload();
+            break;
         }
       });
 
       window.require('electron').ipcRenderer.on('reopen-closed-tab', () => {
         this.reopenLastClosedTab();
       });
+
+
     } catch (e) { }
 
     // Global context menu for non-webview areas (Home, Settings, etc.)
@@ -1871,7 +2077,8 @@ class TabManager {
         canGoBack: false,
         canGoForward: false,
         editFlags: {},
-        isBrowserUI: true
+        isBrowserUI: true,
+        newsManualRefresh: false
       };
 
       try {
@@ -1901,19 +2108,21 @@ class TabManager {
       if (tab && !tab.isInternal && tab.webviewEl) tab.webviewEl.reload();
     });
 
-    // Adblock Tracking
+    // Adblock Tracking (Batched v0.5.0)
     try {
-      window.require('electron').ipcRenderer.on('adblock-item-blocked', (event, data) => {
+      window.require('electron').ipcRenderer.on('adblock-items-blocked-batch', (event, data) => {
         const tab = this.tabs.find(t => t.webviewEl && t.webviewEl.getWebContentsId() === data.tabId);
         if (tab) {
-          tab.blockedAds = (tab.blockedAds || 0) + 1;
+          tab.blockedAds = (tab.blockedAds || 0) + data.count;
           if (this.activeTabId === tab.id && window.siteIdentityManager) {
             window.siteIdentityManager.updateUI();
           }
           if (window.privacyManager) {
             try {
+              // Record one event per batch to save CPU, but increment the total counter
               const domain = new URL(data.url).hostname;
-              window.privacyManager.recordBlock(domain);
+              window.privacyManager.totalBlocked += data.count;
+              window.privacyManager.recordBlock(domain); // Record last domain for recent list
             } catch (e) { }
           }
         }
@@ -1977,6 +2186,79 @@ class TabManager {
     } catch (e) { }
     this.updateTabUI(tab);
   }
+
+  analyzeTextForSlop(text) {
+    if (!text || !window.toastManager) return;
+
+    const SLOP_WORDS = [
+      'delve', 'meticulous', 'comprehensive', 'tapestry', 'embark',
+      'furthermore', 'in conclusion', 'important to note', 'ever-evolving',
+      'unlock the potential', 'pave the way', 'demystify', 'seamlessly',
+      'vital', 'crucial', 'harness', 'leverage', 'beacon', 'testament',
+      'unwavering', 'underscores', 'invaluable', 'shines a light',
+      'in today\'s digital age', 'at its core', 'look no further',
+      'it is worth noting', 'notably', 'moreover', 'indeed', 'ultimately',
+      'pivotal', 'transformative', 'unparalleled', 'essential', 'landscape',
+      'dynamic', 'integration', 'paradigm shift', 'synergy', 'bespoke',
+      'robust', 'enhanced', 'optimized', 'ensure', 'proactive', 'streamlined',
+      'critical', 'policy', 'discover', 'vulnerability'
+    ];
+
+    const lowerText = text.toLowerCase();
+    let found = [];
+    SLOP_WORDS.forEach(word => {
+      if (lowerText.includes(word)) {
+        found.push(word);
+      }
+    });
+
+    // Structural check: Em-dash density (GPT-4 hallmark)
+    const emDashes = (text.match(/—/g) || []).length;
+    if (emDashes >= 1) {
+      found.push(`Structural marker (em-dash)`);
+    }
+
+    const score = found.length;
+    let confidence = "No Patterns Detected";
+    let icon = "✅";
+    let titleMsg = "Audit Complete";
+
+    if (score >= 3) {
+      titleMsg = "Highly Possible AI";
+      confidence = "High Probability Synthesis";
+      icon = "🚨";
+    } else if (score >= 2) {
+      titleMsg = "Likely Synthetic";
+      confidence = "Moderate Linguistic Signal";
+      icon = "⚠️";
+    } else if (score === 1) {
+      titleMsg = "Suspicious Outlier";
+      confidence = "Low/Vague Signal";
+      icon = "🧐";
+    }
+
+    window.toastManager.show("✨ Analyzing...", "Auditing linguistic indicators...", 1000);
+    setTimeout(() => {
+      let summary = score >= 1 ? `Found ${score} linguistic markers.` : `No synthetic patterns found.`;
+      window.toastManager.show(titleMsg, summary, 12000);
+
+      const toastAction = document.getElementById('leef-toast-action');
+      const primaryBtn = document.getElementById('btn-toast-primary');
+      const secondaryBtn = document.getElementById('btn-toast-secondary');
+
+      if (toastAction && primaryBtn && score >= 1) {
+        toastAction.style.display = 'flex';
+        primaryBtn.style.display = 'block';
+        primaryBtn.textContent = 'View Diagnostic Report';
+        primaryBtn.onclick = () => {
+          window.labsManager.showAuditWindow(confidence, found, icon);
+        };
+        if (secondaryBtn) secondaryBtn.style.display = 'none';
+      }
+    }, 800);
+  }
+
+
 }
 
 class ToastManager {
@@ -2051,6 +2333,15 @@ class DownloadManager {
     window.require('electron').ipcRenderer.on('download-status', (event, data) => {
       const id = String(data.id);
       if (data.status === 'started') {
+        // Memory Optimization: Prune download history (v0.4.3)
+        // Keeps the list from growing indefinitely during long sessions.
+        if (this.downloads.size > 50) {
+          const oldestId = this.downloads.keys().next().value;
+          this.downloads.delete(oldestId);
+          const oldestEl = document.getElementById(`dl-${oldestId}`);
+          if (oldestEl) oldestEl.remove();
+        }
+
         this.downloads.set(id, { ...data, id, received: 0, startTime: Date.now() });
         this.renderItem(id);
         // Show dropdown when download starts
@@ -2070,9 +2361,6 @@ class DownloadManager {
             this.updateItemProgress(id);
           }
         }
-
-
-
       } else if (data.status === 'completed') {
         const dl = this.downloads.get(data.id);
         if (dl) {
@@ -2388,13 +2676,12 @@ class QuickSettingsManager {
 
               document.querySelectorAll('video, audio').forEach(routeMedia);
 
-              const observer = new MutationObserver(mutations => {
-                mutations.forEach(m => {
-                  m.addedNodes.forEach(n => {
-                    if (n.tagName === 'VIDEO' || n.tagName === 'AUDIO') routeMedia(n);
-                    if (n.querySelectorAll) n.querySelectorAll('video, audio').forEach(routeMedia);
-                  });
-                });
+              let volTimer;
+              const observer = new MutationObserver(() => {
+                clearTimeout(volTimer);
+                volTimer = setTimeout(() => {
+                  document.querySelectorAll('video, audio').forEach(routeMedia);
+                }, 500);
               });
               observer.observe(document.body, { childList: true, subtree: true });
             }
@@ -2455,7 +2742,11 @@ class SiteIdentityManager {
     this.domainEl = document.getElementById('si-domain');
     this.statusEl = document.getElementById('si-status');
     this.adblockCountEl = document.getElementById('si-adblock-count');
+    this.gpcStatusEl = document.getElementById('si-gpc-status');
+    this.gpcTimerEl = document.getElementById('si-gpc-timer');
+    this.gpcRowEl = document.getElementById('si-gpc-row');
     this.btnClearCookies = document.getElementById('btn-clear-site-cookies');
+    this._gpcCache = new Map(); // domain -> { verified: bool, fetchedAt: ts }
 
     this.bindEvents();
   }
@@ -2474,12 +2765,35 @@ class SiteIdentityManager {
         if (d3) d3.style.display = 'none';
 
         this.updateUI();
+
+        // Real-time updates while open, but only while the answer is still pending
+        if (this.dropdown.style.display === 'block') {
+          if (this._updateInterval) clearInterval(this._updateInterval);
+          this._updateInterval = setInterval(() => {
+            // Stop if closed
+            if (this.dropdown.style.display === 'none') {
+              clearInterval(this._updateInterval);
+              this._updateInterval = null;
+              return;
+            }
+            const t = window.tabManager?.getActiveTab();
+            // Stop polling once we have a definitive answer (true or false)
+            if (t && (t.gpcVerified !== undefined || (Date.now() - (t.gpcStartTime || 0)) > 10000)) {
+              clearInterval(this._updateInterval);
+              this._updateInterval = null;
+            }
+            this.updateUI();
+          }, 1000);
+        } else {
+          if (this._updateInterval) { clearInterval(this._updateInterval); this._updateInterval = null; }
+        }
       });
     }
 
     document.addEventListener('click', (e) => {
       if (this.dropdown && !this.dropdown.contains(e.target) && e.target !== this.btnGlobe && !this.btnGlobe.contains(e.target)) {
         this.dropdown.style.display = 'none';
+        if (this._updateInterval) { clearInterval(this._updateInterval); this._updateInterval = null; }
       }
     });
 
@@ -2528,13 +2842,16 @@ class SiteIdentityManager {
     const tab = window.tabManager.getActiveTab();
     if (!tab) return;
 
-    if (tab.isInternal) {
+    const isInternal = tab.isInternal || tab.url.startsWith('leef:') || tab.url.startsWith('file:') || tab.url.startsWith('chrome:');
+
+    if (isInternal) {
       if (this.domainEl) this.domainEl.textContent = 'Leef Browser';
       if (this.statusEl) {
         this.statusEl.textContent = 'Local Application Page';
         this.statusEl.style.color = '#777';
       }
       if (this.adblockCountEl) this.adblockCountEl.textContent = '0';
+      this._updateGPCStatus(tab); // This will handle the 'Disabled' state
     } else {
       try {
         const urlObj = new URL(tab.url);
@@ -2542,7 +2859,11 @@ class SiteIdentityManager {
 
         if (urlObj.protocol === 'https:') {
           if (this.statusEl) {
-            this.statusEl.textContent = 'Connection is secure';
+            if (tab.gpcVerified) {
+              this.statusEl.textContent = 'Your connection is secure & Leef privacy measures are in place';
+            } else {
+              this.statusEl.textContent = 'Connection is secure';
+            }
             this.statusEl.style.color = '#4caf50';
           }
         } else {
@@ -2552,12 +2873,109 @@ class SiteIdentityManager {
           }
         }
 
-        // Adblock stats logic (using tab.blockedAds array if we had one, but let's mock it for MVP or use 0)
+        // Adblock stats
         if (this.adblockCountEl) this.adblockCountEl.textContent = tab.blockedAds || '0';
+
+        // GPC indicator
+        this._updateGPCStatus(tab);
 
       } catch (e) {
         if (this.domainEl) this.domainEl.textContent = 'Unknown';
       }
+    }
+  }
+
+  _updateGPCStatus(tab) {
+    const el = this.gpcStatusEl;
+    const timer = this.gpcTimerEl;
+    const row = this.gpcRowEl;
+    if (!el || !row) return;
+
+    const gpcEnabled = window.settingsManager?.currentSettings?.gpc !== false;
+    if (!gpcEnabled || !tab || tab.isInternal) {
+      el.textContent = 'Disabled';
+      el.style.color = '#999';
+      if (timer) timer.textContent = '';
+      if (row) row.style.opacity = '0.5';
+      return;
+    }
+
+    if (row) row.style.opacity = '1';
+
+    // Already settled this navigation — update DOM unconditionally
+    if (tab.gpcVerified !== undefined) {
+      if (tab.gpcVerified) {
+        el.textContent = 'Verified ✓';
+        el.style.color = '#4caf50';
+        if (timer) {
+          const diff = tab.gpcVerifiedTime
+            ? (tab.gpcVerifiedTime - (tab.gpcStartTime || tab.gpcVerifiedTime)) / 1000
+            : null;
+          timer.textContent = diff === null ? '' : diff > 10 ? '(>10s)' : '(' + Math.max(0.1, diff).toFixed(1) + 's)';
+        }
+        return;
+      } else {
+        el.textContent = 'Unverified';
+        el.style.color = '#ff9800';
+        if (timer) timer.textContent = '(no response)';
+        return;
+      }
+    }
+
+    // Show pending state while we look it up
+    el.textContent = 'Sent';
+    el.style.color = '#888';
+    if (timer) timer.textContent = '(checking...)';
+
+    // Check /.well-known/gpc.json — the GPC spec's official compliance declaration
+    let domain;
+    try { domain = new URL(tab.url).hostname; } catch { return; }
+
+    const cached = this._gpcCache.get(domain);
+    if (cached) {
+      tab.gpcVerified = cached.verified;
+      tab.gpcVerifiedTime = cached.fetchedAt;
+      this._updateGPCStatus(tab);
+      return;
+    }
+
+    // Use the webview to fetch to avoid CORS issues from the renderer process
+    if (tab.webviewEl) {
+      tab.webviewEl.executeJavaScript(`
+        (function() {
+          if (window.location.hostname !== '${domain}') return { error: 'wrong origin' };
+          return fetch('/.well-known/gpc.json', { method: 'GET', cache: 'no-store' })
+            .then(res => res.ok ? res.json() : null)
+            .catch(() => null);
+        })();
+      `).then(json => {
+        if (json && json.error === 'wrong origin') return; // Webview hasn't navigated yet, wait for next poll
+
+        const respected = json && json.gpc === true;
+        const now = Date.now();
+        this._gpcCache.set(domain, { verified: respected, fetchedAt: now });
+
+        if (respected) {
+          tab.gpcVerified = true;
+          tab.gpcVerifiedTime = now;
+        } else if (tab.gpcVerified === undefined) {
+          tab.gpcVerified = false;
+        }
+
+        // Trigger a full UI update to refresh the top status text too
+        if (this.dropdown && this.dropdown.style.display !== 'none') {
+          this.updateUI();
+        }
+      }).catch(() => {
+        if (tab.gpcVerified === undefined) {
+          const now = Date.now();
+          this._gpcCache.set(domain, { verified: false, fetchedAt: now });
+          tab.gpcVerified = false;
+          if (this.dropdown && this.dropdown.style.display !== 'none') {
+            this.updateUI();
+          }
+        }
+      });
     }
   }
 }
@@ -2621,7 +3039,7 @@ class LabsManager {
     if (chkMaster) {
       chkMaster.checked = !!this.flags.fingerprint_master;
       if (subContainer) subContainer.style.display = chkMaster.checked ? 'block' : 'none';
-      
+
       chkMaster.addEventListener('change', (e) => {
         this.flags.fingerprint_master = e.target.checked;
         if (subContainer) subContainer.style.display = e.target.checked ? 'block' : 'none';
@@ -2630,9 +3048,8 @@ class LabsManager {
       });
     }
 
-    bindFlag('flag-force-safe-off', 'force_safe_off');
+    bindFlag('flag-fingerprint-master', 'fingerprint_master');
     bindFlag('flag-ghost-mode', 'ghost_mode');
-    bindFlag('flag-resource-freezer', 'resource_freezer');
     bindFlag('flag-wayback-suggest', 'wayback_suggest');
     bindFlag('flag-stealth-ua', 'stealth_ua');
     bindFlag('flag-audio-scrambler', 'audio_scrambler');
@@ -2641,6 +3058,11 @@ class LabsManager {
     bindFlag('flag-font-mask', 'font_mask');
     bindFlag('flag-dnt-header', 'dnt_header');
     bindFlag('flag-yt-warp-speed', 'yt_warp_speed');
+
+    // New Lab Flags
+    bindFlag('flag-css-exorcist', 'css_exorcist');
+
+    bindFlag('flag-slop-scanner', 'slop_scanner');
   }
 
   syncUI() {
@@ -2648,11 +3070,42 @@ class LabsManager {
   }
 
   isFlagEnabled(key) {
-    const fingerprintFlags = ['ghost_mode', 'stealth_ua', 'audio_scrambler', 'hardware_cloak', 'timezone_spoof', 'font_mask', 'dnt_header'];
+    const fingerprintFlags = ['ghost_mode', 'stealth_ua', 'audio_scrambler', 'hardware_cloak', 'timezone_spoof', 'font_mask', 'dnt_header', 'css_exorcist'];
     if (fingerprintFlags.includes(key)) {
       return !!(this.flags.fingerprint_master && this.flags[key]);
     }
     return !!this.flags[key];
+  }
+
+  showAuditWindow(confidence, foundMarkers, icon) {
+    const modal = document.getElementById('audit-modal');
+    const summaryEl = document.getElementById('audit-confidence-summary');
+    const tableBody = document.getElementById('audit-table-body');
+    const iconEl = document.getElementById('audit-icon');
+    const dotEl = document.getElementById('audit-indicator-dot');
+
+    if (modal && summaryEl && tableBody && iconEl) {
+      summaryEl.innerHTML = `<div id="audit-indicator-dot" style="width: 12px; height: 12px; border-radius: 50%; background: ${icon === '🚨' ? '#d32f2f' : (icon === '⚠️' ? '#ff9800' : '#17b340')};"></div> Confidence: ${confidence}`;
+      iconEl.textContent = icon;
+
+      tableBody.innerHTML = '';
+      foundMarkers.forEach(m => {
+        const row = document.createElement('tr');
+        row.style.borderBottom = '1px solid #eee';
+
+        let category = "Linguistic Marker";
+        if (m.includes('Structural')) category = "Structural Pattern";
+        if (m.includes('Formatting')) category = "Formatting Signature";
+
+        row.innerHTML = `
+          <td style="padding: 12px; font-family: monospace; font-size: 0.85rem; color: #111;">"${m}"</td>
+          <td style="padding: 12px; font-size: 0.85rem; color: #666;">${category}</td>
+        `;
+        tableBody.appendChild(row);
+      });
+
+      modal.style.display = 'flex';
+    }
   }
 }
 
@@ -2671,6 +3124,14 @@ class HeroManager {
   }
 
   update() {
+    // Efficiency: Slow down or skip clock updates if not visible (v0.5.0)
+    const limiter = window.settingsManager?.currentSettings;
+    const isEfficiency = limiter?.efficiencyMode;
+    const homeView = document.getElementById('home-view');
+    const isHomeVisible = homeView && homeView.style.display === 'flex';
+
+    if (isEfficiency && !isHomeVisible) return;
+
     const now = new Date();
     const hours = now.getHours();
     const minutes = String(now.getMinutes()).padStart(2, '0');
@@ -2683,6 +3144,66 @@ class HeroManager {
       else if (hours < 17) greet = 'Good Afternoon';
       else if (hours > 21) greet = 'Good Night';
       this.greetingEl.textContent = greet;
+    }
+  }
+}
+
+class EmergencyAnnouncer {
+  constructor() {
+    this.announcementUrl = 'https://gist.githubusercontent.com/Zexerif/f2481fb446ae22d2e21cfc266a8d24c4/raw/gistfile1.txt';
+    setTimeout(() => this.check(), 5000);
+  }
+
+  async check() {
+    try {
+      const cacheBuster = this.announcementUrl.includes('?') ? '&t=' : '?t=';
+      const res = await fetch(this.announcementUrl + cacheBuster + Date.now(), { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (!data.active) return;
+
+      const currentVersion = window.require('electron').ipcRenderer.sendSync('get-app-version') || '0.0.0';
+      if (data.targetVersion && data.targetVersion !== 'all' && data.targetVersion !== currentVersion) return;
+
+      const modal = document.getElementById('emergency-modal');
+      const titleEl = document.getElementById('emergency-title');
+      const msgEl = document.getElementById('emergency-msg');
+      const actionsEl = document.getElementById('emergency-actions');
+
+      if (modal && titleEl && msgEl && actionsEl) {
+        titleEl.textContent = data.title || 'Announcement';
+        msgEl.textContent = data.message || '';
+        actionsEl.innerHTML = ''; // Clear previous buttons
+
+        if (data.buttons && Array.isArray(data.buttons)) {
+          data.buttons.forEach((btn, index) => {
+            const button = document.createElement('button');
+            button.className = index === 0 ? 'hub-modal-btn hub-modal-confirm' : 'hub-modal-btn hub-modal-cancel';
+            button.style.flex = '1';
+            button.textContent = btn.text;
+            button.onclick = () => {
+              if (btn.action === 'url' && btn.value) {
+                if (window.tabManager) window.tabManager.createTab(btn.value);
+              }
+              modal.style.display = 'none';
+            };
+            actionsEl.appendChild(button);
+          });
+        } else {
+          // Default close button if none provided
+          const closeBtn = document.createElement('button');
+          closeBtn.className = 'hub-modal-btn hub-modal-confirm';
+          closeBtn.style.flex = '1';
+          closeBtn.textContent = 'Dismiss';
+          closeBtn.onclick = () => { modal.style.display = 'none'; };
+          actionsEl.appendChild(closeBtn);
+        }
+
+        modal.style.display = 'flex';
+      }
+    } catch (e) {
+      console.warn("EmergencyAnnouncer failed to check for updates:", e);
     }
   }
 }
@@ -2702,7 +3223,7 @@ class AddressBarManager {
     document.body.appendChild(this.suggestionsEl);
 
     this.selectedIndex = -1;
-    this.currentFetchCtrl = null;
+    this.currentFetchId = 0; // Track requests to ignore stale results
     this.bindEvents();
 
     // Re-position on resize
@@ -2760,11 +3281,12 @@ class AddressBarManager {
     this.suggestionsEl.style.display = 'block';
 
     // 2. Fetch Live Autocomplete from Main Process (Bypass CORS)
+    const requestId = ++this.currentFetchId;
     try {
       const webSuggestions = await window.require('electron').ipcRenderer.invoke('fetch-autocomplete', val);
 
-      // Re-render with both bookmarks and web suggestions
-      if (this.input.value.trim() === val) { // Prevent race conditions
+      // Re-render only if this is still the most recent request
+      if (this.currentFetchId === requestId && this.input.value.trim() === val) {
         this.renderSuggestions(val, bookmarkMatches, webSuggestions.slice(0, 6));
       }
     } catch (err) {
@@ -2885,6 +3407,8 @@ class PermissionManager {
     if (this.btnDeny) this.btnDeny.addEventListener('click', () => this.handleResponse(false));
 
     // Manager bindings
+    document.getElementById('enable-volume-boost')?.addEventListener('change', (e) => this.updateSetting('enableVolumeBoost', e.target.checked));
+    document.getElementById('news-manual-refresh')?.addEventListener('change', (e) => this.updateSetting('newsManualRefresh', e.target.checked));
     document.getElementById('btn-camera-mic')?.addEventListener('click', () => this.openManager());
     document.getElementById('btn-location')?.addEventListener('click', () => this.openManager());
     document.getElementById('btn-allowed-sites')?.addEventListener('click', () => this.openManager());
@@ -2995,7 +3519,7 @@ class PrivacyManager {
     this.view = document.getElementById('privacy-view');
     this.disabledState = document.getElementById('privacy-disabled-state');
     this.enabledState = document.getElementById('privacy-enabled-state');
-    
+
     this.elTotal = document.getElementById('stat-total-blocked');
     this.elSecure = document.getElementById('stat-secure-percent');
     this.elRecentList = document.getElementById('privacy-recent-list');
@@ -3029,7 +3553,7 @@ class PrivacyManager {
     this.totalBlocked++;
     this.recentBlocks.unshift({ domain, time: Date.now() });
     if (this.recentBlocks.length > 30) this.recentBlocks.pop();
-    
+
     localStorage.setItem('leef_privacy_total_blocked', this.totalBlocked);
     this.updateUI();
   }
@@ -3037,16 +3561,16 @@ class PrivacyManager {
   recordRequest(isSecure) {
     this.totalRequests++;
     if (isSecure) this.secureRequests++;
-    
+
     localStorage.setItem('leef_privacy_total_requests', this.totalRequests);
     localStorage.setItem('leef_privacy_secure_requests', this.secureRequests);
-    
+
     if (this.totalRequests % 5 === 0) this.updateUI(); // Throttled UI update
   }
 
   updateUI() {
     const isBlockerEnabled = this.settingsManager.currentSettings.adBlockerMode !== 'none';
-    
+
     if (this.disabledState && this.enabledState) {
       this.disabledState.style.display = isBlockerEnabled ? 'none' : 'block';
       this.enabledState.style.display = isBlockerEnabled ? 'block' : 'none';
@@ -3179,6 +3703,7 @@ window.onload = () => {
   window.toastManager = new ToastManager();
 
   const settingsMgr = new SettingsManager();
+  window.settingsManager = settingsMgr;
 
   // First-Time Startup Onboarding
   if (!localStorage.getItem('leef_onboarding_done')) {
@@ -3208,6 +3733,10 @@ window.onload = () => {
         const langEl = document.getElementById('language-select');
         if (langEl) langEl.value = langVal;
 
+        const newsChecked = document.getElementById('onboard-news').checked;
+        const newsEl = document.getElementById('news-manual-refresh');
+        if (newsEl) newsEl.checked = !newsChecked;
+
         // Adblock is radio buttons ('none', 'basic', 'comprehensive')
         document.querySelectorAll('input[name="adblock-tier"]').forEach(r => {
           r.checked = r.value === adblockVal;
@@ -3218,6 +3747,9 @@ window.onload = () => {
         localStorage.setItem('leef_onboarding_done', 'true');
         overlay.style.display = 'none';
         if (bg) bg.style.display = 'none';
+
+        // Start loading news now that we have consent/settings
+        if (window.newsSvc) window.newsSvc.loadNews();
       });
     }
   }
@@ -3253,6 +3785,9 @@ window.onload = () => {
 
   // Labs/Experimental
   window.labsManager = new LabsManager();
+
+  // Emergency Announcements
+  window.emergencyAnnouncer = new EmergencyAnnouncer();
 
   // Downloads
   window.downloadManager = new DownloadManager();

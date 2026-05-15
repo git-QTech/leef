@@ -1,4 +1,5 @@
-import { app, BrowserWindow, session, ipcMain, Menu, MenuItem, clipboard, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, session, ipcMain, Menu, MenuItem, clipboard, nativeImage, shell, webContents } from 'electron';
+// webContents is explicitly imported for fromId lookups (v0.5.0)
 
 import updater from 'electron-updater';
 const { autoUpdater } = updater;
@@ -22,15 +23,9 @@ if (process.platform === 'win32') {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Fix "grayness" / color-shift on Windows — caused by GPU overlay planes
-// using a different color pipeline than the rest of the compositor.
+// Targeted fix for "grayness" / color-shift on Windows HDR displays.
+// Forces sRGB color profile globally.
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
-// Switch from D3D11 to OpenGL via ANGLE — fixes the color path mismatch
-app.commandLine.appendSwitch('use-angle', 'gl');
-// Disable overlay planes entirely so video goes through the same path as everything else
-app.commandLine.appendSwitch('disable-features', 'DirectComposition,VideoToolboxVideoDecoder,UseSkiaRenderer');
-app.commandLine.appendSwitch('disable-direct-composition');
-app.commandLine.appendSwitch('disable-gpu-driver-bug-workarounds');
 
 const isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
 console.log('Leef Browser: isDev =', isDev, '| app.isPackaged =', app.isPackaged);
@@ -63,6 +58,8 @@ function safeSend(channel, ...args) {
     }
   });
 }
+
+
 
 
 
@@ -114,9 +111,25 @@ async function initAdBlocker(enabled = false) {
 
     // Enable cosmetic filtering and IPC handlers (Once)
     blocker.enableBlockingInSession(sess);
+    // IPC Batching: Throttled updates to reduce CPU usage (v0.5.0)
+    const pendingBlocks = new Map(); // tabId -> { count, lastUrl }
     blocker.on('request-blocked', (request) => {
-      safeSend('adblock-item-blocked', { tabId: request.tabId, url: request.url });
+      const tabId = request.tabId;
+      const stats = pendingBlocks.get(tabId) || { count: 0, lastUrl: '' };
+      stats.count++;
+      stats.lastUrl = request.url;
+      pendingBlocks.set(tabId, stats);
     });
+
+    setInterval(() => {
+      if (pendingBlocks.size > 0) {
+        pendingBlocks.forEach((stats, tabId) => {
+          safeSend('adblock-items-blocked-batch', { tabId, count: stats.count, url: stats.lastUrl });
+        });
+        pendingBlocks.clear();
+      }
+    }, 1000);
+
     adblockerEnabled = true;
   } catch (err) {
     console.error('AdBlocker error:', err);
@@ -188,6 +201,10 @@ async function checkForUpdates(manual = false) {
 
 
 
+ipcMain.on('get-app-version', (event) => {
+  event.returnValue = app.getVersion();
+});
+
 ipcMain.handle('fetch-autocomplete', async (event, query) => {
   try {
     const fetchUrl = 'https://suggestqueries.google.com/complete/search?client=chrome&q=' + encodeURIComponent(query);
@@ -235,7 +252,7 @@ async function generateDiagnosticLog(error = 'None') {
     `user credentials, and browsing history are NOT stored.`,
     `All local system paths have been anonymized.`,
     `----------------------------------------------------`,
-    `App Version: ${app.isPackaged ? app.getVersion() : '0.3.0 (Beta)'}`,
+    `App Version: ${app.isPackaged ? app.getVersion() : '0.5.1'}`,
 
 
     `Electron Version: ${process.versions.electron}`,
@@ -261,21 +278,29 @@ async function generateDiagnosticLog(error = 'None') {
   fs.writeFileSync(logPath, logContent);
 }
 
+async function runKeyCheck() {
+  if (process.argv.includes('--recovery')) {
+    isRecoveryMode = true;
+    return;
+  }
 
-// Windows-specific Shift detection at startup
-
-try {
   if (process.platform === 'win32') {
-    const output = execSync('powershell -Command "[Reflection.Assembly]::LoadWithPartialName(\'System.Windows.Forms\') | Out-Null; [Windows.Forms.Control]::ModifierKeys"', { encoding: 'utf8' }).trim();
-    if (output.includes('Shift')) {
-      isRecoveryMode = true;
-      console.log('Recovery Mode Triggered (Shift Held)');
+    try {
+      // Fast check using partial assembly loading
+      const cmd = 'powershell -NoProfile -NonInteractive -Command "[Reflection.Assembly]::LoadWithPartialName(\'System.Windows.Forms\') | Out-Null; [System.Windows.Forms.Control]::ModifierKeys"';
+      const output = execSync(cmd, { timeout: 2000, encoding: 'utf8' }).trim();
+      if (output && output !== 'None' && output.includes('Shift')) {
+        isRecoveryMode = true;
+        console.log('Leef Browser: Recovery Mode activated via Shift key.');
+      }
+    } catch (e) {
+      console.error('Leef Browser: Shift key check failed:', e.message);
+      isRecoveryMode = false;
     }
   }
-} catch (e) {
-
-  console.error('Failed to check modifier keys:', e);
 }
+
+
 
 function createWindow() {
 
@@ -357,6 +382,29 @@ function createWindow() {
         safeSend('trigger-offline-game');
         e.preventDefault();
       }
+
+
+    });
+
+    // CSS Exorcist (Labs): Strip tracking pixels
+    contents.on('did-stop-loading', () => {
+      if (globalSettings.labs?.css_exorcist) {
+        const exorcistCSS = `
+          img[width="1"][height="1"], 
+          img[style*="width: 1px"][style*="height: 1px"],
+          img[style*="width:1px"][style*="height:1px"],
+          iframe[width="1"][height="1"],
+          iframe[style*="display: none"],
+          [style*="opacity: 0"][style*="pointer-events: none"],
+          [style*="opacity:0"][style*="pointer-events:none"] {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+          }
+        `;
+        contents.insertCSS(exorcistCSS).catch(() => { });
+      }
     });
 
     // DRM Detection: Triggered when Widevine/CDM is requested
@@ -395,22 +443,28 @@ ipcMain.on('apply-settings', async (event, settings) => {
   if (settings.language === 'it') acceptLang = 'it-IT,it,en;q=0.9';
 
   // Custom User Agent & Language
-  let ua = settings.customUa || sess.getUserAgent().replace(/Electron\/[0-9.]+\s/g, '');
-  
+  // We explicitly regenerate the UA to ensure that turning off "Stealth UA" actually
+  // restores the "Leef Browser" identifier, as sess.getUserAgent() might have been 
+  // modified in a previous apply-settings call.
+  const DEFAULT_UA = sess.getUserAgent().replace(/Leef\s?Browser\/[0-9.]+\s?/gi, '').replace(/Electron\/[0-9.]+\s/g, '');
+  let ua = settings.customUa || DEFAULT_UA;
+
   // Stealth User Agent (Labs): Remove "Leef Browser/vX.X.X" if flag is enabled
-  if (settings.labs?.fingerprint_master && settings.labs?.stealth_ua) {
-    ua = ua.replace(/Leef\s?Browser\/[0-9.]+\s?/gi, '');
+  // Default behavior is to INCLUDE Leef Browser if stealth is OFF and no custom UA is set.
+  if (!settings.customUa && !(settings.labs?.fingerprint_master && settings.labs?.stealth_ua)) {
+    ua = `${DEFAULT_UA} Leef Browser/${app.getVersion()}`;
   }
-  
+
   console.log('Applying User Agent:', ua);
   sess.setUserAgent(ua, acceptLang);
 
-  // Initialize Ghostery if Comprehensive mode is selected — await so the handler
-  // is installed before we apply the rest of the session rules.
+  // Initialize Ghostery if Comprehensive mode is selected
+  // We no longer 'await' this so that the browser can finish applying other settings 
+  // and become interactive while the adblocker engine loads in the background.
   if (settings.adBlockerMode === 'comprehensive') {
-    await initAdBlocker(true);
+    initAdBlocker(true).catch(err => console.error('Background AdBlocker init failed:', err));
   } else {
-    await initAdBlocker(false);
+    initAdBlocker(false).catch(err => console.error('Background AdBlocker disable failed:', err));
   }
 
   // Ad Blocking:
@@ -462,6 +516,11 @@ ipcMain.on('apply-settings', async (event, settings) => {
       headers['DNT'] = '1';
     }
 
+    // Global Privacy Control (GPC)
+    if (settings.gpc !== false && (url.startsWith('http:') || url.startsWith('https:'))) {
+      headers['Sec-GPC'] = '1';
+    }
+
     callback({ requestHeaders: headers });
   });
 
@@ -500,8 +559,21 @@ ipcMain.on('apply-settings', async (event, settings) => {
       }
 
       // Dynamic Prompt
+      // Dynamic Prompt with 30s expiry to prevent memory leaks
       const reqId = ++permReqId;
-      permissionCallbacks[reqId] = callback;
+      const timeout = setTimeout(() => {
+        if (permissionCallbacks[reqId]) {
+          permissionCallbacks[reqId](false);
+          delete permissionCallbacks[reqId];
+          console.log(`Permission request ${reqId} timed out.`);
+        }
+      }, 30000);
+
+      permissionCallbacks[reqId] = (granted) => {
+        clearTimeout(timeout);
+        callback(granted);
+      };
+
       if (mainWindow && !mainWindow.isDestroyed()) {
         safeSend('permission-request', {
           id: reqId,
@@ -509,7 +581,7 @@ ipcMain.on('apply-settings', async (event, settings) => {
           origin
         });
       } else {
-        callback(false);
+        permissionCallbacks[reqId](false);
       }
     } else {
       callback(true); // allow other benign permissions
@@ -523,6 +595,8 @@ ipcMain.on('apply-settings', async (event, settings) => {
     sess.setProxy({ proxyRules: 'direct://' });
   }
 });
+
+
 
 ipcMain.on('refresh-adblock', async () => {
   // Force re-download by deleting cache and re-initializing
@@ -629,37 +703,38 @@ ipcMain.on('recovery-action', async (event, action) => {
 });
 
 ipcMain.on('show-context-menu', (event, params) => {
-
   const menu = new Menu();
 
   // Navigation Group
   if (!params.isBrowserUI) {
     menu.append(new MenuItem({
-      label: 'Back',
+      label: '⬅️ Back',
+      accelerator: 'Alt+Left',
       enabled: params.editFlags.canGoBack || params.canGoBack,
       click: () => event.sender.send('context-menu-command', { command: 'go-back' })
     }));
     menu.append(new MenuItem({
-      label: 'Forward',
+      label: '➡️ Forward',
+      accelerator: 'Alt+Right',
       enabled: params.editFlags.canGoForward || params.canGoForward,
       click: () => event.sender.send('context-menu-command', { command: 'go-forward' })
     }));
     menu.append(new MenuItem({
-      label: 'Reload',
+      label: '🔄 Reload',
+      accelerator: 'CmdOrCtrl+R',
       click: () => event.sender.send('context-menu-command', { command: 'reload' })
     }));
     menu.append(new MenuItem({ type: 'separator' }));
   }
 
-
   // Link actions
   if (params.linkURL) {
     menu.append(new MenuItem({
-      label: 'Open Link in New Tab',
+      label: '🔗 Open Link in New Tab',
       click: () => event.sender.send('context-menu-command', { command: 'create-tab', url: params.linkURL })
     }));
     menu.append(new MenuItem({
-      label: 'Copy Link Address',
+      label: '📋 Copy Link Address',
       click: () => clipboard.writeText(params.linkURL)
     }));
     menu.append(new MenuItem({ type: 'separator' }));
@@ -668,15 +743,28 @@ ipcMain.on('show-context-menu', (event, params) => {
   // Image actions
   if (params.hasImageContents || params.mediaType === 'image') {
     menu.append(new MenuItem({
-      label: 'Open Image in New Tab',
+      label: '🖼️ Open Image in New Tab',
       click: () => event.sender.send('context-menu-command', { command: 'create-tab', url: params.srcURL })
     }));
     menu.append(new MenuItem({
-      label: 'Copy Image',
+      label: '💾 Save Image As...',
+      click: () => {
+        if (mainWindow) mainWindow.webContents.downloadURL(params.srcURL);
+      }
+    }));
+    menu.append(new MenuItem({
+      label: '🔍 Search Image on Google',
+      click: () => {
+        const searchUrl = `https://www.google.com/searchbyimage?image_url=${encodeURIComponent(params.srcURL)}`;
+        event.sender.send('context-menu-command', { command: 'create-tab', url: searchUrl });
+      }
+    }));
+    menu.append(new MenuItem({
+      label: '📋 Copy Image',
       click: () => event.sender.send('context-menu-command', { command: 'copy-image', x: params.x, y: params.y })
     }));
     menu.append(new MenuItem({
-      label: 'Copy Image Address',
+      label: '🔗 Copy Image Address',
       click: () => clipboard.writeText(params.srcURL)
     }));
     menu.append(new MenuItem({ type: 'separator' }));
@@ -688,14 +776,31 @@ ipcMain.on('show-context-menu', (event, params) => {
     const displaySelection = cleanText.length > 15 ? cleanText.substring(0, 15) + '...' : cleanText;
 
     menu.append(new MenuItem({
-      label: `Search Google for "${displaySelection}"`,
+      label: `🔍 Search Google for "${displaySelection}"`,
       click: () => event.sender.send('context-menu-command', { command: 'search-google', text: cleanText })
     }));
+
+    menu.append(new MenuItem({
+      label: '🌐 Translate to English',
+      click: () => {
+        const translateUrl = `https://translate.google.com/?sl=auto&tl=en&text=${encodeURIComponent(cleanText)}&op=translate`;
+        event.sender.send('context-menu-command', { command: 'create-tab', url: translateUrl });
+      }
+    }));
+
+    // AI Analysis (Labs)
+    if (globalSettings.labs?.slop_scanner) {
+      menu.append(new MenuItem({
+        label: '✨ Analyze AI Heuristics',
+        click: () => event.sender.send('context-menu-command', { command: 'check-slop', text: cleanText })
+      }));
+    }
+
     menu.append(new MenuItem({ type: 'separator' }));
 
-    menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+    menu.append(new MenuItem({ label: '📋 Copy', role: 'copy' }));
     menu.append(new MenuItem({
-      label: 'Raw Copy (No formatting)',
+      label: '📝 Raw Copy (No formatting)',
       click: () => clipboard.writeText(cleanText)
     }));
     menu.append(new MenuItem({ type: 'separator' }));
@@ -703,34 +808,37 @@ ipcMain.on('show-context-menu', (event, params) => {
 
   // Input actions (if editable)
   if (params.isEditable) {
-    menu.append(new MenuItem({ label: 'Cut', role: 'cut' }));
-    menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
-    menu.append(new MenuItem({ label: 'Paste', role: 'paste' }));
+    menu.append(new MenuItem({ label: '✂️ Cut', role: 'cut' }));
+    menu.append(new MenuItem({ label: '📋 Copy', role: 'copy' }));
+    menu.append(new MenuItem({ label: '📥 Paste', role: 'paste' }));
     menu.append(new MenuItem({ type: 'separator' }));
-    menu.append(new MenuItem({ label: 'Select All', role: 'selectAll' }));
+    menu.append(new MenuItem({ label: '✅ Select All', role: 'selectAll' }));
     menu.append(new MenuItem({ type: 'separator' }));
   }
 
   // Page Global Actions
   if (!params.selectionText && !params.linkURL && !params.mediaType && !params.isBrowserUI) {
     menu.append(new MenuItem({
-      label: 'Save Page As...',
+      label: '💾 Save Page As...',
+      accelerator: 'CmdOrCtrl+S',
       click: () => event.sender.send('context-menu-command', { command: 'save-page' })
     }));
     menu.append(new MenuItem({
-      label: 'Print...',
+      label: '🖨️ Print...',
+      accelerator: 'CmdOrCtrl+P',
       click: () => event.sender.send('context-menu-command', { command: 'print' })
     }));
     menu.append(new MenuItem({ type: 'separator' }));
     menu.append(new MenuItem({
-      label: 'View Page Source',
+      label: '📄 View Page Source',
+      accelerator: 'CmdOrCtrl+U',
       click: () => event.sender.send('context-menu-command', { command: 'view-source' })
     }));
   }
 
-
   menu.append(new MenuItem({
-    label: 'Inspect Element',
+    label: '🛠️ Inspect Element',
+    accelerator: 'F12',
     click: () => {
       event.sender.inspectElement(params.x, params.y);
       if (event.sender.isDevToolsOpened()) {
@@ -748,38 +856,49 @@ ipcMain.on('show-tab-context-menu', (event, data) => {
 
   if (data.tabId) {
     menu.append(new MenuItem({
-      label: 'Duplicate Tab',
+      label: '🔄 Reload Tab',
+      click: () => event.sender.send('tab-command', { command: 'reload', tabId: data.tabId })
+    }));
+
+    menu.append(new MenuItem({
+      label: '📑 Duplicate Tab',
       click: () => event.sender.send('tab-command', { command: 'duplicate', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({ type: 'separator' }));
 
     menu.append(new MenuItem({
-      label: data.isPinned ? 'Unpin Tab' : 'Pin Tab',
+      label: data.isPinned ? '📍 Unpin Tab' : '📌 Pin Tab',
       click: () => event.sender.send('tab-command', { command: 'toggle-pin', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({
-      label: data.isMuted ? 'Unmute Tab' : 'Mute Tab',
+      label: data.isMuted ? '🔊 Unmute Tab' : '🔇 Mute Tab',
       click: () => event.sender.send('tab-command', { command: 'toggle-mute', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({ type: 'separator' }));
 
     menu.append(new MenuItem({
-      label: 'Close Tab',
+      label: '❌ Close Tab',
+      accelerator: 'CmdOrCtrl+W',
       click: () => event.sender.send('tab-command', { command: 'close', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({
-      label: 'Close Other Tabs',
+      label: '🚫 Close Other Tabs',
       click: () => event.sender.send('tab-command', { command: 'close-others', tabId: data.tabId })
+    }));
+
+    menu.append(new MenuItem({
+      label: '➡️ Close Tabs to the Right',
+      click: () => event.sender.send('tab-command', { command: 'close-right', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({ type: 'separator' }));
   } else {
     menu.append(new MenuItem({
-      label: 'New Tab',
+      label: '➕ New Tab',
       accelerator: 'CmdOrCtrl+T',
       click: () => event.sender.send('tab-command', { command: 'new-tab' })
     }));
@@ -787,7 +906,7 @@ ipcMain.on('show-tab-context-menu', (event, data) => {
   }
 
   menu.append(new MenuItem({
-    label: 'Reopen Closed Tab',
+    label: '🕒 Reopen Closed Tab',
     enabled: closedTabsCount > 0,
     accelerator: 'CmdOrCtrl+Shift+T',
     click: () => event.sender.send('reopen-closed-tab')
@@ -910,6 +1029,22 @@ END OF LOG
   }
 });
 
+ipcMain.on('set-cpu-throttle', (event, data) => {
+  const { webContentsId, factor } = data;
+  console.log(`Leef Limiter: Setting CPU throttle for ${webContentsId} to ${factor}`);
+  if (webContentsId) {
+    const contents = webContents.fromId(webContentsId);
+    if (contents) {
+      try {
+        // factor: 1.0 (no throttling) down to ~0.1 (extreme throttling)
+        contents.setCPUThrottling(factor);
+      } catch (e) {
+        console.error('Failed to set CPU throttle:', e);
+      }
+    }
+  }
+});
+
 ipcMain.on('capture-page', async (event, data) => {
   if (!mainWindow) return;
   try {
@@ -1012,6 +1147,7 @@ app.on('web-contents-created', (event, contents) => {
 
 app.whenReady().then(async () => {
   try {
+    await runKeyCheck();
     createWindow();
 
     // Unified Download Manager (v0.1.5) - Initialized once on boot
@@ -1041,39 +1177,27 @@ app.whenReady().then(async () => {
       });
 
 
-      const progressInterval = setInterval(() => {
-        try {
-          const state = item.getState();
-
-          safeSend('download-status', {
-            id: dlId,
-            received: item.getReceivedBytes(),
-            total: item.getTotalBytes(),
-            status: 'progressing',
-            state: state
-          });
-        } catch (e) {
-          clearInterval(progressInterval);
-        }
-      }, 500);
-
-
-
-
-
       item.on('updated', (event, state) => {
         if (state === 'interrupted') {
           safeSend('download-status', { id: dlId, status: 'interrupted' });
         } else if (state === 'progressing') {
           if (item.isPaused()) {
             safeSend('download-status', { id: dlId, status: 'paused' });
+          } else {
+            // Send progress update on every chunk received
+            safeSend('download-status', {
+              id: dlId,
+              received: item.getReceivedBytes(),
+              total: item.getTotalBytes(),
+              status: 'progressing',
+              state: state
+            });
           }
         }
       });
 
 
       item.once('done', (event, state) => {
-        clearInterval(progressInterval);
         activeDownloads.delete(dlId);
         if (state === 'completed') {
           safeSend('download-status', {
