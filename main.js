@@ -205,6 +205,26 @@ ipcMain.on('get-app-version', (event) => {
   event.returnValue = app.getVersion();
 });
 
+ipcMain.on('get-repo-slug', (event) => {
+  event.returnValue = 'git-QTech/leef';
+});
+
+ipcMain.on('exit-app', () => {
+  app.quit();
+});
+
+let isCriticalMode = false;
+ipcMain.on('set-critical-mode', (event, active) => {
+  isCriticalMode = active;
+  if (isCriticalMode) {
+    console.log('Leef Browser: CRITICAL MODE ACTIVE. DevTools and External Navigation restricted.');
+    // Close DevTools if open
+    if (mainWindow && mainWindow.webContents.isDevToolsOpened()) {
+      mainWindow.webContents.closeDevTools();
+    }
+  }
+});
+
 ipcMain.handle('fetch-autocomplete', async (event, query) => {
   try {
     const fetchUrl = 'https://suggestqueries.google.com/complete/search?client=chrome&q=' + encodeURIComponent(query);
@@ -307,6 +327,41 @@ function createWindow() {
   // Use pure in-memory partition for privacy
   const sess = session.fromPartition('persist:leef-session');
 
+  // Hardened Critical Mode Blocker (v0.5.2)
+  sess.webRequest.onBeforeRequest((details, callback) => {
+    if (isCriticalMode) {
+      try {
+        const url = new URL(details.url);
+        const hostname = url.hostname.toLowerCase();
+        const protocol = url.protocol.toLowerCase();
+
+        // Allow internal Leef files and essential protocols
+        if (protocol === 'file:' || protocol === 'data:' || protocol === 'blob:') {
+          return callback({ cancel: false });
+        }
+
+        // Allow GitHub and all its subdomains/asset servers
+        const isGithub = hostname === 'github.com' || 
+                         hostname.endsWith('.github.com') || 
+                         hostname.endsWith('.githubusercontent.com') || 
+                         hostname.endsWith('.githubassets.com') ||
+                         hostname.endsWith('.github.io');
+
+        if (isGithub) {
+          return callback({ cancel: false });
+        }
+        
+        // Block everything else
+        console.warn('Leef Browser: Hard-blocked request in Critical Mode:', details.url);
+        return callback({ cancel: true });
+      } catch (e) {
+        // If it's a protocol URL doesn't understand (like some data: formats), allow it to be safe
+        return callback({ cancel: false });
+      }
+    }
+    callback({ cancel: false });
+  });
+
   Menu.setApplicationMenu(null);
 
   mainWindow = new BrowserWindow({
@@ -367,14 +422,34 @@ function createWindow() {
 
   // mainWindow.webContents.openDevTools();
 
+  // Block DevTools in Critical Mode
+  mainWindow.webContents.on('devtools-opened', () => {
+    if (isCriticalMode) mainWindow.webContents.closeDevTools();
+  });
+
   // Consolidated global shortcut handler for all webContents (v0.3.5)
   app.on('web-contents-created', (event, contents) => {
     contents.setMaxListeners(100);
+
+    contents.on('devtools-opened', () => {
+      if (isCriticalMode) contents.closeDevTools();
+    });
+
     contents.on('before-input-event', (e, input) => {
       // Find in Page: Ctrl + F
       if (input.control && !input.shift && input.key.toLowerCase() === 'f' && input.type === 'keyDown') {
+        if (isCriticalMode) { e.preventDefault(); return; }
         safeSend('trigger-find-in-page');
         e.preventDefault();
+      }
+
+      // Block all shortcuts in Critical Mode (except update-related if needed)
+      if (isCriticalMode) {
+        // Allow basic window controls if not handled here, but mostly lock down
+        const allowedKeys = ['c', 'v', 'a', 'x']; // Copy paste
+        if (input.control && !allowedKeys.includes(input.key.toLowerCase())) {
+          e.preventDefault();
+        }
       }
 
       // Offline Game: Ctrl + Shift + O
@@ -385,6 +460,27 @@ function createWindow() {
 
 
     });
+
+    // Navigation Restriction in Critical Mode
+    contents.on('will-navigate', (event, navigationUrl) => {
+      if (isCriticalMode) {
+        try {
+          const url = new URL(navigationUrl);
+          const isGithubReleases = url.hostname === 'github.com' && url.pathname.startsWith('/git-QTech/leef/releases');
+          const isInternal = navigationUrl.startsWith('file://');
+
+          if (!isGithubReleases && !isInternal) {
+            console.warn('Leef Browser: will-navigate blocked in Critical Mode:', navigationUrl);
+            event.preventDefault();
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('critical-mode-blocked-nav');
+          }
+        } catch (e) {
+          // If URL is invalid (e.g. some internal scheme), just block it in critical mode to be safe
+          event.preventDefault();
+        }
+      }
+    });
+
 
     // CSS Exorcist (Labs): Strip tracking pixels
     contents.on('did-stop-loading', () => {
@@ -836,16 +932,21 @@ ipcMain.on('show-context-menu', (event, params) => {
     }));
   }
 
-  menu.append(new MenuItem({
-    label: '🛠️ Inspect Element',
-    accelerator: 'F12',
-    click: () => {
-      event.sender.inspectElement(params.x, params.y);
-      if (event.sender.isDevToolsOpened()) {
-        event.sender.devToolsWebContents.focus();
+  if (!isCriticalMode && (!params.isBrowserUI || isDev)) {
+    menu.append(new MenuItem({
+      label: '🛠️ Inspect Element',
+      accelerator: 'F12',
+      click: () => {
+        const targetContents = params.webContentsId ? webContents.fromId(params.webContentsId) : event.sender;
+        if (targetContents) {
+          targetContents.inspectElement(params.x, params.y);
+          if (targetContents.isDevToolsOpened()) {
+            targetContents.devToolsWebContents.focus();
+          }
+        }
       }
-    }
-  }));
+    }));
+  }
 
   const win = BrowserWindow.fromWebContents(event.sender);
   menu.popup({ window: win });
@@ -1031,15 +1132,19 @@ END OF LOG
 
 ipcMain.on('set-cpu-throttle', (event, data) => {
   const { webContentsId, factor } = data;
-  console.log(`Leef Limiter: Setting CPU throttle for ${webContentsId} to ${factor}`);
+  if (factor < 1.0) console.log(`Leef Limiter: Setting CPU throttle for ${webContentsId} to ${factor}`);
   if (webContentsId) {
     const contents = webContents.fromId(webContentsId);
     if (contents) {
       try {
         // factor: 1.0 (no throttling) down to ~0.1 (extreme throttling)
-        contents.setCPUThrottling(factor);
+        // NOTE: setCPUThrottling is deprecated in modern Electron. 
+        // We now rely on native backgroundThrottling and process priority management.
+        if (typeof contents.setBackgroundThrottling === 'function') {
+          contents.setBackgroundThrottling(factor < 1.0);
+        }
       } catch (e) {
-        console.error('Failed to set CPU throttle:', e);
+        console.error('Failed to set background throttling:', e);
       }
     }
   }

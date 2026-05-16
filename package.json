@@ -1,6 +1,6 @@
 {
   "name": "private-browser",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "private": true,
   "description": "Leef is a fast, private, and modern Electron-based web browser built for everyday use.",
   "homepage": "https://leefbrowser.site",
@@ -81,5 +81,8 @@
       "artifactName": "leef-browser-setup-${version}.${ext}"
     },
     "asar": true
+  },
+  "overrides": {
+    "ip-address": "10.1.1"
   }
 }

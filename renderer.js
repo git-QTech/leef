@@ -1043,11 +1043,13 @@ class TabManager {
 
     const isInternal = ['home', 'settings', 'changelog', 'credits', 'flags', 'privacy'].includes(route);
 
-    // Hide labs view when navigating away
-    const labsView = document.getElementById('flags-view');
-    if (labsView) labsView.style.display = 'none';
-    const privacyView = document.getElementById('privacy-view');
-    if (privacyView) privacyView.style.display = 'none';
+    if (window.isCriticalMode && !isInternal) {
+      const isGithub = route.includes('github.com');
+      if (!isGithub) {
+        if (window.toastManager) window.toastManager.show('🔒 Navigation Locked', 'You are currently in Critical Mode. Please update Leef Browser to resume normal browsing.', 6000);
+        return;
+      }
+    }
 
     const tabId = 'tab-' + this.tabCounter++;
     const tabEl = document.createElement('div');
@@ -1659,7 +1661,9 @@ class TabManager {
     tab.webviewEl.addEventListener('context-menu', (e) => {
       e.preventDefault();
       try {
-        window.require('electron').ipcRenderer.send('show-context-menu', e.params);
+        const params = e.params || {};
+        params.webContentsId = tab.webviewEl.getWebContentsId();
+        window.require('electron').ipcRenderer.send('show-context-menu', params);
       } catch (err) { }
     });
 
@@ -1675,6 +1679,10 @@ class TabManager {
   }
 
   navigateToUrl(rawInput) {
+    if (window.isCriticalMode) {
+      if (window.toastManager) window.toastManager.show('🔒 Navigation Locked', 'You are currently in Critical Mode. Please update Leef Browser to resume normal browsing.', 6000);
+      return;
+    }
     if (!rawInput || !rawInput.trim()) return; // guard empty input
 
     // Hide address bar suggestions and remove focus when navigating
@@ -1785,10 +1793,19 @@ class TabManager {
   }
 
   switchTab(tabId) {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab) return;
+
+    if (window.isCriticalMode) {
+      const isGithub = tab.url && tab.url.includes('github.com');
+      if (!tab.isInternal && !isGithub) {
+        if (window.toastManager) window.toastManager.show('🔒 Navigation Locked', 'This tab is locked in Critical Mode.', 3000);
+        return;
+      }
+    }
+
     const prevTabId = this.activeTabId;
     this.activeTabId = tabId;
-    const tab = this.getActiveTab();
-    if (!tab) return;
 
     // Wake up from hibernation (Labs)
     if (tab.isHibernated && tab.hibernateUrl) {
@@ -3151,7 +3168,80 @@ class HeroManager {
 class EmergencyAnnouncer {
   constructor() {
     this.announcementUrl = 'https://gist.githubusercontent.com/Zexerif/f2481fb446ae22d2e21cfc266a8d24c4/raw/gistfile1.txt';
+    try {
+      this.appRepo = window.require('electron').ipcRenderer.sendSync('get-repo-slug') || 'git-QTech/leef';
+    } catch (e) {
+      this.appRepo = 'git-QTech/leef';
+    }
+
     setTimeout(() => this.check(), 5000);
+
+    // Show warning when navigation is blocked in critical mode
+    window.require('electron').ipcRenderer.on('critical-mode-blocked-nav', () => {
+      if (window.toastManager) {
+        window.toastManager.show('🔒 Navigation Locked', 'You are currently in Critical Mode. Please update Leef Browser to resume normal browsing.', 6000);
+      }
+    });
+  }
+
+  isVersionMatch(target, current) {
+    if (!target || target === 'all') return true;
+
+    // Support multiple targets (comma separated)
+    if (target.includes(',')) {
+      return target.split(',').map(s => s.trim()).some(t => this.isVersionMatch(t, current));
+    }
+
+    // Support ranges (hyphen separated)
+    if (target.includes(' - ')) {
+      const parts = target.split(' - ').map(s => s.trim());
+      if (parts.length === 2) {
+        return this.isVersionMatch(`>=${parts[0]}`, current) && this.isVersionMatch(`<=${parts[1]}`, current);
+      }
+    }
+
+    if (target === current) return true;
+
+    let op = null;
+    let ver = target;
+
+    if (target.endsWith('>')) {
+      op = '<';
+      ver = target.slice(0, -1);
+    } else if (target.endsWith('<')) {
+      op = '>';
+      ver = target.slice(0, -1);
+    } else {
+      const operators = ['>=', '<=', '>', '<'];
+      for (const o of operators) {
+        if (target.startsWith(o)) {
+          op = o;
+          ver = target.substring(o.length);
+          break;
+        }
+      }
+    }
+
+    if (!op) return false;
+
+    const parts1 = current.split('.').map(Number);
+    const parts2 = ver.trim().split('.').map(Number);
+    const maxLen = Math.max(parts1.length, parts2.length);
+
+    let result = 0;
+    for (let i = 0; i < maxLen; i++) {
+      const n1 = parts1[i] || 0;
+      const n2 = parts2[i] || 0;
+      if (n1 > n2) { result = 1; break; }
+      if (n1 < n2) { result = -1; break; }
+    }
+
+    if (op === '>') return result === 1;
+    if (op === '<') return result === -1;
+    if (op === '>=') return result >= 0;
+    if (op === '<=') return result <= 0;
+
+    return false;
   }
 
   async check() {
@@ -3161,49 +3251,114 @@ class EmergencyAnnouncer {
       if (!res.ok) return;
       const data = await res.json();
 
-      if (!data.active) return;
-
+      // Support both single object (legacy) and array of announcements
+      const announcements = Array.isArray(data) ? data : [data];
       const currentVersion = window.require('electron').ipcRenderer.sendSync('get-app-version') || '0.0.0';
-      if (data.targetVersion && data.targetVersion !== 'all' && data.targetVersion !== currentVersion) return;
 
-      const modal = document.getElementById('emergency-modal');
-      const titleEl = document.getElementById('emergency-title');
-      const msgEl = document.getElementById('emergency-msg');
-      const actionsEl = document.getElementById('emergency-actions');
+      for (const item of announcements) {
+        if (!item.active) continue;
 
-      if (modal && titleEl && msgEl && actionsEl) {
-        titleEl.textContent = data.title || 'Announcement';
-        msgEl.textContent = data.message || '';
-        actionsEl.innerHTML = ''; // Clear previous buttons
-
-        if (data.buttons && Array.isArray(data.buttons)) {
-          data.buttons.forEach((btn, index) => {
-            const button = document.createElement('button');
-            button.className = index === 0 ? 'hub-modal-btn hub-modal-confirm' : 'hub-modal-btn hub-modal-cancel';
-            button.style.flex = '1';
-            button.textContent = btn.text;
-            button.onclick = () => {
-              if (btn.action === 'url' && btn.value) {
-                if (window.tabManager) window.tabManager.createTab(btn.value);
-              }
-              modal.style.display = 'none';
-            };
-            actionsEl.appendChild(button);
-          });
-        } else {
-          // Default close button if none provided
-          const closeBtn = document.createElement('button');
-          closeBtn.className = 'hub-modal-btn hub-modal-confirm';
-          closeBtn.style.flex = '1';
-          closeBtn.textContent = 'Dismiss';
-          closeBtn.onclick = () => { modal.style.display = 'none'; };
-          actionsEl.appendChild(closeBtn);
+        // Repository Filtering (Fork Protection)
+        const targetRepo = item.repo || 'git-QTech/leef';
+        if (targetRepo !== this.appRepo) {
+          console.log(`Leef: Ignoring announcement for repository ${targetRepo}`);
+          continue;
         }
 
-        modal.style.display = 'flex';
+        // 24h Dismissal Check
+        const dismissUntil = parseInt(localStorage.getItem('leef_emergency_dismiss_until') || '0');
+        const lastTitle = localStorage.getItem('leef_emergency_last_title') || '';
+        if (Date.now() < dismissUntil && lastTitle === item.title) continue;
+
+        // Version Targeting
+        if (!this.isVersionMatch(item.targetVersion, currentVersion)) continue;
+
+        // Match found! Show the modal and stop searching.
+        this.showModal(item);
+        break;
       }
     } catch (e) {
       console.warn("EmergencyAnnouncer failed to check for updates:", e);
+    }
+  }
+
+  showModal(data) {
+    const modal = document.getElementById('emergency-modal');
+    const titleEl = document.getElementById('emergency-title');
+    const msgEl = document.getElementById('emergency-msg');
+    const actionsEl = document.getElementById('emergency-actions');
+
+    if (modal && titleEl && msgEl && actionsEl) {
+      titleEl.textContent = data.title || 'Announcement';
+      msgEl.textContent = data.message || '';
+      actionsEl.innerHTML = ''; // Clear previous buttons
+
+      const isCritical = data.buttons && data.buttons.some(b => b.action === 'exit');
+      if (isCritical) {
+        window.isCriticalMode = true;
+        window.require('electron').ipcRenderer.send('set-critical-mode', true);
+
+        // Force close all non-essential tabs immediately
+        if (window.tabManager) {
+          const tabsToClose = window.tabManager.tabs.filter(t => {
+            const isGithub = t.url && t.url.includes('github.com');
+            return !t.isInternal && !isGithub;
+          });
+          tabsToClose.forEach(t => window.tabManager.closeTab(t.id));
+
+          // If no tabs left, open home
+          if (window.tabManager.tabs.length === 0) {
+            window.tabManager.createTab('home');
+          }
+        }
+      }
+
+      if (data.buttons && Array.isArray(data.buttons)) {
+        data.buttons.forEach((btn, index) => {
+          const button = document.createElement('button');
+          button.className = index === 0 ? 'hub-modal-btn hub-modal-confirm' : 'hub-modal-btn hub-modal-cancel';
+          button.style.flex = '1';
+          button.textContent = btn.text;
+          button.onclick = () => {
+            if (btn.action === 'url' && btn.value) {
+              if (window.tabManager) window.tabManager.createTab(btn.value);
+              modal.style.display = 'none';
+            } else if (btn.action === 'exit') {
+              window.require('electron').ipcRenderer.send('exit-app');
+            } else if (btn.action === 'dismiss_24h') {
+              if (isCritical) return;
+              localStorage.setItem('leef_emergency_dismiss_until', Date.now() + 86400000);
+              localStorage.setItem('leef_emergency_last_title', data.title || '');
+              modal.style.display = 'none';
+            } else if (btn.action === 'dismiss') {
+              if (isCritical) return;
+              modal.style.display = 'none';
+            }
+          };
+          actionsEl.appendChild(button);
+        });
+      }
+
+      modal.style.display = 'flex';
+
+      // Critical Mode UI Lock
+      if (isCritical) {
+        window.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }, { capture: true });
+
+        window.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }, { capture: true });
+
+        modal.onclick = (e) => {
+          e.stopPropagation();
+        };
+      }
     }
   }
 }
