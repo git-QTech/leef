@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, ipcMain, Menu, MenuItem, clipboard, nativeImage, shell, webContents } from 'electron';
+import { app, BrowserWindow, session, ipcMain, Menu, MenuItem, clipboard, nativeImage, shell, webContents, screen } from 'electron';
 // webContents is explicitly imported for fromId lookups (v0.5.0)
 
 import updater from 'electron-updater';
@@ -23,9 +23,14 @@ if (process.platform === 'win32') {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Targeted fix for "grayness" / color-shift on Windows HDR displays.
-// Forces sRGB color profile globally.
-app.commandLine.appendSwitch('force-color-profile', 'srgb');
+// Fix for washed out colors on Windows/HDR (v0.1.3+)
+// D3D9 is a "Goldilocks" fix: it avoids washed-out colors but handles fullscreen better than OpenGL.
+// Surgical fix for the "alpha bug" fullscreen border (v0.6.0)
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('use-angle', 'd3d9');
+  app.commandLine.appendSwitch('disable-features', 'MediaFoundationVideoDecoder,DirectCompositionVideoOverlays');
+  app.commandLine.appendSwitch('force-color-profile', 'srgb');
+}
 
 const isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
 console.log('Leef Browser: isDev =', isDev, '| app.isPackaged =', app.isPackaged);
@@ -272,7 +277,7 @@ async function generateDiagnosticLog(error = 'None') {
     `user credentials, and browsing history are NOT stored.`,
     `All local system paths have been anonymized.`,
     `----------------------------------------------------`,
-    `App Version: ${app.isPackaged ? app.getVersion() : '0.5.1'}`,
+    `App Version: ${app.isPackaged ? app.getVersion() : '0.6.1'}`,
 
 
     `Electron Version: ${process.versions.electron}`,
@@ -341,16 +346,16 @@ function createWindow() {
         }
 
         // Allow GitHub and all its subdomains/asset servers
-        const isGithub = hostname === 'github.com' || 
-                         hostname.endsWith('.github.com') || 
-                         hostname.endsWith('.githubusercontent.com') || 
-                         hostname.endsWith('.githubassets.com') ||
-                         hostname.endsWith('.github.io');
+        const isGithub = hostname === 'github.com' ||
+          hostname.endsWith('.github.com') ||
+          hostname.endsWith('.githubusercontent.com') ||
+          hostname.endsWith('.githubassets.com') ||
+          hostname.endsWith('.github.io');
 
         if (isGithub) {
           return callback({ cancel: false });
         }
-        
+
         // Block everything else
         console.warn('Leef Browser: Hard-blocked request in Critical Mode:', details.url);
         return callback({ cancel: true });
@@ -384,6 +389,7 @@ function createWindow() {
       color: '#5aef7e', // matches --topbar-bg in style.css exactly
       symbolColor: '#000000'
     },
+    backgroundColor: '#000000', // Fixes "see-through" gaps in fullscreen (v0.6.0)
     icon: path.join(__dirname, 'images/icon.png')
   });
 
@@ -414,13 +420,40 @@ function createWindow() {
   // Handle fullscreen requests from webviews (e.g. YouTube fullscreen button)
   // Using webContents events directly is the most reliable approach
   mainWindow.webContents.on('enter-html-full-screen', () => {
+    wasMaximized = mainWindow.isMaximized();
+    try {
+      normalBounds = mainWindow.getNormalBounds();
+    } catch (e) {
+      normalBounds = mainWindow.getBounds();
+    }
+
+    if (process.platform === 'win32') {
+      mainWindow.setMenuBarVisibility(false);
+      // Kill the "alpha bug" see-through borders by disabling resizing (v0.6.0)
+      mainWindow.setResizable(false);
+    }
     mainWindow.setFullScreen(true);
   });
   mainWindow.webContents.on('leave-html-full-screen', () => {
     mainWindow.setFullScreen(false);
+    if (process.platform === 'win32') {
+      mainWindow.setMenuBarVisibility(true);
+      mainWindow.setResizable(true);
+
+      if (wasMaximized) {
+        mainWindow.maximize();
+      } else if (normalBounds) {
+        mainWindow.setBounds(normalBounds);
+      }
+      // Clean up to prevent memory "ghosting" (v0.6.0)
+      normalBounds = null;
+      wasMaximized = false;
+    }
   });
 
   // mainWindow.webContents.openDevTools();
+  let wasMaximized = false;
+  let normalBounds = null;
 
   // Block DevTools in Critical Mode
   mainWindow.webContents.on('devtools-opened', () => {
@@ -555,24 +588,43 @@ ipcMain.on('apply-settings', async (event, settings) => {
   sess.setUserAgent(ua, acceptLang);
 
   // Initialize Ghostery if Comprehensive mode is selected
-  // We no longer 'await' this so that the browser can finish applying other settings 
-  // and become interactive while the adblocker engine loads in the background.
   if (settings.adBlockerMode === 'comprehensive') {
-    initAdBlocker(true).catch(err => console.error('Background AdBlocker init failed:', err));
+    await initAdBlocker(true).catch(err => console.error('Background AdBlocker init failed:', err));
   } else {
-    initAdBlocker(false).catch(err => console.error('Background AdBlocker disable failed:', err));
+    await initAdBlocker(false).catch(err => console.error('Background AdBlocker disable failed:', err));
   }
 
-  // Ad Blocking:
-  // - Comprehensive mode: Ghostery owns onBeforeRequest via enableBlockingInSession. Don't touch it.
-  // - Basic mode: Install our own domain-based handler.
+  // Unified onBeforeRequest Handler (v0.6.1)
+  // Consolidates Ad-Blocking, Tracking Protection, and Critical Mode security.
   const blockList = settings.tracking === 'strict' ? AD_DOMAINS_STRICT : AD_DOMAINS_STANDARD;
 
-
   if (!adblockerEnabled) {
-    // Only set our own handler if Ghostery isn't running
+    // Only set our own handler if Ghostery isn't running to avoid conflict.
     sess.webRequest.onBeforeRequest(null);
     sess.webRequest.onBeforeRequest((details, callback) => {
+      // 1. Handle Critical Mode Security First
+      if (isCriticalMode) {
+        try {
+          const url = new URL(details.url);
+          const hostname = url.hostname.toLowerCase();
+          const protocol = url.protocol.toLowerCase();
+
+          if (protocol !== 'file:' && protocol !== 'data:' && protocol !== 'blob:') {
+            const isGithub = hostname === 'github.com' ||
+              hostname.endsWith('.github.com') ||
+              hostname.endsWith('.githubusercontent.com') ||
+              hostname.endsWith('.githubassets.com') ||
+              hostname.endsWith('.github.io');
+
+            if (!isGithub) {
+              console.warn('Leef Browser: Blocked in Critical Mode:', details.url);
+              return callback({ cancel: true });
+            }
+          }
+        } catch (e) { }
+      }
+
+      // 2. Handle Basic Ad-Blocking and Strict Tracking
       const url = details.url;
       if (settings.adBlockerMode === 'basic' || settings.tracking === 'strict') {
         try {
@@ -580,9 +632,9 @@ ipcMain.on('apply-settings', async (event, settings) => {
           if (blockList.some(domain => host.includes(domain))) {
             return callback({ cancel: true });
           }
-
         } catch (e) { }
       }
+
       callback({ cancel: false });
     });
   }
@@ -689,6 +741,22 @@ ipcMain.on('apply-settings', async (event, settings) => {
     sess.setProxy({ proxyRules: settings.proxyUrl });
   } else {
     sess.setProxy({ proxyRules: 'direct://' });
+  }
+
+  // DNS over HTTPS (DoH) using Cloudflare (1.1.1.1)
+  try {
+    if (settings.dohToggle) {
+      app.configureHostResolver({
+        secureDnsMode: 'secure',
+        secureDnsServers: [ 'https://cloudflare-dns.com/dns-query' ]
+      });
+    } else {
+      app.configureHostResolver({
+        secureDnsMode: 'automatic'
+      });
+    }
+  } catch (e) {
+    console.error('Failed to configure Host Resolver for DoH:', e);
   }
 });
 
@@ -1053,15 +1121,28 @@ ipcMain.on('clear-site-data', async (event, domain) => {
   if (!domain) return;
   const sess = session.fromPartition('persist:leef-session');
   try {
-    const cookies = await sess.cookies.get({ domain });
+    const baseDomain = domain.startsWith('www.') ? domain.slice(4) : domain;
+    
+    // Clear modern storage data (LocalStorage, IndexedDB, Cache, ServiceWorkers, etc)
+    await sess.clearStorageData({ origin: 'https://' + domain });
+    await sess.clearStorageData({ origin: 'http://' + domain });
+    if (baseDomain !== domain) {
+      await sess.clearStorageData({ origin: 'https://' + baseDomain });
+      await sess.clearStorageData({ origin: 'http://' + baseDomain });
+    }
+
+    // Force clear all cookies that match the base domain (catches .domain.com subdomains)
+    const cookies = await sess.cookies.get({ domain: baseDomain });
     for (const cookie of cookies) {
       let url = (cookie.secure ? 'https://' : 'http://') + cookie.domain + cookie.path;
-      // Strip leading dot from domain for the URL if present
       url = url.replace(/:\/\/\./, '://');
       await sess.cookies.remove(url, cookie.name);
     }
+    
+    // Flush the cookie store to disk to ensure immediate deletion
+    await sess.cookies.flushStore();
   } catch (e) {
-    console.error('Failed to clear site cookies:', e);
+    console.error('Failed to clear site data:', e);
   }
 });
 

@@ -3,7 +3,7 @@
  * Renderer Process Core Architecture
  */
 
-let APP_VERSION = '0.5.1'; // Fallback
+let APP_VERSION = '0.6.1'; // Fallback
 
 async function initVersion() {
   try {
@@ -32,15 +32,8 @@ class BrowserUtils {
       return str;
     }
 
-    // Robust AI Overview Blocking for Google
-    if (blockAI && engineBaseUrl.includes('google.com/search')) {
-      const noaiRegex = /(^|\s)-noai(\s|$)/i;
-      if (!noaiRegex.test(str)) {
-        str = str.trim() + ' -noai';
-      }
-    }
-
-    return engineBaseUrl + encodeURIComponent(str);
+    let url = engineBaseUrl + encodeURIComponent(str);
+    return url;
   }
 
   // Sanitize untrusted strings before inserting into the DOM
@@ -97,7 +90,7 @@ class SettingsManager {
       blockAIOverview: true,
       autoCheckUpdates: true,
       customUa: '',
-      dohToggle: false,
+      dohToggle: true,
       proxyUrl: '',
       liveAutocomplete: false,
       enableVolumeBoost: false,
@@ -291,9 +284,18 @@ class SettingsManager {
     if (btnCheck) {
       btnCheck.addEventListener('click', () => {
         try {
-          window.require('electron').ipcRenderer.send('manual-update-check');
-          btnCheck.textContent = 'Checking...';
-          btnCheck.disabled = true;
+          const action = btnCheck.dataset.action;
+          if (action === 'download') {
+            window.require('electron').ipcRenderer.send('start-download');
+            btnCheck.textContent = 'Starting Download...';
+            btnCheck.disabled = true;
+          } else if (action === 'restart') {
+            window.require('electron').ipcRenderer.send('restart-to-update');
+          } else {
+            window.require('electron').ipcRenderer.send('manual-update-check');
+            btnCheck.textContent = 'Checking...';
+            btnCheck.disabled = true;
+          }
         } catch (e) { }
       });
     }
@@ -366,6 +368,9 @@ class SettingsManager {
       if (btn) {
         btn.textContent = 'Check for Updates Now';
         btn.disabled = false;
+        delete btn.dataset.action;
+        btn.style.background = '';
+        btn.style.color = '';
       }
 
       if (data === 'none') {
@@ -380,6 +385,13 @@ class SettingsManager {
         if (badge) {
           badge.textContent = '[UPDATE AVAILABLE]';
           badge.className = 'status-badge syncing';
+        }
+
+        if (btn) {
+          btn.textContent = `Download & Install ${displayVersion}`;
+          btn.dataset.action = 'download';
+          btn.style.background = 'var(--primary-color)';
+          btn.style.color = 'white';
         }
 
         if (window.toastManager) {
@@ -406,13 +418,19 @@ class SettingsManager {
 
     ipc.on('update-download-progress', (event, progress) => {
       const badge = document.getElementById('update-status-badge');
+      const btn = document.getElementById('btn-check-updates');
       if (badge) {
         badge.textContent = `[DOWNLOADING ${Math.floor(progress.percent)}%]`;
+      }
+      if (btn) {
+        btn.textContent = `Downloading (${Math.floor(progress.percent)}%)...`;
+        btn.disabled = true;
       }
     });
 
     ipc.on('update-downloaded', (event, info) => {
       const badge = document.getElementById('update-status-badge');
+      const btn = document.getElementById('btn-check-updates');
       const toastAction = document.getElementById('leef-toast-action');
       const primaryBtn = document.getElementById('btn-toast-primary');
       const secondaryBtn = document.getElementById('btn-toast-secondary');
@@ -420,6 +438,14 @@ class SettingsManager {
       if (badge) {
         badge.textContent = '[RESTART READY]';
         badge.className = 'status-badge active';
+      }
+
+      if (btn) {
+        btn.textContent = 'Restart & Apply Update';
+        btn.dataset.action = 'restart';
+        btn.disabled = false;
+        btn.style.background = '#17b340';
+        btn.style.color = 'white';
       }
 
       if (window.toastManager) {
@@ -887,16 +913,17 @@ class NewsService {
       };
 
       https.get(rssUrl, options, (res) => {
-        let data = '';
+        const chunks = [];
         let dataSize = 0;
         const MAX_BYTES = 512 * 1024;
         res.on('data', chunk => {
           dataSize += chunk.length;
-          if (dataSize < MAX_BYTES) data += chunk;
+          if (dataSize < MAX_BYTES) chunks.push(chunk);
         });
         res.on('end', () => {
           this.isLoading = false;
           try {
+            const data = Buffer.concat(chunks).toString('utf8');
             const xml = new DOMParser().parseFromString(data, 'text/xml');
             const rawItems = xml.querySelectorAll('item');
             this.allItems = [];
@@ -1306,9 +1333,11 @@ class TabManager {
       if (e.isMainFrame) {
         tab.title = 'Loading...';
         tab.url = e.url; // Update URL identity immediately to prevent state leaks
-        tab.isInternal = e.url.startsWith('leef:') || e.url.startsWith('file:') || e.url.startsWith('chrome:');
+        tab.isInternal = e.url.startsWith('leef:') || (e.url.startsWith('file:') && !e.url.includes('offline.html')) || e.url.startsWith('chrome:');
         tab.gpcVerified = undefined; // CLEAR verification state for the new domain
         tab.gpcVerifiedTime = null;
+        tab.gpcManuallyVerified = false; // CLEAR manual whitelisting state for the new domain
+        tab.gpcAlertCollapsed = false; // CLEAR collapsed state
         this.updateTabUI(tab);
         if (window.siteIdentityManager && window.siteIdentityManager.dropdown && window.siteIdentityManager.dropdown.style.display !== 'none') {
           window.siteIdentityManager.updateUI();
@@ -1316,6 +1345,30 @@ class TabManager {
         if (window.privacyManager) {
           window.privacyManager.recordRequest(e.url.startsWith('https:'));
         }
+      }
+    });
+
+    tab.webviewEl.addEventListener('did-navigate', (e) => {
+      const s = this.settings.currentSettings;
+      const tabUrl = e.url || '';
+      const isGoogle = tabUrl.includes('google.com') || tabUrl.includes('google.co.');
+      if (s.blockAIOverview && isGoogle) {
+        const aiCSS = `
+          [data-attnms],
+          .Kevs9.SLPe5b:has([data-attnms]),
+          div[data-attrid="AIOverview"],
+          [data-attrid="VisualDigestGeneratedDescription"],
+          [jsname="YrZdPb"][data-evn],
+          [jscontroller="Elkdbc"],
+          .oGdvd {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+          }
+        `;
+        tab.webviewEl.insertCSS(aiCSS).catch(() => { });
       }
     });
 
@@ -1331,7 +1384,7 @@ class TabManager {
     tab.webviewEl.addEventListener('dom-ready', () => {
       tab.title = tab.webviewEl.getTitle() || tab.url;
       tab.url = tab.webviewEl.getURL();
-      tab.isInternal = tab.url.startsWith('leef:') || tab.url.startsWith('file:') || tab.url.startsWith('chrome:');
+      tab.isInternal = tab.url.startsWith('leef:') || (tab.url.startsWith('file:') && !tab.url.includes('offline.html')) || tab.url.startsWith('chrome:');
       tab.canGoBack = tab.webviewEl.canGoBack();
       tab.canGoForward = tab.webviewEl.canGoForward();
       if (typeof tab.webviewEl.setZoomFactor === 'function') {
@@ -1344,9 +1397,29 @@ class TabManager {
       const s = this.settings.currentSettings;
       const labs = window.labsManager;
       const tabUrl = tab.url || '';
-      const isGoogle = tabUrl.includes('google.com');
+      const isGoogle = tabUrl.includes('google.com') || tabUrl.includes('google.co.');
       const isYouTube = tabUrl.includes('youtube.com');
       const isWarpEnabled = !!(labs && labs.isFlagEnabled('yt_warp_speed'));
+
+      // Apply robust CSS injection to Google Search via webview.insertCSS (immune to guest CSP)
+      if (s.blockAIOverview && isGoogle) {
+        const aiCSS = `
+          [data-attnms],
+          .Kevs9.SLPe5b:has([data-attnms]),
+          div[data-attrid="AIOverview"],
+          [data-attrid="VisualDigestGeneratedDescription"],
+          [jsname="YrZdPb"][data-evn],
+          [jscontroller="Elkdbc"],
+          .oGdvd {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+          }
+        `;
+        tab.webviewEl.insertCSS(aiCSS).catch(() => { });
+      }
 
       // Build the injection payload conditionally
       const chunks = [];
@@ -1381,7 +1454,36 @@ class TabManager {
           (function() {
             if (window.__leefAIHooked) return;
             window.__leefAIHooked = true;
-            const NOAI_TAG = ' -noai';
+
+            // 1. Text-based & selector-based fallback hiding function (attached to window)
+            window.blockAIBox = () => {
+              const selectors = [
+                '[data-attnms]', '.Kevs9.SLPe5b:has([data-attnms])', 'div[data-attrid="AIOverview"]', 
+                '[data-attrid="VisualDigestGeneratedDescription"]', '[jsname="YrZdPb"][data-evn]', 
+                '[jscontroller="Elkdbc"]', '.oGdvd'
+              ];
+              selectors.forEach(sel => {
+                document.querySelectorAll(sel).forEach(el => {
+                  el.style.setProperty('display', 'none', 'important');
+                  el.style.setProperty('visibility', 'hidden', 'important');
+                  el.style.setProperty('height', '0', 'important');
+                });
+              });
+
+              // Search for header text containing exactly "AI Overview" or "Generative AI"
+              document.querySelectorAll('h1, h2, h3, h4, h5, h6, span, div[role="heading"]').forEach(el => {
+                const text = el.textContent.trim().toLowerCase();
+                if (text === 'ai overview' || text === 'generative ai' || text === 'experimental ai') {
+                  const container = el.closest('[data-attnms], div[data-attrid="AIOverview"], [jsname="YrZdPb"][data-evn]');
+                  if (container) {
+                    container.style.setProperty('display', 'none', 'important');
+                    container.style.setProperty('visibility', 'hidden', 'important');
+                    container.style.setProperty('height', '0', 'important');
+                  }
+                }
+              });
+            };
+
             const NOAI_REGEX = /( ?)-noai/gi;
             const hookInput = (input) => {
               if (input.dataset.leefHooked) return;
@@ -1395,26 +1497,34 @@ class TabManager {
               const initial = descriptor.get.call(input);
               if (initial) descriptor.set.call(input, initial.replace(NOAI_REGEX, ''));
             };
+
             const interceptSearch = (query) => {
               if (!query) return;
-              window.location.href = '/search?q=' + encodeURIComponent(query.replace(NOAI_REGEX, '').trim() + NOAI_TAG);
+              const cleanQuery = query.replace(NOAI_REGEX, '').trim();
+              window.location.href = '/search?q=' + encodeURIComponent(cleanQuery);
             };
+
             document.addEventListener('submit', (e) => {
               const q = e.target.querySelector('input[name="q"], textarea[name="q"]');
               if (q) { e.preventDefault(); e.stopPropagation(); interceptSearch(q.value); }
             }, true);
+
             document.addEventListener('keydown', (e) => {
               if (e.key === 'Enter' && e.target.name === 'q') { e.preventDefault(); e.stopPropagation(); interceptSearch(e.target.value); }
             }, true);
+
             let aiTimer;
             const observer = new MutationObserver(() => {
               clearTimeout(aiTimer);
               aiTimer = setTimeout(() => {
                 document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
-              }, 300);
+                window.blockAIBox();
+              }, 100);
             });
             observer.observe(document.body, { childList: true, subtree: true });
+
             document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
+            window.blockAIBox();
           })();
         `);
       }
@@ -1607,6 +1717,40 @@ class TabManager {
           }
         });
       }
+
+      // Google SPA AI Blocker hook
+      if (isGoogle && s.blockAIOverview && !tab._googleNavHooked) {
+        tab._googleNavHooked = true;
+        tab.webviewEl.addEventListener('did-navigate-in-page', (e) => {
+          if (!e.isMainFrame) return;
+          if (tab.webviewEl.getURL().includes('google.')) {
+            // 1. Re-apply elevated CSS injection
+            const aiCSS = `
+              [data-attnms],
+              .Kevs9.SLPe5b:has([data-attnms]),
+              div[data-attrid="AIOverview"],
+              [data-attrid="VisualDigestGeneratedDescription"],
+              [jsname="YrZdPb"][data-evn],
+              [jscontroller="Elkdbc"],
+              .oGdvd {
+                display: none !important;
+                visibility: hidden !important;
+                height: 0 !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+              }
+            `;
+            tab.webviewEl.insertCSS(aiCSS).catch(() => { });
+
+            // 2. Re-trigger dynamic JS blocker
+            tab.webviewEl.executeJavaScript(`
+              if (window.blockAIBox && typeof window.blockAIBox === 'function') {
+                window.blockAIBox();
+              }
+            `).catch(() => { });
+          }
+        });
+      }
     });
 
     // Audio status monitoring
@@ -1614,7 +1758,7 @@ class TabManager {
     tab.webviewEl.addEventListener('media-started-playing', () => { tab.isAudioPlaying = true; this.updateTabUI(tab); });
 
     // Offline Error Handling (v0.2.1) + Wayback Machine Suggest (Labs)
-    tab.webviewEl.addEventListener('did-fail-load', (e) => {
+    const handleNavigationFailure = (e) => {
       // Ignore code -3 (ABORTED) which happens on normal navigation/refresh
       if (e.errorCode === -3) return;
 
@@ -1653,9 +1797,27 @@ class TabManager {
         const path = window.require('path');
         const offlineFile = path.join(window.require('electron').remote ? window.require('electron').remote.app.getAppPath() : __dirname, 'offline.html');
         const offlinePath = `file:///${offlineFile.replace(/\\/g, '/')}?url=${encodeURIComponent(e.validatedURL)}&code=${e.errorCode}&desc=${encodeURIComponent(e.errorDescription)}`;
-        tab.webviewEl.loadURL(offlinePath);
+
+        // Defer the redirection slightly to let Chromium completely clean up the failed provisional load state in the event loop.
+        // Also load about:blank first to guarantee a clean slate and avoid same-document query navigation bugs.
+        try {
+          tab.webviewEl.loadURL('about:blank');
+        } catch (err) {
+          tab.webviewEl.src = 'about:blank';
+        }
+
+        setTimeout(() => {
+          try {
+            tab.webviewEl.loadURL(offlinePath);
+          } catch (err) {
+            tab.webviewEl.src = offlinePath;
+          }
+        }, 50);
       }
-    });
+    };
+
+    tab.webviewEl.addEventListener('did-fail-load', handleNavigationFailure);
+    tab.webviewEl.addEventListener('did-fail-provisional-load', handleNavigationFailure);
 
     // Right-Click Context Menu for Webviews
     tab.webviewEl.addEventListener('context-menu', (e) => {
@@ -1702,7 +1864,15 @@ class TabManager {
 
     tab.isInternal = false;
     tab.url = fullUrl;
-    tab.webviewEl.src = fullUrl;
+    if (typeof tab.webviewEl.loadURL === 'function') {
+      try {
+        tab.webviewEl.loadURL(fullUrl);
+      } catch (err) {
+        tab.webviewEl.src = fullUrl;
+      }
+    } else {
+      tab.webviewEl.src = fullUrl;
+    }
     this.switchTab(tab.id);
   }
 
@@ -1740,10 +1910,16 @@ class TabManager {
 
         if (this.settings.currentSettings.blockAIOverview && displayUrl.includes('google.com/search')) {
           displayUrl = displayUrl.replace(/(\+|\%20)-noai/g, '');
+          displayUrl = displayUrl.replace(/([?&])udm=14(&?)/g, (match, p1, p2) => p2 ? p1 : '');
+          displayUrl = displayUrl.replace(/[?&]$/, '');
         }
         UI.inputs.address.value = displayUrl;
       }
       else UI.inputs.address.value = '';
+
+      if (window.siteIdentityManager) {
+        window.siteIdentityManager.updateUI();
+      }
     }
 
     // Favicon / Internal Icon
@@ -1811,7 +1987,15 @@ class TabManager {
     if (tab.isHibernated && tab.hibernateUrl) {
       console.log(`Leef Labs: Waking up tab ${tab.id}`);
       tab.isHibernated = false;
-      tab.webviewEl.src = tab.hibernateUrl;
+      if (typeof tab.webviewEl.loadURL === 'function') {
+        try {
+          tab.webviewEl.loadURL(tab.hibernateUrl);
+        } catch (err) {
+          tab.webviewEl.src = tab.hibernateUrl;
+        }
+      } else {
+        tab.webviewEl.src = tab.hibernateUrl;
+      }
       tab.hibernateUrl = null;
     }
 
@@ -2763,9 +2947,138 @@ class SiteIdentityManager {
     this.gpcTimerEl = document.getElementById('si-gpc-timer');
     this.gpcRowEl = document.getElementById('si-gpc-row');
     this.btnClearCookies = document.getElementById('btn-clear-site-cookies');
+    this.gpcAlertEl = document.getElementById('gpc-alert-indicator');
     this._gpcCache = new Map(); // domain -> { verified: bool, fetchedAt: ts }
 
+    // Remote GPC Non-Compliant Gist Configuration (v0.6.1)
+    const storedBlacklistUrl = localStorage.getItem('leef_gpc_blacklist_url') || 'https://gist.githubusercontent.com/Zexerif/cff8fb4f9cebc0bec205b2b2a37f73dc/raw/gistfile1.txt';
+    this.gpcGistUrl = this.cleanGistRawUrl(storedBlacklistUrl);
+    this.gpcBlacklist = this.loadGPCCache();
+    this.fetchGPCBlacklist();
+
+    // Remote GPC Manually Approved Whitelist Gist Configuration (v0.6.3)
+    const storedManualUrl = localStorage.getItem('leef_gpc_manual_approved_url') || 'https://gist.githubusercontent.com/Zexerif/b45362241d75f03e84900719470bc961/raw/manualapproval';
+    this.gpcManualApprovedUrl = this.cleanGistRawUrl(storedManualUrl);
+    this.gpcManualApproved = this.loadGPCManualCache();
+    this.fetchGPCManualApproved();
+
     this.bindEvents();
+  }
+
+  cleanGistRawUrl(url) {
+    if (!url) return url;
+    // Strip GitHub raw commit SHA to always track the latest version dynamically
+    return url.replace(/\/raw\/[a-f0-9]{40}\//i, '/raw/');
+  }
+
+  cacheGpcResult(domain, verified) {
+    if (this._gpcCache.size >= 1000) {
+      this._gpcCache.clear();
+      console.log('SiteIdentityManager: GPC domain cache cleared to prevent memory growth.');
+    }
+    this._gpcCache.set(domain, { verified, fetchedAt: Date.now() });
+  }
+
+  loadGPCCache() {
+    try {
+      const cached = localStorage.getItem('leef_gpc_blacklist');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(d => String(d).trim().toLowerCase());
+        }
+      }
+    } catch (e) {
+      console.error('Error loading GPC blacklist cache:', e);
+    }
+    return [];
+  }
+
+  async fetchGPCBlacklist() {
+    try {
+      // Append a cache-buster timestamp to bypass GitHub raw CDN caching and load the fresh Gist instantly
+      const freshUrl = this.gpcGistUrl + '?t=' + Date.now();
+      const res = await fetch(freshUrl, { method: 'GET', cache: 'no-store' });
+      if (res.ok) {
+        const text = await res.text();
+        let list = [];
+        try {
+          list = JSON.parse(text);
+        } catch (err) {
+          // Fallback: Robust regex extraction of quoted strings (immune to missing commas/JSON syntax errors)
+          const matches = [...text.matchAll(/"([^"]+)"/g)].map(m => m[1].trim());
+          if (matches.length > 0) {
+            list = matches;
+          } else {
+            list = text.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
+          }
+        }
+        if (Array.isArray(list)) {
+          this.gpcBlacklist = list.map(d => String(d).trim().toLowerCase());
+          localStorage.setItem('leef_gpc_blacklist', JSON.stringify(this.gpcBlacklist));
+          console.log('SiteIdentityManager: GPC blacklist successfully synced from remote Gist.');
+        }
+      }
+    } catch (e) {
+      console.log('SiteIdentityManager: Remote Gist offline or pending (using cached/fallback blacklist).');
+    }
+  }
+
+  loadGPCManualCache() {
+    try {
+      const cached = localStorage.getItem('leef_gpc_manual_approved');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(d => {
+            if (typeof d === 'string') {
+              const parts = d.split(',');
+              return { rule: parts[0].trim().toLowerCase(), reason: parseInt(parts[1]) || 0, caveat: parseInt(parts[2]) || 0 };
+            }
+            if (typeof d === 'object' && d !== null && d.rule) {
+              return { rule: String(d.rule).trim().toLowerCase(), reason: parseInt(d.reason) || 0, caveat: parseInt(d.caveat) || 0 };
+            }
+            return { rule: String(d).trim().toLowerCase(), reason: 0, caveat: 0 };
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Error loading GPC manual approved cache:', e);
+    }
+    return [];
+  }
+
+  async fetchGPCManualApproved() {
+    try {
+      const freshUrl = this.gpcManualApprovedUrl + '?t=' + Date.now();
+      const res = await fetch(freshUrl, { method: 'GET', cache: 'no-store' });
+      if (res.ok) {
+        const text = await res.text();
+        let list = [];
+        try {
+          list = JSON.parse(text);
+        } catch (err) {
+          // Fallback: Robust regex extraction of quoted strings (immune to missing commas/JSON syntax errors)
+          const matches = [...text.matchAll(/"([^"]+)"/g)].map(m => m[1].trim());
+          if (matches.length > 0) {
+            list = matches;
+          } else {
+            list = text.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('#'));
+          }
+        }
+        if (Array.isArray(list)) {
+          this.gpcManualApproved = list.map(d => {
+            const str = String(d).trim().toLowerCase();
+            const parts = str.split(',');
+            return { rule: parts[0].trim(), reason: parseInt(parts[1]) || 0, caveat: parseInt(parts[2]) || 0 };
+          });
+          localStorage.setItem('leef_gpc_manual_approved', JSON.stringify(this.gpcManualApproved));
+          console.log('SiteIdentityManager: GPC manually approved list successfully synced from remote Gist.');
+        }
+      }
+    } catch (e) {
+      console.log('SiteIdentityManager: Remote manual approved Gist offline or pending (using cached/fallback).');
+    }
   }
 
   bindEvents() {
@@ -2852,6 +3165,46 @@ class SiteIdentityManager {
         }
       });
     }
+
+    // Bind Click to GPC Badge for info modal (v0.6.2)
+    if (this.gpcStatusEl) {
+      this.gpcStatusEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tab = window.tabManager?.getActiveTab();
+        if (!tab) return;
+
+        // Close the Site Identity dropdown first
+        this.dropdown.style.display = 'none';
+        if (this._updateInterval) {
+          clearInterval(this._updateInterval);
+          this._updateInterval = null;
+        }
+
+        this.showGpcInfoModal(tab);
+      });
+    }
+
+    // Bind Click to GPC Alert Indicator in address bar (v0.6.2)
+    if (this.gpcAlertEl) {
+      this.gpcAlertEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tab = window.tabManager?.getActiveTab();
+        if (!tab) return;
+        this.showGpcInfoModal(tab);
+      });
+    }
+
+    // Bind Close for GPC Info Modal
+    const gpcInfoModal = document.getElementById('gpc-info-modal');
+    const gpcInfoClose = document.getElementById('gpc-info-close');
+    if (gpcInfoClose && gpcInfoModal) {
+      gpcInfoClose.addEventListener('click', () => {
+        gpcInfoModal.style.display = 'none';
+      });
+      gpcInfoModal.addEventListener('click', (e) => {
+        if (e.target === gpcInfoModal) gpcInfoModal.style.display = 'none';
+      });
+    }
   }
 
   updateUI() {
@@ -2908,10 +3261,17 @@ class SiteIdentityManager {
     const row = this.gpcRowEl;
     if (!el || !row) return;
 
+    if (tab) {
+      tab.gpcManuallyVerified = false;
+    }
+
+    // Hide the alert indicator by default
+    if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
+
     const gpcEnabled = window.settingsManager?.currentSettings?.gpc !== false;
     if (!gpcEnabled || !tab || tab.isInternal) {
       el.textContent = 'Disabled';
-      el.style.color = '#999';
+      el.className = 'gpc-badge gpc-disabled';
       if (timer) timer.textContent = '';
       if (row) row.style.opacity = '0.5';
       return;
@@ -2919,11 +3279,90 @@ class SiteIdentityManager {
 
     if (row) row.style.opacity = '1';
 
+    let domain;
+    try { domain = new URL(tab.url).hostname.toLowerCase(); } catch { return; }
+
+    // 0. Check for GPC Manually Approved/Verified Whitelist (v0.6.3)
+    let manualReason = 0;
+    let manualCaveat = 0;
+    const isManuallyApproved = (this.gpcManualApproved || []).some(entry => {
+      let rule = '';
+      let reason = 0;
+      let caveat = 0;
+      if (typeof entry === 'object' && entry !== null) {
+        rule = entry.rule;
+        reason = entry.reason;
+        caveat = entry.caveat;
+      } else {
+        rule = String(entry);
+      }
+
+      let matches = false;
+      if (rule.endsWith('.*')) {
+        const brand = rule.slice(0, -2);
+        const regex = new RegExp('(^|\\.)' + brand + '\\.[a-z]{2,}(\\.[a-z]{2})?$', 'i');
+        matches = regex.test(domain);
+      } else {
+        matches = domain === rule || domain.endsWith('.' + rule);
+      }
+
+      if (matches) {
+        manualReason = reason;
+        manualCaveat = caveat;
+      }
+      return matches;
+    });
+
+    if (isManuallyApproved) {
+      el.textContent = 'Manually Verified';
+      el.className = 'gpc-badge gpc-verified';
+      if (timer) timer.textContent = '(Approved)';
+      tab.gpcManuallyVerified = true;
+      tab.gpcManualReason = manualReason;
+      tab.gpcManualCaveat = manualCaveat;
+      tab.gpcVerified = true;
+      if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
+      return;
+    }
+
+    // 1. Check for Known Non-Compliant Domains (dynamically fetched from remote Gist, supporting wildcard .* domains)
+    const isNonCompliant = (this.gpcBlacklist || []).some(rule => {
+      if (rule.endsWith('.*')) {
+        const brand = rule.slice(0, -2); // Extract e.g. "amazon" from "amazon.*"
+        // Matches "brand.tld", "brand.co.uk", "subdomain.brand.tld"
+        const regex = new RegExp('(^|\\.)' + brand + '\\.[a-z]{2,}(\\.[a-z]{2})?$', 'i');
+        return regex.test(domain);
+      }
+      return domain === rule || domain.endsWith('.' + rule);
+    });
+    if (isNonCompliant) {
+      el.textContent = 'No GPC support';
+      el.className = 'gpc-badge gpc-unsupported';
+      if (timer) timer.textContent = '(Known)';
+      tab.gpcVerified = false;
+      if (this.gpcAlertEl) {
+        this.gpcAlertEl.style.display = 'flex';
+        if (!tab.gpcAlertCollapsed) {
+          this.gpcAlertEl.classList.remove('collapsed');
+          if (this._gpcCollapseTimeout) clearTimeout(this._gpcCollapseTimeout);
+          this._gpcCollapseTimeout = setTimeout(() => {
+            tab.gpcAlertCollapsed = true;
+            if (window.tabManager && window.tabManager.getActiveTab() === tab) {
+              if (this.gpcAlertEl) this.gpcAlertEl.classList.add('collapsed');
+            }
+          }, 3500);
+        } else {
+          this.gpcAlertEl.classList.add('collapsed');
+        }
+      }
+      return;
+    }
+
     // Already settled this navigation — update DOM unconditionally
     if (tab.gpcVerified !== undefined) {
       if (tab.gpcVerified) {
         el.textContent = 'Verified ✓';
-        el.style.color = '#4caf50';
+        el.className = 'gpc-badge gpc-verified';
         if (timer) {
           const diff = tab.gpcVerifiedTime
             ? (tab.gpcVerifiedTime - (tab.gpcStartTime || tab.gpcVerifiedTime)) / 1000
@@ -2933,7 +3372,7 @@ class SiteIdentityManager {
         return;
       } else {
         el.textContent = 'Unverified';
-        el.style.color = '#ff9800';
+        el.className = 'gpc-badge gpc-unverified';
         if (timer) timer.textContent = '(no response)';
         return;
       }
@@ -2941,12 +3380,10 @@ class SiteIdentityManager {
 
     // Show pending state while we look it up
     el.textContent = 'Sent';
-    el.style.color = '#888';
+    el.className = 'gpc-badge gpc-sent';
     if (timer) timer.textContent = '(checking...)';
 
     // Check /.well-known/gpc.json — the GPC spec's official compliance declaration
-    let domain;
-    try { domain = new URL(tab.url).hostname; } catch { return; }
 
     const cached = this._gpcCache.get(domain);
     if (cached) {
@@ -2970,7 +3407,7 @@ class SiteIdentityManager {
 
         const respected = json && json.gpc === true;
         const now = Date.now();
-        this._gpcCache.set(domain, { verified: respected, fetchedAt: now });
+        this.cacheGpcResult(domain, respected);
 
         if (respected) {
           tab.gpcVerified = true;
@@ -2986,7 +3423,7 @@ class SiteIdentityManager {
       }).catch(() => {
         if (tab.gpcVerified === undefined) {
           const now = Date.now();
-          this._gpcCache.set(domain, { verified: false, fetchedAt: now });
+          this.cacheGpcResult(domain, false);
           tab.gpcVerified = false;
           if (this.dropdown && this.dropdown.style.display !== 'none') {
             this.updateUI();
@@ -2994,6 +3431,254 @@ class SiteIdentityManager {
         }
       });
     }
+  }
+
+  showGpcInfoModal(tab) {
+    const modal = document.getElementById('gpc-info-modal');
+    const iconEl = document.getElementById('gpc-modal-icon');
+    const titleEl = document.getElementById('gpc-modal-title');
+    const subtitleEl = document.getElementById('gpc-modal-subtitle');
+    const detailEl = document.getElementById('gpc-modal-detail');
+
+    if (!modal || !iconEl || !titleEl || !subtitleEl || !detailEl) return;
+
+    const gpcEnabled = window.settingsManager?.currentSettings?.gpc !== false;
+
+    // Check if GPC is disabled globally
+    if (!gpcEnabled) {
+      iconEl.textContent = '⚪';
+      subtitleEl.textContent = 'GPC Signal Disabled';
+      subtitleEl.style.background = 'rgba(0, 0, 0, 0.05)';
+      subtitleEl.style.color = '#999';
+
+      detailEl.innerHTML = `
+        <p style="margin-bottom: 12px;">
+          <strong>Why is GPC disabled?</strong><br>
+          You have turned off the Global Privacy Control signal in your settings. Leef is not broadcasting your privacy preferences to websites.
+        </p>
+        <p style="margin-bottom: 0;">
+          <strong>How to enable it:</strong><br>
+          To automatically tell websites not to sell or share your data, go to the <strong>Privacy & Security</strong> settings page and turn on the <strong>Global Privacy Control (GPC)</strong> toggle.
+        </p>
+      `;
+      modal.style.display = 'flex';
+      return;
+    }
+
+    if (!tab || tab.isInternal) {
+      iconEl.textContent = 'ℹ️';
+      subtitleEl.textContent = 'Local Application Page';
+      subtitleEl.style.background = 'rgba(0, 0, 0, 0.05)';
+      subtitleEl.style.color = '#666';
+
+      detailEl.innerHTML = `
+        <p style="margin-bottom: 0;">
+          This is an internal browser page. Leef does not broadcast tracking or privacy signals on internal offline pages.
+        </p>
+      `;
+      modal.style.display = 'flex';
+      return;
+    }
+
+    let domain;
+    try { domain = new URL(tab.url).hostname.toLowerCase(); } catch { return; }
+
+    // Check if manually approved/verified (Gist-backed) (v0.6.3)
+    let manualReason = tab.gpcManualReason || 0;
+    let manualCaveat = tab.gpcManualCaveat || 0;
+    const isManuallyApproved = (this.gpcManualApproved || []).some(entry => {
+      let rule = '';
+      let reason = 0;
+      let caveat = 0;
+      if (typeof entry === 'object' && entry !== null) {
+        rule = entry.rule;
+        reason = entry.reason;
+        caveat = entry.caveat;
+      } else {
+        rule = String(entry);
+      }
+
+      let matches = false;
+      if (rule.endsWith('.*')) {
+        const brand = rule.slice(0, -2);
+        const regex = new RegExp('(^|\\.)' + brand + '\\.[a-z]{2,}(\\.[a-z]{2})?$', 'i');
+        matches = regex.test(domain);
+      } else {
+        matches = domain === rule || domain.endsWith('.' + rule);
+      }
+      if (matches && manualReason === 0) {
+        manualReason = reason;
+        manualCaveat = caveat;
+      }
+      return matches;
+    });
+
+    if (isManuallyApproved || tab.gpcManuallyVerified) {
+      iconEl.textContent = '🛡️';
+      subtitleEl.textContent = 'Manually Verified';
+      subtitleEl.style.background = 'rgba(33, 150, 243, 0.1)';
+      subtitleEl.style.color = '#2196f3';
+
+      let reasonHtml = `
+          This website was manually verified because of one of these reasons:
+          <ul style="margin: 8px 0 0 20px; padding: 0; list-style-type: disc;">
+            <li style="margin-bottom: 6px;">Its privacy policy states that they comply with GPC.</li>
+            <li style="margin-bottom: 6px;">They are known to comply with GPC but don't have a header installed.</li>
+            <li style="margin-bottom: 0;">It has been audited by Leef and is confirmed to comply with the GPC standards.</li>
+          </ul>
+      `;
+
+      if (manualReason === 1) {
+        reasonHtml = `<strong>Reason for Verification:</strong><br>This website's privacy policy states that it will respect GPC as an opt-out request.`;
+      } else if (manualReason === 2) {
+        reasonHtml = `<strong>Reason for Verification:</strong><br>This website has stated publicly, or in private correspondence with the Leef team or journalists, that it respects the GPC signal.`;
+      } else if (manualReason === 3) {
+        reasonHtml = `<strong>Reason for Verification:</strong><br>This website has been technically audited by Leef and is confirmed to comply with the GPC standards.`;
+      } else if (manualReason === 4) {
+        reasonHtml = `<strong>Reason for Verification:</strong><br>This website utilizes a known privacy-respecting framework that honors GPC globally.`;
+      } else if (manualReason === 5) {
+        reasonHtml = `<strong>Reason for Verification:</strong><br>This website is part of a verified network of privacy-first domains.`;
+      }
+
+      let caveatHtml = '';
+      if (manualCaveat === 1) {
+        caveatHtml = `<div style="margin-top: 12px; padding: 10px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; color: #e65100; font-size: 0.9em; border-radius: 0 4px 4px 0;">
+            <strong>Heads Up:</strong> Even though they have stated that they respect GPC signals, this website may still use your data internally for analytics, data retention, internal research, and more. Read the privacy policy of this site for more info.
+          </div>`;
+      } else if (manualCaveat === 2) {
+        let reasonSummary = "of their privacy policy";
+        if (manualReason === 2) reasonSummary = "of statements made to journalists or the Leef team";
+        if (manualReason === 3) reasonSummary = "it passed a technical audit";
+        if (manualReason === 4) reasonSummary = "of its privacy-respecting framework";
+        if (manualReason === 5) reasonSummary = "it is in a verified network";
+
+        caveatHtml = `<div style="margin-top: 12px; padding: 10px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; color: #e65100; font-size: 0.9em; border-radius: 0 4px 4px 0;">
+            <strong>Heads Up:</strong> This website technically has GPC compliance because ${reasonSummary}. However, there is no hard evidence that they strictly comply, or they may not legally have to comply depending on where the company is based.
+          </div>`;
+      } else if (manualCaveat === 3) {
+        caveatHtml = `<div style="margin-top: 12px; padding: 10px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; color: #e65100; font-size: 0.9em; border-radius: 0 4px 4px 0;">
+            <strong>Heads Up:</strong> This site says they support GPC, but some elements or sub-services on the site may not support it.
+          </div>`;
+      } else if (manualCaveat === 4) {
+        caveatHtml = `<div style="margin-top: 12px; padding: 10px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; color: #e65100; font-size: 0.9em; border-radius: 0 4px 4px 0;">
+            <strong>Heads Up:</strong> This site states they support GPC, but some parts of this company require you to download something to your computer (e.g., software, launchers) which are not audited by Leef.
+          </div>`;
+      } else if (manualCaveat === 5) {
+        caveatHtml = `<div style="margin-top: 12px; padding: 10px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; color: #e65100; font-size: 0.9em; border-radius: 0 4px 4px 0;">
+            <strong>Heads Up:</strong> This site is owned by an outside investor (e.g., Tencent, Blackrock, Amazon, Google, Microsoft) which may not follow the same privacy rules as this company. Read the site privacy policy for more info.
+          </div>`;
+      } else if (manualCaveat === 6) {
+        caveatHtml = `<div style="margin-top: 12px; padding: 10px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; color: #e65100; font-size: 0.9em; border-radius: 0 4px 4px 0;">
+            <strong>Heads Up:</strong> This site is able to use your data even when you have the GPC header using a legal gray area. For example, AI chatbots can still see and use your chat info even when you have the GPC header. Read the site privacy policy for more info.
+          </div>`;
+      }
+
+      detailEl.innerHTML = `
+        <p style="margin-bottom: 12px;">
+          <strong>What does "Manually Verified" mean?</strong><br>
+          This website (<code>${domain}</code>) has been manually checked and added to the Leef GPC trustlist. Even though it might not host a standard technical declaration (<code>/.well-known/gpc.json</code>), it is officially verified to respect privacy signals and user opt-out options.
+        </p>
+        <p style="margin-bottom: 0;">
+          ${reasonHtml}
+        </p>
+        ${caveatHtml}
+      `;
+      modal.style.display = 'flex';
+      return;
+    }
+
+    // Check if known non-compliant domain
+    const isNonCompliant = (this.gpcBlacklist || []).some(rule => {
+      if (rule.endsWith('.*')) {
+        const brand = rule.slice(0, -2);
+        const regex = new RegExp('(^|\\.)' + brand + '\\.[a-z]{2,}(\\.[a-z]{2})?$', 'i');
+        return regex.test(domain);
+      }
+      return domain === rule || domain.endsWith('.' + rule);
+    });
+
+    if (isNonCompliant) {
+      iconEl.textContent = '🚨';
+      subtitleEl.textContent = 'No GPC Support';
+      subtitleEl.style.background = 'rgba(244, 67, 54, 0.1)';
+      subtitleEl.style.color = '#f44336';
+
+      detailEl.innerHTML = `
+        <p style="margin-bottom: 12px;">
+          <strong>What does "No GPC Support" mean?</strong><br>
+          This website (<code>${domain}</code>) does not recognize or support the GPC signal, or has been manually identified as non-compliant. It is on a blacklist of sites that actively ignore browser privacy signals.
+        </p>
+        <p style="margin-bottom: 0;">
+          <strong>What may this site do?</strong><br>
+          Without GPC compliance, this website may:
+          <ul style="margin: 6px 0 0 20px; padding: 0; list-style-type: disc;">
+            <li>Sell or share your browsing habits, location, and device details with advertising networks and data brokers.</li>
+            <li>Track your visits across other websites using tracking scripts and tracking cookies.</li>
+            <li>Build a detailed digital profile of your personal interests to target you with ads.</li>
+            <li>Ignore your explicit request to opt-out of personal data collection.</li>
+          </ul>
+        </p>
+      `;
+      modal.style.display = 'flex';
+      return;
+    }
+
+    if (tab.gpcVerified !== undefined) {
+      if (tab.gpcVerified) {
+        iconEl.textContent = '✅';
+        subtitleEl.textContent = 'Verified Compliant ✓';
+        subtitleEl.style.background = 'rgba(23, 179, 64, 0.1)';
+        subtitleEl.style.color = '#17b340';
+
+        detailEl.innerHTML = `
+          <p style="margin-bottom: 12px;">
+            <strong>What does "Verified ✓" mean?</strong><br>
+            Great news! Leef successfully verified this site's GPC compliance declaration. The site officially respects the GPC signal.
+          </p>
+          <p style="margin-bottom: 0;">
+            <strong>What does this mean for your privacy?</strong><br>
+            Under GPC specifications, this website is legally bound to:
+            <ul style="margin: 6px 0 0 20px; padding: 0; list-style-type: disc;">
+              <li><strong>Not</strong> sell your personal information to third parties.</li>
+              <li><strong>Not</strong> share your data for cross-context behavioral advertising.</li>
+              <li>Treat your visit as an active opt-out request under privacy regulations (like GDPR and CCPA).</li>
+            </ul>
+          </p>
+        `;
+      } else {
+        iconEl.textContent = '⚠️';
+        subtitleEl.textContent = 'Unverified Response';
+        subtitleEl.style.background = 'rgba(255, 152, 0, 0.1)';
+        subtitleEl.style.color = '#ff9800';
+
+        detailEl.innerHTML = `
+          <p style="margin-bottom: 12px;">
+            <strong>What does "Unverified" mean?</strong><br>
+            Leef sent the GPC signal to this site, but the site did not respond with a valid compliance document (<code>/.well-known/gpc.json</code>). It is highly likely the site does not recognize or support the GPC signal.
+          </p>
+          <p style="margin-bottom: 0;">
+            <strong>What may this site do?</strong><br>
+            Since the site does not declare GPC compliance, it may continue to collect, share, or sell your personal information, search history, and browser settings without respect to your opt-out preference.
+          </p>
+        `;
+      }
+      modal.style.display = 'flex';
+      return;
+    }
+
+    // Checking / Sent state
+    iconEl.textContent = '⏳';
+    subtitleEl.textContent = 'Signal Sent (Verifying)';
+    subtitleEl.style.background = 'rgba(0, 0, 0, 0.05)';
+    subtitleEl.style.color = '#888';
+
+    detailEl.innerHTML = `
+      <p style="margin-bottom: 0;">
+        <strong>What does "Sent" mean?</strong><br>
+        Leef has transmitted your Global Privacy Control preference to this site. We are currently checking the site's official compliance declaration (<code>/.well-known/gpc.json</code>) to verify if they respect the signal.
+      </p>
+    `;
+    modal.style.display = 'flex';
   }
 }
 
@@ -3794,6 +4479,17 @@ class FindManager {
     window.require('electron').ipcRenderer.on('trigger-find-in-page', () => {
       this.show();
     });
+
+    const btnFindPage = document.getElementById('btn-find-page');
+    if (btnFindPage) {
+      btnFindPage.addEventListener('click', () => {
+        if (this.el.style.display === 'none' || !this.el.style.display) {
+          this.show();
+        } else {
+          this.hide();
+        }
+      });
+    }
 
     // found-in-page event is fired on the webview itself.
     // We need to listen to all webviews or the active one.
