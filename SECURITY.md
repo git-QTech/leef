@@ -6,7 +6,7 @@ The following versions of Leef Browser currently receive security updates:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.x     | ✅ Active support  |
+| 0.x.x | ‼️Support ending June 1st ‼️ |
 
 ---
 
