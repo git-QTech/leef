@@ -3,6 +3,11 @@
 
 <head>
   <meta charset="UTF-8">
+  <!-- TODO: Security — Remove 'unsafe-inline' from script-src once all inline
+       event handlers in this file are refactored to addEventListener calls.
+       This weakens CSP as a defense-in-depth layer against XSS. -->
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https:;">
   <title>Leef Browser</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -145,8 +150,8 @@
       </div>
 
       <div class="actions" style="position: relative;">
-        <button class="action-btn" id="btn-find-page" title="Search Page (Ctrl+F)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2">
+        <button class="action-btn" id="btn-find-page" title="Search Page (Ctrl+F)"><svg width="20" height="20"
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg></button>
@@ -204,7 +209,7 @@
           <!-- Row 1: Leef Beta + Screenshot -->
           <button class="qs-tile qs-tile-version" id="btn-qs-changelog">
             <img src="./images/icon-mark.svg" alt="Leef">
-            <span>Leef <span class="leef-version-val"></span><br>Beta</span>
+            <span>Leef <span class="leef-version-val"></span><br>Stable</span>
           </button>
           <button class="qs-tile qs-tile-screenshot" id="btn-qs-screenshot">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -253,9 +258,21 @@
       </div>
     </div>
 
-    <div class="tabs-row" id="tabs-container">
-      <!-- Tabs will be injected here -->
-      <button class="new-tab-btn" id="btn-new-tab">+</button>
+    <div class="tabs-bar-container">
+      <button class="tab-scroll-btn tab-scroll-left" id="btn-tab-scroll-left" title="Scroll Tabs Left">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+      <div class="tabs-row" id="tabs-container">
+        <!-- Tabs will be injected here -->
+        <button class="new-tab-btn" id="btn-new-tab">+</button>
+      </div>
+      <button class="tab-scroll-btn tab-scroll-right" id="btn-tab-scroll-right" title="Scroll Tabs Right">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
     </div>
 
     <!-- Find in Page Bar -->
@@ -370,15 +387,27 @@
         <h1>What's New in Leef</h1>
         <p class="changelog-subtitle">Discover the latest updates and improvements</p>
         <div class="update-card">
+          <div class="update-date">June 1, 2026</div>
+          <h2>v1.0.0 — The Cross-Platform Update</h2>
+          <ul>
+            <li><strong>macOS and Linux Support:</strong> Leef is now fully cross-platform with native auto-updater support for Windows, macOS (.zip/Squirrel.Mac), and Linux (AppImage).</li>
+            <li><strong>macOS Native UI:</strong> Seamlessly adapted the top navigation bar to accommodate macOS native traffic light window controls, pushing the brand logo elegantly to the right.</li>
+          </ul>
+        </div>
+
+        <div class="update-card">
           <div class="update-date">May 16, 2026</div>
           <h2>(v0.6.1)</h2>
           <ul>
             <li><strong>Google Search Blocker:</strong> Replaced fragile query alterations with Google's official
               <code>&amp;udm=14</code> Web parameter. Fixes cases where search queries shorter than 5 characters
-              returned zero results.</li>
+              returned zero results.
+            </li>
             <li><strong>Site Identity UI:</strong> Overhauled the privacy panel to a key-value flex layout. Replaced
               text strings with colored transparent pill badges for GPC status.</li>
-            <li><strong>Known Non-Compliant List:</strong> Overhauled the non-compliant GPC list to be remote Gist-powered. GPC statuses for major sites now display an explicit "No GPC support" badge dynamically updated via a secure, cached public Gist with offline fallbacks.</li>
+            <li><strong>Known Non-Compliant List:</strong> Overhauled the non-compliant GPC list to be remote
+              Gist-powered. GPC statuses for major sites now display an explicit "No GPC support" badge dynamically
+              updated via a secure, cached public Gist with offline fallbacks.</li>
             <li><strong>Graphics &amp; Fullscreen Stability:</strong> Resolved Windows color washout issues by disabling
               buggy DirectComposition overlays and forcing the D3D9 backend. Eliminated fullscreen resizing borders.
             </li>
@@ -664,7 +693,7 @@
         <div class="credits-header">
           <img class="credits-logo" src="./images/icon-mark.svg">
           <h1>Leef Browser Credits</h1>
-          <p class="credits-subtitle">Version <span class="leef-version-val"></span> — Beta</p>
+          <p class="credits-subtitle">Version <span class="leef-version-val"></span></p>
         </div>
 
         <div class="credits-section">
@@ -769,6 +798,141 @@
         </div>
 
         <div class="credits-section">
+          <details class="credits-details">
+            <summary class="credits-summary">
+              <h2 style="margin: 0;">Third-Party Licenses & Attributions</h2>
+              <svg class="chevron-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                style="transition: transform 0.2s ease; color: rgba(0,0,0,0.5);">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </summary>
+            <div class="credits-card"
+              style="font-size: 0.85rem; line-height: 1.6; color: rgba(0, 0, 0, 0.75); display: flex; flex-direction: column; gap: 16px; padding: 24px; margin-top: 12px;">
+              <p style="margin-bottom: 8px; font-weight: 500;">To comply with open-source and Creative Commons
+                attribution requirements, we proudly acknowledge the following third-party materials used in Leef
+                Browser:</p>
+
+              <div style="border-bottom: 1px solid rgba(0, 0, 0, 0.06); padding-bottom: 14px;">
+                <strong style="color: #111; font-size: 0.9rem;">EasyList & EasyPrivacy Filters</strong> (Title:
+                EasyList)<br>
+                <span style="display: inline-block; margin-top: 4px;">
+                  <strong>Creator/Attribution:</strong> EasyList Authors |
+                  <strong>Link:</strong> <a href="https://easylist.to/" target="_blank"
+                    style="color: var(--primary-color); text-decoration: none;">easylist.to</a>
+                </span><br>
+                <strong>License:</strong> Creative Commons Attribution 3.0 Unported (CC BY 3.0)<br>
+                <strong>Notice:</strong> Copyright &copy; EasyList Authors. Licensed under the Creative Commons
+                Attribution 3.0 Unported License.<br>
+                <span
+                  style="font-style: italic; font-size: 0.8rem; color: rgba(0, 0, 0, 0.5); display: block; margin-top: 4px;">Disclaimer:
+                  This filter list is provided "AS IS", without warranty of any kind, express or implied.</span>
+              </div>
+
+              <div style="border-bottom: 1px solid rgba(0, 0, 0, 0.06); padding-bottom: 14px;">
+                <strong style="color: #111; font-size: 0.9rem;">Chromium Project Assets</strong> (Title: Chromium)<br>
+                <span style="display: inline-block; margin-top: 4px;">
+                  <strong>Creator/Attribution:</strong> The Chromium Authors |
+                  <strong>Link:</strong> <a href="https://www.chromium.org/" target="_blank"
+                    style="color: var(--primary-color); text-decoration: none;">chromium.org</a>
+                </span><br>
+                <strong>License:</strong> Creative Commons Attribution 2.5 Generic (CC BY 2.5)<br>
+                <strong>Notice:</strong> Copyright &copy; The Chromium Authors. Licensed under the Creative Commons
+                Attribution 2.5 Generic License.<br>
+                <span
+                  style="font-style: italic; font-size: 0.8rem; color: rgba(0, 0, 0, 0.5); display: block; margin-top: 4px;">Disclaimer:
+                  This work is provided "AS IS", without warranty of any kind, express or implied.</span>
+              </div>
+
+              <div style="border-bottom: 1px solid rgba(0, 0, 0, 0.06); padding-bottom: 14px;">
+                <strong style="color: #111; font-size: 0.9rem;">Ghostery AdBlocker</strong> (Title:
+                @ghostery/adblocker)<br>
+                <span style="display: inline-block; margin-top: 4px;">
+                  <strong>Creator/Attribution:</strong> Ghostery, Inc. |
+                  <strong>Link:</strong> <a href="https://github.com/ghostery/adblocker" target="_blank"
+                    style="color: var(--primary-color); text-decoration: none;">github.com/ghostery/adblocker</a>
+                </span><br>
+                <strong>License:</strong> Mozilla Public License 2.0 (MPL-2.0)<br>
+                <strong>Notice:</strong> Copyright &copy; Ghostery, Inc. Licensed under the Mozilla Public License
+                2.0.<br>
+                <span
+                  style="font-style: italic; font-size: 0.8rem; color: rgba(0, 0, 0, 0.5); display: block; margin-top: 4px;">Disclaimer:
+                  The contents of this file are subject to the Mozilla Public License Version 2.0. This software is
+                  distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or implied.</span>
+              </div>
+
+              <div style="border-bottom: 1px solid rgba(0, 0, 0, 0.06); padding-bottom: 14px;">
+                <strong style="color: #111; font-size: 0.9rem;">Lucide Icons</strong> (Title: Lucide)<br>
+                <span style="display: inline-block; margin-top: 4px;">
+                  <strong>Creator/Attribution:</strong> Lucide Contributors |
+                  <strong>Link:</strong> <a href="https://lucide.dev/" target="_blank"
+                    style="color: var(--primary-color); text-decoration: none;">lucide.dev</a>
+                </span><br>
+                <strong>License:</strong> ISC License<br>
+                <strong>Notice:</strong> Copyright &copy; 2020 Lucide Contributors. Licensed under the ISC License.<br>
+                <span
+                  style="font-style: italic; font-size: 0.8rem; color: rgba(0, 0, 0, 0.5); display: block; margin-top: 4px;">Disclaimer:
+                  THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE
+                  INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS.</span>
+              </div>
+
+              <div style="border-bottom: 1px solid rgba(0, 0, 0, 0.06); padding-bottom: 14px;">
+                <strong style="color: #111; font-size: 0.9rem;">Inter Font</strong> (Title: Inter)<br>
+                <span style="display: inline-block; margin-top: 4px;">
+                  <strong>Creator/Attribution:</strong> Rasmus Andersson |
+                  <strong>Link:</strong> <a href="https://rsms.me/inter/" target="_blank"
+                    style="color: var(--primary-color); text-decoration: none;">rsms.me/inter</a>
+                </span><br>
+                <strong>License:</strong> SIL Open Font License 1.1 (OFL-1.1)<br>
+                <strong>Notice:</strong> Copyright &copy; 2016-2024 Rasmus Andersson. Licensed under the SIL Open Font
+                License, Version 1.1.<br>
+                <span
+                  style="font-style: italic; font-size: 0.8rem; color: rgba(0, 0, 0, 0.5); display: block; margin-top: 4px;">Disclaimer:
+                  THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+                  NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+                  NONINFRINGEMENT.</span>
+              </div>
+
+              <div style="border-bottom: 1px solid rgba(0, 0, 0, 0.06); padding-bottom: 14px;">
+                <strong style="color: #111; font-size: 0.9rem;">Outfit Font</strong> (Title: Outfit)<br>
+                <span style="display: inline-block; margin-top: 4px;">
+                  <strong>Creator/Attribution:</strong> Rodrigo Fuenzalida / Outfit Brand Direction |
+                  <strong>Link:</strong> <a href="https://fonts.google.com/specimen/Outfit" target="_blank"
+                    style="color: var(--primary-color); text-decoration: none;">fonts.google.com</a>
+                </span><br>
+                <strong>License:</strong> SIL Open Font License 1.1 (OFL-1.1)<br>
+                <strong>Notice:</strong> Copyright &copy; 2021 The Outfit Project Authors. Licensed under the SIL Open
+                Font License, Version 1.1.<br>
+                <span
+                  style="font-style: italic; font-size: 0.8rem; color: rgba(0, 0, 0, 0.5); display: block; margin-top: 4px;">Disclaimer:
+                  THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.</span>
+              </div>
+
+              <div style="border-bottom: 1px solid rgba(0, 0, 0, 0.06); padding-bottom: 14px;">
+                <strong style="color: #111; font-size: 0.9rem;">Interface Translations (FR/ES)</strong><br>
+                <span style="display: inline-block; margin-top: 4px;">
+                  <strong>Creator/Attribution:</strong> Google Gemini |
+                  <strong>Link:</strong> <a href="https://gemini.google.com" target="_blank"
+                    style="color: var(--primary-color); text-decoration: none;">gemini.google.com</a>
+                </span><br>
+                <strong>License:</strong> Generated AI Output / CC-BY-4.0<br>
+                <strong>Notice:</strong> French and Spanish interface translations generated and optimized by Google
+                Gemini.
+              </div>
+
+              <div>
+                <strong style="color: #111; font-size: 0.9rem;">Interface Translations (NL)</strong><br>
+                <span style="display: inline-block; margin-top: 4px;">
+                  <strong>Creator/Attribution:</strong> Johan
+                </span><br>
+                <strong>License:</strong> Public Domain / CC0<br>
+                <strong>Notice:</strong> Dutch interface translations contributed by Johan.
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <div class="credits-section">
           <h2>The Leef Story</h2>
           <p>Leef was designed in 2022 as a proof of concept and was originally just a very basic web page, not a
             standalone browser. Around 2023, you would go there instead of google.com. It was popular in a small group
@@ -844,6 +1008,9 @@
               <option value="en">American English</option>
               <option value="en-gb">British English</option>
               <option value="en-ca">Canadian English</option>
+              <option value="fr">Français (French) (80% complete)</option>
+              <option value="es">Español (Spanish) (80% complete)</option>
+              <option value="nl">Nederlands (Dutch) (63.3% complete)</option>
             </select>
           </div>
 
@@ -1334,15 +1501,20 @@
       <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 18px;">
         <span id="gpc-modal-icon" style="font-size: 2.2rem; line-height: 1;">🛡️</span>
         <div>
-          <h3 id="gpc-modal-title" style="margin: 0; font-family: var(--font-display); font-size: 1.25rem;">Global Privacy Control</h3>
-          <p id="gpc-modal-subtitle" style="margin: 2px 0 0 0; font-size: 0.8rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; display: inline-block;"></p>
+          <h3 id="gpc-modal-title" style="margin: 0; font-family: var(--font-display); font-size: 1.25rem;">Global
+            Privacy Control</h3>
+          <p id="gpc-modal-subtitle"
+            style="margin: 2px 0 0 0; font-size: 0.8rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; display: inline-block;">
+          </p>
         </div>
       </div>
 
       <div style="font-size: 0.9rem; color: #444; line-height: 1.6; margin-bottom: 20px;">
         <p style="margin-bottom: 15px; border-bottom: 1px solid rgba(0, 0, 0, 0.05); padding-bottom: 12px;">
           <strong>What is Global Privacy Control (GPC)?</strong><br>
-          GPC is a legal browser signal that automatically tells websites you want to opt-out of having your personal data sold or shared. Under laws like California's CCPA and Europe's GDPR, participating websites are legally required to respect this signal.
+          GPC is a legal browser signal that automatically tells websites you want to opt-out of having your personal
+          data sold or shared. Under laws like California's CCPA and Europe's GDPR, participating websites are legally
+          required to respect this signal.
         </p>
 
         <div id="gpc-modal-detail">
@@ -1511,88 +1683,197 @@
   <!-- First-Time Startup Onboarding -->
   <div id="onboarding-bg" class="onboarding-bg" style="display: none;"></div>
   <div id="onboarding-overlay" class="onboarding-overlay" style="display: none;">
+    <!-- Consistent Brand Header at top-left of window -->
+    <div class="onboarding-brand-header">
+      <img class="onboarding-brand-logo" src="./images/icon-mark.svg">
+      <span class="onboarding-brand-title">Leef Onboarding</span>
+    </div>
+
     <div class="onboarding-content">
-      <div class="onboarding-header-section">
-        <img class="brand-icon" src="./images/icon-mark.svg">
-        <h1>Welcome to Leef</h1>
-        <p>Set up your browsing experience before we get started.</p>
-      </div>
 
-      <div class="onboarding-options">
-        <div class="onboarding-card" style="animation-delay: 0.1s;">
-          <div style="flex: 1; padding-right: 16px;">
-            <h3>Language Preference</h3>
-            <p>Select your regional spelling for the browser interface.</p>
-          </div>
-          <select id="onboard-language"
-            style="padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.1); background: #f9f9f9; font-weight: 600; cursor: pointer;">
-            <option value="en">American English</option>
-            <option value="en-gb">British English</option>
-            <option value="en-ca">Canadian English</option>
-          </select>
-        </div>
-
-        <div class="onboarding-card" style="animation-delay: 0.2s;">
-          <div style="flex: 1; padding-right: 16px;">
-            <h3>AI Overview Blocker</h3>
-            <p>Automatically remove AI-generated summaries from Google search results.</p>
-          </div>
-          <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-ai" checked><span
-              class="slider"></span></label>
-        </div>
-
-        <div class="onboarding-card"
-          style="animation-delay: 0.3s; flex-direction: column; align-items: flex-start; gap: 12px; height: auto; padding: 16px;">
-          <div style="margin-bottom: 8px;">
-            <h3>Ad & Tracker Blocking</h3>
-            <p>Choose your level of protection. You can adjust this later in settings.</p>
-          </div>
-          <div class="radio-group" style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
-            <label class="radio-row" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-              <input type="radio" name="onboard-adblock-tier" value="none" checked>
-              <span style="font-size: 0.9rem; color: rgba(0,0,0,0.8);"><strong>None</strong> — No active
-                blocking.</span>
-            </label>
-            <label class="radio-row" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-              <input type="radio" name="onboard-adblock-tier" value="basic">
-              <span style="font-size: 0.9rem; color: rgba(0,0,0,0.8);"><strong>Basic</strong> — Lightweight domain
-                filtering (100% Offline).</span>
-            </label>
-            <label class="radio-row" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-              <input type="radio" name="onboard-adblock-tier" value="comprehensive">
-              <span style="font-size: 0.9rem; color: rgba(0,0,0,0.8);"><strong>Comprehensive</strong> — Full engine
-                protection. <span style="color: var(--primary-color); font-weight: 600;">(External Call)</span></span>
-            </label>
-          </div>
-        </div>
-
-        <div class="onboarding-card" style="animation-delay: 0.4s;">
-          <div style="flex: 1; padding-right: 16px;">
-            <h3>Live Search Autocomplete</h3>
-            <p>Send keystrokes to a search engine for live address bar suggestions.</p>
-          </div>
-          <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-autocomplete"><span
-              class="slider"></span></label>
-        </div>
-
-        <div class="onboarding-card" style="animation-delay: 0.45s;">
-          <div style="flex: 1; padding-right: 16px;">
-            <h3>News Feed Autofetching</h3>
-            <p>Automatically fetch the latest headlines from Yahoo News RSS on startup.</p>
-          </div>
-          <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-news" checked><span
-              class="slider"></span></label>
+      <!-- Step 1: Welcome -->
+      <div class="onboarding-step active" data-step="0">
+        <div class="onboarding-header-section">
+          <img class="brand-icon" src="./images/icon-mark.svg">
+          <h1 data-i18n="Welcome to Leef">Welcome to Leef</h1>
+          <p data-i18n="Let's set up your personal, secure browsing experience in just a few quick steps.">Let's set up your personal, secure browsing experience in just a few quick steps.</p>
         </div>
       </div>
 
-      <div class="onboarding-footer" style="animation-delay: 0.5s;">
-        <button id="btn-onboarding-finish" class="nav-btn btn-primary">Start Browsing</button>
-        <div class="onboarding-subtext">
-          <strong>Transparency Note:</strong> Leef is built for you. We don't collect telemetry, make money, or take
-          donations.<br>
-          <span style="opacity: 0.7; font-size: 0.8rem;">You can change these options at any time in Settings.</span>
+      <!-- Step 2: Language -->
+      <div class="onboarding-step" data-step="1" style="display: none;">
+        <div class="onboarding-header-section">
+          <h1 data-i18n="Language Preference">Language Preference</h1>
+          <p data-i18n="Select your regional spelling for the browser interface.">Select your regional spelling for the browser interface.</p>
+        </div>
+        <div class="onboarding-options">
+          <div class="onboarding-card">
+            <div style="flex: 1; padding-right: 16px;">
+              <h3 data-i18n="Regional Language">Regional Language</h3>
+              <p data-i18n="Interface text and browser options will use this spelling.">Interface text and browser options will use this spelling.</p>
+            </div>
+            <select id="onboard-language"
+              style="padding: 10px 16px; border-radius: 8px; border: 1.5px solid rgba(0,0,0,0.1); background: #f9f9f9; font-weight: 600; cursor: pointer;">
+              <option value="en">American English</option>
+              <option value="en-gb">British English</option>
+              <option value="en-ca">Canadian English</option>
+              <option value="fr">Français (French) (80% complete)</option>
+              <option value="es">Español (Spanish) (80% complete)</option>
+              <option value="nl">Nederlands (Dutch) (73.3% complete)</option>
+            </select>
+          </div>
         </div>
       </div>
+
+      <!-- Step 3: Ad Block -->
+      <div class="onboarding-step" data-step="2" style="display: none;">
+        <div class="onboarding-header-section">
+          <h1 data-i18n="Ad &amp; Tracker Protection">Ad & Tracker Protection</h1>
+          <p data-i18n="Choose your level of protection. You can adjust this later in settings.">Choose your level of protection. You can adjust this later in settings.</p>
+        </div>
+        <div class="onboarding-options">
+          <div class="onboarding-card"
+            style="flex-direction: column; align-items: flex-start; gap: 12px; height: auto; padding: 20px;">
+            <div class="radio-group" style="width: 100%; display: flex; flex-direction: column; gap: 12px;">
+              <label class="radio-row"
+                style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px 0;">
+                <input type="radio" name="onboard-adblock-tier" value="none" style="transform: scale(1.2);" checked>
+                <span style="font-size: 0.95rem; color: rgba(0,0,0,0.8);"><strong data-i18n="None">None</strong> — <span data-i18n="No active blocking.">No active blocking.</span></span>
+              </label>
+              <label class="radio-row"
+                style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px 0;">
+                <input type="radio" name="onboard-adblock-tier" value="basic" style="transform: scale(1.2);">
+                <span style="font-size: 0.95rem; color: rgba(0,0,0,0.8);"><strong data-i18n="Basic">Basic</strong> — <span data-i18n="Lightweight domain filtering (100% Offline).">Lightweight domain filtering (100% Offline).</span></span>
+              </label>
+              <label class="radio-row"
+                style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px 0;">
+                <input type="radio" name="onboard-adblock-tier" value="comprehensive" style="transform: scale(1.2);">
+                <span style="font-size: 0.95rem; color: rgba(0,0,0,0.8);"><strong data-i18n="Comprehensive">Comprehensive</strong> — <span data-i18n="Full engine protection">Full engine protection</span> <span style="color: var(--primary-color); font-weight: 600;">(uses external source)</span></span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4: Privacy & Tweaks -->
+      <div class="onboarding-step" data-step="3" style="display: none;">
+        <div class="onboarding-header-section">
+          <h1 data-i18n="Custom Features">Custom Features</h1>
+          <p data-i18n="Toggle advanced features to tailor your experience.">Toggle advanced features to tailor your experience.</p>
+        </div>
+        <div class="onboarding-options">
+          <div class="onboarding-card">
+            <div style="flex: 1; padding-right: 16px;">
+              <h3 data-i18n="AI Overview Blocker">AI Overview Blocker</h3>
+              <p data-i18n="Automatically remove AI-generated summaries from Google search results.">Automatically remove AI-generated summaries from Google search results.</p>
+            </div>
+            <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-ai" checked><span
+                class="slider"></span></label>
+          </div>
+
+          <div class="onboarding-card">
+            <div style="flex: 1; padding-right: 16px;">
+              <h3 data-i18n="Live Search Autocomplete">Live Search Autocomplete</h3>
+              <p data-i18n="Send keystrokes to a search engine for live address bar suggestions.">Send keystrokes to a search engine for live address bar suggestions.</p>
+            </div>
+            <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-autocomplete"><span
+                class="slider"></span></label>
+          </div>
+
+          <div class="onboarding-card">
+            <div style="flex: 1; padding-right: 16px;">
+              <h3 data-i18n="News Feed Autofetching">News Feed Autofetching</h3>
+              <p data-i18n="Automatically fetch the latest headlines from Yahoo News RSS on startup.">Automatically fetch the latest headlines from Yahoo News RSS on startup.</p>
+            </div>
+            <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-news" checked><span
+                class="slider"></span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 5: System & Audio -->
+      <div class="onboarding-step" data-step="4" style="display: none;">
+        <div class="onboarding-header-section">
+          <h1 data-i18n="System &amp; Audio">System & Audio</h1>
+          <p data-i18n="Configure background tools and multimedia options.">Configure background tools and multimedia options.</p>
+        </div>
+        <div class="onboarding-options">
+          <div class="onboarding-card">
+            <div style="flex: 1; padding-right: 16px;">
+              <h3 data-i18n="Auto Update Checking">Auto Update Checking</h3>
+              <p data-i18n="Keep Leef secure and up to date by checking for updates on startup.">Keep Leef secure and up to date by checking for updates on startup.</p>
+            </div>
+            <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-updates" checked><span
+                class="slider"></span></label>
+          </div>
+
+          <div class="onboarding-card">
+            <div style="flex: 1; padding-right: 16px;">
+              <h3 data-i18n="Tab Volume Booster">Tab Volume Booster</h3>
+              <p data-i18n="Enable an audio amplifier slider in Quick Settings to boost video/audio up to 200%.">Enable an audio amplifier slider in Quick Settings to boost video/audio up to 200%.</p>
+            </div>
+            <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-volumeboost"><span
+                class="slider"></span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 6: Transparency & Start -->
+      <div class="onboarding-step" data-step="5" style="display: none;">
+        <div class="onboarding-header-section">
+          <img class="brand-icon" src="./images/icon-mark.svg" style="height: 80px; margin-bottom: 10px;">
+          <h1 data-i18n="You're Ready to Go!">You're Ready to Go!</h1>
+          <p data-i18n="Thank you for choosing Leef.">Thank you for choosing Leef.</p>
+        </div>
+        <div class="onboarding-transparency" style="opacity: 1; transform: none; margin-bottom: 20px;">
+          <p><strong data-i18n="Transparency Note:">Transparency Note:</strong> <span data-i18n="Leef is built for you. We don't collect telemetry, make money, or take donations. All statistics and browsing data are kept locally on your machine.">Leef is built for you. We don't collect telemetry, make money, or take
+            donations. All statistics and browsing data are kept locally on your machine.</span></p>
+          <p style="opacity: 0.7; font-size: 0.8rem; margin-top: 10px;" data-i18n="You can change any of these options at any time in Settings.">You can change any of these options at any time
+            in Settings.</p>
+        </div>
+      </div>
+
+      <!-- Navigation & Footer Controls -->
+      <div class="onboarding-nav-container">
+        <button id="btn-onboarding-back" class="nav-btn btn-secondary"
+          style="visibility: hidden; font-size: 0.95rem; font-weight: 600; padding: 8px 16px; border-radius: 20px; display: flex; align-items: center; gap: 6px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          Back
+        </button>
+
+        <div class="onboarding-progress-dots">
+          <span class="onboarding-dot active" data-index="0"></span>
+          <span class="onboarding-dot" data-index="1"></span>
+          <span class="onboarding-dot" data-index="2"></span>
+          <span class="onboarding-dot" data-index="3"></span>
+          <span class="onboarding-dot" data-index="4"></span>
+          <span class="onboarding-dot" data-index="5"></span>
+        </div>
+
+        <button id="btn-onboarding-next" class="nav-btn btn-primary"
+          style="font-size: 0.95rem; font-weight: 600; padding: 8px 18px; border-radius: 20px; display: flex; align-items: center; gap: 6px; background: var(--primary-color); color: white;">
+          Next
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
+        <button id="btn-onboarding-finish" class="nav-btn btn-primary"
+          style="display: none; font-size: 0.95rem; font-weight: 600; padding: 8px 18px; border-radius: 20px; display: flex; align-items: center; gap: 6px; background: var(--primary-color); color: white;">
+          Start Browsing
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </button>
+      </div>
+
     </div>
   </div>
 
@@ -1646,6 +1927,29 @@
         <button onclick="document.getElementById('audit-modal').style.display='none'"
           class="hub-modal-btn hub-modal-confirm" style="padding: 10px 24px;">Dismiss Report</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen Update Overlay Screen -->
+  <div id="update-overlay" class="update-overlay" style="display: none;">
+    <div class="update-card">
+      <h1 id="update-title">Leef is installing as fast as it can!</h1>
+      <p id="update-subtitle">This should only take a moment...</p>
+      
+      <div class="update-progress-container">
+        <svg class="update-progress-ring" width="200" height="200">
+          <circle class="update-progress-ring-bg" cx="100" cy="100" r="90"></circle>
+          <circle class="update-progress-ring-bar" cx="100" cy="100" r="90" stroke-dasharray="565.48" stroke-dashoffset="565.48"></circle>
+        </svg>
+        <img class="update-leaf-icon" src="./images/icon-mark.svg" alt="Leef">
+        <div class="update-progress-text" style="display: none;">
+          <div id="update-percent-val">0%</div>
+          <div id="update-status-label">DOWNLOADING</div>
+        </div>
+      </div>
+      
+      <button id="btn-update-restart" class="update-btn" style="display: none;">Restart to Apply</button>
+      <button id="btn-update-background" class="update-bg-btn">Update in Background</button>
     </div>
   </div>
 

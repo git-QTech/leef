@@ -3,7 +3,7 @@
  * Renderer Process Core Architecture
  */
 
-let APP_VERSION = '0.6.1'; // Fallback
+let APP_VERSION = '1.0.0'; // Fallback
 
 async function initVersion() {
   try {

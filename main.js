@@ -277,7 +277,7 @@ async function generateDiagnosticLog(error = 'None') {
     `user credentials, and browsing history are NOT stored.`,
     `All local system paths have been anonymized.`,
     `----------------------------------------------------`,
-    `App Version: ${app.isPackaged ? app.getVersion() : '0.6.1'}`,
+    `App Version: ${app.isPackaged ? app.getVersion() : '1.0.0'}`,
 
 
     `Electron Version: ${process.versions.electron}`,
