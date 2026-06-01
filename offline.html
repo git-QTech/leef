@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https:;">
     <title>Connection Lost | Leef Browser</title>
     <style>
         :root {
@@ -469,7 +470,7 @@
             let friendlyDesc = errDesc || 'Something went wrong while trying to reach this site.';
             friendlyDesc = friendlyDesc.replace('ERR_', '').replace(/_/g, ' ').toLowerCase();
             friendlyDesc = friendlyDesc.charAt(0).toUpperCase() + friendlyDesc.slice(1);
-            statusEl.innerHTML = `${friendlyDesc}.<br><span style="font-size: 0.8rem; opacity: 0.5; margin-top: 15px; display: block; font-weight: 600;">TECHNICAL ERROR: ${errCode || 'UNKNOWN'}</span>`;
+            statusEl.textContent = `${friendlyDesc}. TECHNICAL ERROR: ${errCode || 'UNKNOWN'}`;
         }
 
         document.getElementById('btn-reconnect').onclick = () => { if (originalUrl) window.location.href = originalUrl; else window.location.reload(); };
