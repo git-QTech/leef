@@ -1,6 +1,6 @@
 {
   "name": "private-browser",
-  "version": "0.6.1",
+  "version": "1.0.0",
   "private": true,
   "description": "Leef is a fast, private, and modern Electron-based web browser built for everyday use.",
   "homepage": "https://leefbrowser.site",
@@ -46,6 +46,7 @@
     ],
     "compression": "maximum",
     "files": [
+      "preload.cjs",
       "main.js",
       "renderer.js",
       "index.html",
@@ -75,9 +76,46 @@
         ]
       }
     },
+    "mac": {
+      "icon": "images/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "linux": {
+      "icon": "images/icon.png",
+      "target": [
+        "AppImage"
+      ]
+    },
+    "dmg": {
+      "title": "Leef Browser Setup",
+      "background": "images/dmg-background.png",
+      "iconSize": 120,
+      "window": {
+        "width": 674,
+        "height": 371
+      },
+      "contents": [
+        {
+          "x": 154,
+          "y": 186,
+          "type": "file"
+        },
+        {
+          "x": 515,
+          "y": 186,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
+      "include": "build/installer.nsh",
+      "allowToChangeInstallationDirectory": true,
       "artifactName": "leef-browser-setup-${version}.${ext}"
     },
     "asar": true

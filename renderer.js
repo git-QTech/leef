@@ -22,6 +22,15 @@ async function initVersion() {
 
 initVersion();
 
+// Inject OS-specific class for CSS styling (e.g., macOS traffic lights)
+if (process.platform === 'darwin') {
+  document.body.classList.add('mac-os');
+} else if (process.platform === 'linux') {
+  document.body.classList.add('linux-os');
+} else if (process.platform === 'win32') {
+  document.body.classList.add('win-os');
+}
+
 // --- UTILITIES ---
 class BrowserUtils {
   static parseAddress(str, engineBaseUrl, blockAI = true) {
@@ -1278,6 +1287,7 @@ class TabManager {
     tab.webviewEl = document.createElement('webview');
     tab.webviewEl.id = 'webview-' + tab.id;
     tab.webviewEl.setAttribute('allowpopups', '');
+    tab.webviewEl.setAttribute('allowfullscreen', '');
     tab.webviewEl.setAttribute('partition', 'persist:leef-session'); // CRITICAL: must match session in main.js
 
     // Background Tab Performance (v0.4.0)
@@ -1831,12 +1841,14 @@ class TabManager {
 
     // Fullscreen: hide/show browser chrome when a page requests fullscreen.
     // The main process handles OS-level fullscreen via webContents events directly.
-    tab.webviewEl.addEventListener('enter-full-screen', () => {
+    tab.webviewEl.addEventListener('enter-html-full-screen', () => {
       document.body.classList.add('video-fullscreen');
+      try { document.documentElement.requestFullscreen(); } catch (e) {}
     });
 
-    tab.webviewEl.addEventListener('leave-full-screen', () => {
+    tab.webviewEl.addEventListener('leave-html-full-screen', () => {
       document.body.classList.remove('video-fullscreen');
+      try { document.exitFullscreen(); } catch (e) {}
     });
   }
 
