@@ -36,6 +36,11 @@ body {
   user-select: none;
 }
 
+/* Make HTML element transparent so window transparency shows through */
+html {
+  background-color: transparent !important;
+}
+
 /* Round window corners on Linux (frameless & transparent) */
 body.linux-os {
   border-radius: 12px;
