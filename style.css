@@ -36,6 +36,17 @@ body {
   user-select: none;
 }
 
+/* Round window corners on Linux (frameless & transparent) */
+body.linux-os {
+  border-radius: 12px;
+}
+
+/* Keep corners sharp when maximized or fullscreen */
+body.linux-os.maximized,
+body.linux-os.fullscreen {
+  border-radius: 0;
+}
+
 /* Hide browser chrome during video fullscreen */
 body.video-fullscreen .browser-top {
   display: none;
