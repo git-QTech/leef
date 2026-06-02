@@ -1,7 +1,33 @@
-/**
- * Leef Browser 
- * Renderer Process Core Architecture
- */
+let TRANSLATIONS = {};
+
+async function loadTranslations() {
+  try {
+    if (typeof window !== 'undefined' && window.require) {
+      const fs = window.require('fs');
+      const path = window.require('path');
+      let filePath = 'translations.js';
+      try {
+        filePath = path.join(process.cwd(), 'translations.js');
+      } catch (err) {
+        // fallback
+      }
+      const fileContent = fs.readFileSync(filePath, 'utf8');
+      const jsContent = fileContent.replace(/export\s+const\s+TRANSLATIONS\s*=/, 'window.TRANSLATIONS =');
+      eval(jsContent);
+      TRANSLATIONS = window.TRANSLATIONS;
+      return;
+    }
+  } catch (e) {
+    console.warn("Failed to load translations via Node fs", e);
+  }
+
+  try {
+    const module = await import('./translations.js');
+    TRANSLATIONS = module.TRANSLATIONS;
+  } catch (e) {
+    console.error("Failed to load translations dynamically", e);
+  }
+}
 
 let APP_VERSION = '1.0.0'; // Fallback
 
@@ -124,7 +150,7 @@ class SettingsManager {
       const saved = JSON.parse(localStorage.getItem('leef_settings') || '{}');
 
       // Fallback: If saved language is not supported anymore, default to en
-      const supported = ['en', 'en-gb', 'en-ca'];
+      const supported = ['en', 'en-gb', 'en-ca', 'fr', 'es', 'nl'];
       if (saved.language && !supported.includes(saved.language)) {
         saved.language = 'en';
       }
@@ -136,7 +162,43 @@ class SettingsManager {
   }
 
   applyLocalization() {
-    const lang = this.currentSettings.language;
+    const lang = this.currentSettings.language || 'en';
+
+    // First translate any elements with data-i18n attributes
+    const i18nElements = document.querySelectorAll('[data-i18n]');
+    i18nElements.forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      if (!el.hasAttribute('data-original-text')) {
+        el.setAttribute('data-original-text', el.textContent.trim());
+      }
+      if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) {
+        el.textContent = TRANSLATIONS[lang][key];
+      } else {
+        el.textContent = el.getAttribute('data-original-text') || key;
+      }
+    });
+
+    // Translate dynamic placeholders
+    const addressInput = document.getElementById('address-input');
+    if (addressInput) {
+      const key = "Search or enter web address";
+      if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) {
+        addressInput.placeholder = TRANSLATIONS[lang][key];
+      } else {
+        addressInput.placeholder = key;
+      }
+    }
+
+    const homeSearchInput = document.getElementById('home-search');
+    if (homeSearchInput) {
+      const key = "Search or enter a URL...";
+      if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) {
+        homeSearchInput.placeholder = TRANSLATIONS[lang][key];
+      } else {
+        homeSearchInput.placeholder = key;
+      }
+    }
+
     if (lang === 'en-gb' || lang === 'en-ca') {
       // Very simple string replacement for common regional spelling differences
       const targets = document.querySelectorAll('label, h1, h2, h3, p, li, span, strong');
@@ -516,6 +578,7 @@ class SettingsManager {
     };
 
     this.applyVisualSettings();
+    this.applyLocalization();
 
     try {
       // Include Labs flags in the primary settings object
@@ -3857,7 +3920,13 @@ class HeroManager {
       if (hours < 12) greet = 'Good Morning';
       else if (hours < 17) greet = 'Good Afternoon';
       else if (hours > 21) greet = 'Good Night';
-      this.greetingEl.textContent = greet;
+      
+      const lang = window.settingsManager?.currentSettings?.language || 'en';
+      if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][greet]) {
+        this.greetingEl.textContent = TRANSLATIONS[lang][greet];
+      } else {
+        this.greetingEl.textContent = greet;
+      }
     }
   }
 }
@@ -4561,7 +4630,10 @@ class FindManager {
 }
 
 // --- BOOTSTRAP ---
-window.onload = () => {
+window.onload = async () => {
+  // Load translations first so SettingsManager has access to them
+  await loadTranslations();
+
   // ToastManager must be first so all other managers can use it
   window.toastManager = new ToastManager();
 
@@ -4580,11 +4652,88 @@ window.onload = () => {
       overlay.style.display = 'flex';
       if (bg) bg.style.display = 'block';
 
+      const steps = document.querySelectorAll('.onboarding-step');
+      const dots = document.querySelectorAll('.onboarding-dot');
+      const nextBtn = document.getElementById('btn-onboarding-next');
+      const backBtn = document.getElementById('btn-onboarding-back');
+      const finishBtn = document.getElementById('btn-onboarding-finish');
+      let currentStep = 0;
+
+      function showStep(index, direction = 'forward') {
+        steps.forEach((step, i) => {
+          step.classList.remove('active', 'slide-forward', 'slide-backward');
+          if (i === index) {
+            step.classList.add('active');
+            if (direction === 'forward') {
+              step.classList.add('slide-forward');
+            } else {
+              step.classList.add('slide-backward');
+            }
+          }
+        });
+
+        dots.forEach((dot, i) => {
+          dot.classList.toggle('active', i === index);
+        });
+
+        if (backBtn) {
+          backBtn.style.visibility = (index === 0) ? 'hidden' : 'visible';
+        }
+
+        if (nextBtn && finishBtn) {
+          if (index === steps.length - 1) {
+            nextBtn.style.display = 'none';
+            finishBtn.style.display = 'flex';
+          } else {
+            nextBtn.style.display = 'flex';
+            finishBtn.style.display = 'none';
+          }
+        }
+      }
+
+      showStep(0);
+
+      if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+          if (currentStep < steps.length - 1) {
+            currentStep++;
+            showStep(currentStep, 'forward');
+          }
+        });
+      }
+
+      if (backBtn) {
+        backBtn.addEventListener('click', () => {
+          if (currentStep > 0) {
+            currentStep--;
+            showStep(currentStep, 'backward');
+          }
+        });
+      }
+
+      dots.forEach((dot, idx) => {
+        dot.addEventListener('click', () => {
+          const direction = idx > currentStep ? 'forward' : 'backward';
+          currentStep = idx;
+          showStep(currentStep, direction);
+        });
+      });
+
+      const onboardLangSelect = document.getElementById('onboard-language');
+      if (onboardLangSelect) {
+        onboardLangSelect.addEventListener('change', () => {
+          settingsMgr.currentSettings.language = onboardLangSelect.value;
+          settingsMgr.applyLocalization();
+        });
+      }
+
       document.getElementById('btn-onboarding-finish').addEventListener('click', () => {
         const aiChecked = document.getElementById('onboard-ai').checked;
         const autoChecked = document.getElementById('onboard-autocomplete').checked;
         const adblockVal = document.querySelector('input[name="onboard-adblock-tier"]:checked')?.value || 'none';
         const langVal = document.getElementById('onboard-language').value;
+        const volumeChecked = document.getElementById('onboard-volumeboost').checked;
+        const updatesChecked = document.getElementById('onboard-updates').checked;
 
         // Sync to actual settings DOM
         const blockAiEl = document.getElementById('block-ai');
@@ -4599,6 +4748,12 @@ window.onload = () => {
         const newsChecked = document.getElementById('onboard-news').checked;
         const newsEl = document.getElementById('news-manual-refresh');
         if (newsEl) newsEl.checked = !newsChecked;
+
+        const volumeEl = document.getElementById('enable-volume-boost');
+        if (volumeEl) volumeEl.checked = volumeChecked;
+
+        const updatesEl = document.getElementById('auto-check-updates');
+        if (updatesEl) updatesEl.checked = updatesChecked;
 
         // Adblock is radio buttons ('none', 'basic', 'comprehensive')
         document.querySelectorAll('input[name="adblock-tier"]').forEach(r => {
@@ -4700,4 +4855,34 @@ window.onload = () => {
       .map(t => t.url);
     localStorage.setItem('leef_last_tabs', JSON.stringify(urls));
   });
+
+  // Handle Linux window controls and state changes
+  if (process.platform === 'linux') {
+    try {
+      const ipc = window.require('electron').ipcRenderer;
+      
+      const btnMin = document.getElementById('btn-linux-minimize');
+      const btnMax = document.getElementById('btn-linux-maximize');
+      const btnClose = document.getElementById('btn-linux-close');
+      
+      if (btnMin) btnMin.addEventListener('click', () => ipc.send('window-minimize'));
+      if (btnMax) btnMax.addEventListener('click', () => ipc.send('window-maximize'));
+      if (btnClose) btnClose.addEventListener('click', () => ipc.send('window-close'));
+
+      ipc.on('window-state-changed', (e, state) => {
+        if (state === 'maximized') {
+          document.body.classList.add('maximized');
+          document.body.classList.remove('fullscreen');
+        } else if (state === 'fullscreen') {
+          document.body.classList.add('fullscreen');
+          document.body.classList.remove('maximized');
+        } else {
+          document.body.classList.remove('maximized');
+          document.body.classList.remove('fullscreen');
+        }
+      });
+    } catch (e) {
+      console.warn('IPC / Electron not available for window controls', e);
+    }
+  }
 };

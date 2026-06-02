@@ -21,7 +21,8 @@
     "start": "electron .",
     "preview": "vite preview",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --win",
+    "dist:linux": "electron-builder --linux"
   },
   "dependencies": {
     "@ghostery/adblocker-electron": "^2.14.1",

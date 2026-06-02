@@ -256,6 +256,25 @@
 
         </div>
       </div>
+      <!-- Linux Custom Window Controls (Only visible on Linux via CSS) -->
+      <div class="linux-window-controls">
+        <button class="linux-control-btn" id="btn-linux-minimize" title="Minimize">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        <button class="linux-control-btn" id="btn-linux-maximize" title="Maximize">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          </svg>
+        </button>
+        <button class="linux-control-btn" id="btn-linux-close" title="Close">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <div class="tabs-bar-container">
@@ -373,9 +392,9 @@
             <img class="brand-icon" src="./images/icon-mark.svg" style="height: 36px;">
             <span>Leef</span>
           </div>
-          <button id="btn-whats-new" class="nav-btn">What's New</button>
-          <button id="btn-credits" class="nav-btn">Credits</button>
-          <button id="btn-open-flags" class="nav-btn">Labs</button>
+          <button id="btn-whats-new" class="nav-btn" data-i18n="What's New">What's New</button>
+          <button id="btn-credits" class="nav-btn" data-i18n="Credits">Credits</button>
+          <button id="btn-open-flags" class="nav-btn" data-i18n="Labs">Labs</button>
         </div>
 
       </div>
@@ -384,7 +403,7 @@
     <!-- Changelog Layout -->
     <div class="changelog-layout" id="changelog-view" style="display: none;">
       <div class="changelog-content">
-        <h1>What's New in Leef</h1>
+        <h1 data-i18n="What's New">What's New in Leef</h1>
         <p class="changelog-subtitle">Discover the latest updates and improvements</p>
         <div class="update-card">
           <div class="update-date">June 1, 2026</div>
@@ -692,27 +711,27 @@
       <div class="credits-content">
         <div class="credits-header">
           <img class="credits-logo" src="./images/icon-mark.svg">
-          <h1>Leef Browser Credits</h1>
+          <h1 data-i18n="Leef Browser Credits">Leef Browser Credits</h1>
           <p class="credits-subtitle">Version <span class="leef-version-val"></span></p>
         </div>
 
         <div class="credits-section">
-          <h2>Project Information</h2>
+          <h2 data-i18n="Project Information">Project Information</h2>
           <div class="credits-card">
             <div class="credits-row">
-              <span class="credits-label">Developer</span>
+              <span class="credits-label" data-i18n="Developer">Developer</span>
               <span class="credits-value">QTech</span>
             </div>
             <div class="credits-row">
-              <span class="credits-label">Contributors</span>
+              <span class="credits-label" data-i18n="Contributors">Contributors</span>
               <span class="credits-value">Quinn, Johan, Hannah</span>
             </div>
             <div class="credits-row">
-              <span class="credits-label">Website</span>
+              <span class="credits-label" data-i18n="Website">Website</span>
               <span class="credits-value"><a href="https://leefbrowser.site">leefbrowser.site</a></span>
             </div>
             <div class="credits-row">
-              <span class="credits-label">Repository</span>
+              <span class="credits-label" data-i18n="Repository">Repository</span>
               <span class="credits-value"><a href="https://github.com/git-QTech/leef"
                   id="credits-github-link">github.com/git-QTech/leef</a></span>
             </div>
@@ -961,15 +980,15 @@
     <!-- Settings Layout -->
     <div class="settings-layout" id="settings-view" style="display: none;">
       <div class="settings-sidebar">
-        <h2>Settings</h2>
+        <h2 data-i18n="Settings">Settings</h2>
         <ul class="settings-nav">
-          <li class="active" data-section="sec-general">General</li>
-          <li data-section="sec-appearance">Appearance</li>
-          <li data-section="sec-privacy">Privacy & Security</li>
-          <li data-section="sec-performance">Performance</li>
-          <li data-section="sec-notifications">Notifications</li>
-          <li data-section="sec-downloads">Downloads</li>
-          <li data-section="sec-advanced">Advanced</li>
+          <li class="active" data-section="sec-general" data-i18n="General">General</li>
+          <li data-section="sec-appearance" data-i18n="Appearance">Appearance</li>
+          <li data-section="sec-privacy" data-i18n="Privacy & Security">Privacy & Security</li>
+          <li data-section="sec-performance" data-i18n="Performance">Performance</li>
+          <li data-section="sec-notifications" data-i18n="Notifications">Notifications</li>
+          <li data-section="sec-downloads" data-i18n="Downloads">Downloads</li>
+          <li data-section="sec-advanced" data-i18n="Advanced">Advanced</li>
         </ul>
       </div>
 
@@ -977,24 +996,24 @@
 
         <!-- General -->
         <div class="settings-section active" id="sec-general">
-          <h1>General</h1>
+          <h1 data-i18n="General">General</h1>
 
           <div class="setting-group">
-            <h3>Startup behavior</h3>
-            <label><input type="radio" name="startup" value="newtab" checked> Open the New Tab page</label>
-            <label><input type="radio" name="startup" value="continue"> Continue where you left off</label>
-            <label><input type="radio" name="startup" value="homepage"> Open the home page</label>
+            <h3 data-i18n="Startup behavior">Startup behavior</h3>
+            <label><input type="radio" name="startup" value="newtab" checked> <span data-i18n="Open the New Tab page">Open the New Tab page</span></label>
+            <label><input type="radio" name="startup" value="continue"> <span data-i18n="Continue where you left off">Continue where you left off</span></label>
+            <label><input type="radio" name="startup" value="homepage"> <span data-i18n="Open the home page">Open the home page</span></label>
           </div>
 
           <div class="setting-group">
-            <h3>Default browser</h3>
-            <p>Make Leef your default browser (probably wont work)</p>
-            <button class="settings-btn" id="btn-default-browser">Make default</button>
+            <h3 data-i18n="Default browser">Default browser</h3>
+            <p data-i18n="Make Leef your default browser (probably wont work)">Make Leef your default browser (probably wont work)</p>
+            <button class="settings-btn" id="btn-default-browser" data-i18n="Make default">Make default</button>
           </div>
 
           <div class="setting-group">
-            <h3>Search Engine</h3>
-            <label for="search-engine-select">Search engine used in the address bar:</label>
+            <h3 data-i18n="Search Engine">Search Engine</h3>
+            <label for="search-engine-select" data-i18n="Search engine used in the address bar:">Search engine used in the address bar:</label>
             <select id="search-engine-select">
               <option value="https://www.google.com/search?q=">Google</option>
               <option value="https://duckduckgo.com/?q=">DuckDuckGo</option>
@@ -1003,7 +1022,7 @@
           </div>
 
           <div class="setting-group">
-            <h3>Language</h3>
+            <h3 data-i18n="Language">Language</h3>
             <select id="language-select">
               <option value="en">American English</option>
               <option value="en-gb">British English</option>
@@ -1016,27 +1035,27 @@
 
           <div class="setting-group">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <h3>Leef Software Updates</h3>
+              <h3 data-i18n="Leef Software Updates">Leef Software Updates</h3>
               <span id="update-status-badge" class="status-badge">[UP TO DATE]</span>
             </div>
-            <p style="margin-bottom: 15px;">Stay up to date with the latest security fixes and features.</p>
+            <p style="margin-bottom: 15px;" data-i18n="Stay up to date with the latest security fixes and features.">Stay up to date with the latest security fixes and features.</p>
             <div class="toggle-group" style="padding: 0; margin-bottom: 15px;">
               <div>
-                <strong>Auto-check for updates</strong>
-                <p>Check GitHub on startup (External Call)</p>
+                <strong data-i18n="Auto-check for updates">Auto-check for updates</strong>
+                <p data-i18n="Check GitHub on startup (External Call)">Check GitHub on startup (External Call)</p>
               </div>
               <label class="switch"><input type="checkbox" id="auto-check-updates" checked><span
                   class="slider"></span></label>
             </div>
-            <button class="settings-btn" id="btn-check-updates" style="width: 100%;">Check for Updates Now</button>
+            <button class="settings-btn" id="btn-check-updates" style="width: 100%;" data-i18n="Check for Updates Now">Check for Updates Now</button>
           </div>
         </div>
 
         <!-- Appearance -->
         <div class="settings-section" id="sec-appearance">
-          <h1>Appearance</h1>
+          <h1 data-i18n="Appearance">Appearance</h1>
           <div class="setting-group">
-            <h3>Page Zoom</h3>
+            <h3 data-i18n="Page Zoom">Page Zoom</h3>
             <select id="zoom-select">
               <option value="0.8">80%</option>
               <option value="0.9">90%</option>
@@ -1047,7 +1066,7 @@
             </select>
           </div>
           <div class="setting-group">
-            <h3>Font Size</h3>
+            <h3 data-i18n="Font Size">Font Size</h3>
             <select id="font-size-select">
               <option value="small">Small</option>
               <option value="medium" selected>Medium</option>
@@ -1056,20 +1075,20 @@
             </select>
           </div>
           <div class="setting-group">
-            <h3>Custom New Tab Page</h3>
+            <h3 data-i18n="Custom New Tab Page">Custom New Tab Page</h3>
             <input type="text" id="custom-new-tab" placeholder="e.g. https://google.com">
           </div>
           <div class="setting-group toggle-group">
             <div>
-              <h3>Per-Tab Volume Booster</h3>
-              <p>Enable the volume booster in Quick Settings. Uses 0% CPU when set to 100%.</p>
+              <h3 data-i18n="Per-Tab Volume Booster">Per-Tab Volume Booster</h3>
+              <p data-i18n="Enable the volume booster in Quick Settings. Uses 0% CPU when set to 100%.">Enable the volume booster in Quick Settings. Uses 0% CPU when set to 100%.</p>
             </div>
             <label class="switch"><input type="checkbox" id="enable-volume-boost"><span class="slider"></span></label>
           </div>
           <div class="setting-group toggle-group">
             <div>
-              <h3>Manual News Refresh</h3>
-              <p>Stop news from loading automatically. News only fetches when you click "Refresh".</p>
+              <h3 data-i18n="Manual News Refresh">Manual News Refresh</h3>
+              <p data-i18n="Stop news from loading automatically. News only fetches when you click &quot;Refresh&quot;.">Stop news from loading automatically. News only fetches when you click "Refresh".</p>
             </div>
             <label class="switch"><input type="checkbox" id="news-manual-refresh"><span class="slider"></span></label>
           </div>
@@ -1077,115 +1096,115 @@
 
         <!-- Privacy -->
         <div class="settings-section" id="sec-privacy">
-          <h1>Privacy & Security</h1>
+          <h1 data-i18n="Privacy & Security">Privacy & Security</h1>
           <div class="setting-group">
-            <h3>Clear browsing data</h3>
-            <p>Clear history, cookies, cache, and more</p>
-            <button class="settings-btn btn-danger" id="btn-clear-data" style="margin-bottom: 8px;">Clear Data
+            <h3 data-i18n="Clear browsing data">Clear browsing data</h3>
+            <p data-i18n="Clear history, cookies, cache, and more">Clear history, cookies, cache, and more</p>
+            <button class="settings-btn btn-danger" id="btn-clear-data" style="margin-bottom: 8px;" data-i18n="Clear Data Now">Clear Data Now
               Now</button>
-            <button class="settings-btn" id="btn-redo-setup" style="background: rgba(0,0,0,0.05); color: #333;">Redo
+            <button class="settings-btn" id="btn-redo-setup" style="background: rgba(0,0,0,0.05); color: #333;" data-i18n="Redo First-Time Setup">Redo
               First-Time Setup</button>
           </div>
           <div class="setting-group">
-            <h3>Tracking Protection</h3>
-            <label><input type="radio" name="tracking" value="standard" checked> Standard</label>
-            <label><input type="radio" name="tracking" value="strict"> Strict</label>
+            <h3 data-i18n="Tracking Protection">Tracking Protection</h3>
+            <label><input type="radio" name="tracking" value="standard" checked> <span data-i18n="Standard">Standard</span></label>
+            <label><input type="radio" name="tracking" value="strict"> <span data-i18n="Strict">Strict</span></label>
           </div>
           <div class="setting-group toggle-group">
             <div>
-              <h3>HTTPS-only mode</h3>
-              <p>Automatically upgrade all connections to secure HTTPS</p>
+              <h3 data-i18n="HTTPS-only mode">HTTPS-only mode</h3>
+              <p data-i18n="Automatically upgrade all connections to secure HTTPS">Automatically upgrade all connections to secure HTTPS</p>
             </div>
             <label class="switch"><input type="checkbox" id="https-only" checked><span class="slider"></span></label>
           </div>
           <div class="setting-group">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-              <h3>Ad & Tracker Blocking</h3>
+              <h3 data-i18n="Ad & Tracker Blocking">Ad & Tracker Blocking</h3>
               <span id="adblock-status-badge" class="status-badge" style="display: none;">[READY]</span>
             </div>
 
             <div class="radio-group">
               <label class="radio-row">
                 <input type="radio" name="adblock-tier" value="none" checked>
-                <span><strong>None</strong> — No active blocking enabled.</span>
+                <span><strong data-i18n="None">None</strong> — No active blocking enabled.</span>
               </label>
               <label class="radio-row">
                 <input type="radio" name="adblock-tier" value="basic">
-                <span><strong>Basic</strong> — Lightweight domain filtering (100% Offline).</span>
+                <span><strong data-i18n="Basic">Basic</strong> — Lightweight domain filtering (100% Offline).</span>
               </label>
               <label class="radio-row">
                 <input type="radio" name="adblock-tier" value="comprehensive">
-                <span><strong>Comprehensive</strong> — Full engine protection. <span
+                <span><strong data-i18n="Comprehensive">Comprehensive</strong> — Full engine protection. <span
                     style="color: var(--primary-color); font-weight: 600;">(External Call)</span></span>
               </label>
             </div>
 
             <button class="settings-btn" id="btn-refresh-adblock"
-              style="display: none; margin-top: 15px; background: rgba(0,0,0,0.05); color: #333; width: auto; font-size: 0.85rem;">Refresh
+              style="display: none; margin-top: 15px; background: rgba(0,0,0,0.05); color: #333; width: auto; font-size: 0.85rem;" data-i18n="Refresh Engine & Lists">Refresh
               Engine & Lists</button>
           </div>
 
           <div class="setting-group">
-            <h3>Privacy Dashboard</h3>
-            <p style="margin-bottom: 12px;">View detailed analytics and recent protection activity.</p>
+            <h3 data-i18n="Privacy Dashboard">Privacy Dashboard</h3>
+            <p style="margin-bottom: 12px;" data-i18n="View detailed analytics and recent protection activity.">View detailed analytics and recent protection activity.</p>
             <button class="settings-btn" id="btn-open-privacy-settings"
-              style="width: auto; background: var(--primary-color); color: white; border: none;">Open Privacy
+              style="width: auto; background: var(--primary-color); color: white; border: none;" data-i18n="Open Privacy Dashboard">Open Privacy
               Dashboard</button>
           </div>
           <div class="setting-group toggle-group">
             <div>
-              <h3>Global Privacy Control (GPC)</h3>
-              <p>Automatically signal your privacy preference to websites</p>
+              <h3 data-i18n="Global Privacy Control (GPC)">Global Privacy Control (GPC)</h3>
+              <p data-i18n="Automatically signal your privacy preference to websites">Automatically signal your privacy preference to websites</p>
             </div>
             <label class="switch"><input type="checkbox" id="flag-gpc" checked><span class="slider"></span></label>
           </div>
           <div class="setting-group toggle-group">
             <div>
-              <h3>Block Google AI Overview <span class="beta-tag">BETA</span></h3>
-              <p>Seamlessly prevent AI Overviews from appearing in Google searches</p>
+              <h3><span data-i18n="Block Google AI Overview">Block Google AI Overview</span> <span class="beta-tag">BETA</span></h3>
+              <p data-i18n="Seamlessly prevent AI Overviews from appearing in Google searches">Seamlessly prevent AI Overviews from appearing in Google searches</p>
             </div>
             <label class="switch"><input type="checkbox" id="block-ai" checked><span class="slider"></span></label>
           </div>
           <div class="setting-group toggle-group">
             <div>
-              <h3>Live Autocomplete Suggestions <span class="beta-tag">EXTERNAL API</span></h3>
-              <p>Fetch real-time search suggestions from Google as you type in the address bar</p>
+              <h3><span data-i18n="Live Autocomplete Suggestions">Live Autocomplete Suggestions</span> <span class="beta-tag">EXTERNAL API</span></h3>
+              <p data-i18n="Fetch real-time search suggestions from Google as you type in the address bar">Fetch real-time search suggestions from Google as you type in the address bar</p>
             </div>
             <label class="switch"><input type="checkbox" id="live-autocomplete"><span class="slider"></span></label>
           </div>
           <div class="setting-group toggle-group">
             <div>
-              <h3>CSS Tracking Sanitizer</h3>
-              <p>Strip tracking pixels embedded in CSS</p>
+              <h3 data-i18n="CSS Tracking Sanitizer">CSS Tracking Sanitizer</h3>
+              <p data-i18n="Strip tracking pixels embedded in CSS">Strip tracking pixels embedded in CSS</p>
             </div>
             <label class="switch"><input type="checkbox" id="flag-css-sanitize" checked><span
                 class="slider"></span></label>
           </div>
           <div class="setting-group">
-            <h3>Site Permissions</h3>
-            <button class="settings-btn" id="btn-camera-mic">Manage Camera & Microphone</button>
-            <button class="settings-btn" id="btn-location">Location Settings</button>
+            <h3 data-i18n="Site Permissions">Site Permissions</h3>
+            <button class="settings-btn" id="btn-camera-mic" data-i18n="Manage Camera & Microphone">Manage Camera & Microphone</button>
+            <button class="settings-btn" id="btn-location" data-i18n="Location Settings">Location Settings</button>
           </div>
         </div>
 
         <!-- Performance -->
         <div class="settings-section" id="sec-performance">
-          <h1>Performance & Limiter</h1>
+          <h1 data-i18n="Performance">Performance</h1>
 
           <div class="setting-group toggle-group">
             <div>
-              <h3 style="color: var(--primary-color);">Efficiency Mode</h3>
-              <p>Reduces UI effects and throttles background tasks to save CPU.</p>
+              <h3 style="color: var(--primary-color);" data-i18n="Efficiency Mode">Efficiency Mode</h3>
+              <p data-i18n="Reduces UI effects and throttles background tasks to save CPU.">Reduces UI effects and throttles background tasks to save CPU.</p>
             </div>
             <label class="switch"><input type="checkbox" id="efficiency-mode"><span class="slider"></span></label>
           </div>
 
           <div class="setting-group">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <h3>CPU Limiter</h3>
+              <h3 data-i18n="CPU Limiter">CPU Limiter</h3>
               <span id="cpu-limit-value" style="font-weight: 600; color: var(--primary-color);">100%</span>
             </div>
-            <p style="margin-bottom: 12px; font-size: 0.85rem; opacity: 0.7;">Limit the total CPU usage per tab. Lower
+            <p style="margin-bottom: 12px; font-size: 0.85rem; opacity: 0.7;" data-i18n="Limit the total CPU usage per tab. Lower values increase battery life.">Limit the total CPU usage per tab. Lower
               values increase battery life.</p>
             <input type="range" id="cpu-limit-slider" min="10" max="100" value="100" step="5"
               style="width: 100%; accent-color: var(--primary-color);">
@@ -1193,10 +1212,10 @@
 
           <div class="setting-group">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <h3>RAM Limiter</h3>
+              <h3 data-i18n="RAM Limiter">RAM Limiter</h3>
               <span id="ram-limit-value" style="font-weight: 600; color: var(--primary-color);">Off</span>
             </div>
-            <p style="margin-bottom: 12px; font-size: 0.85rem; opacity: 0.7;">Aggressively hibernate tabs to stay under
+            <p style="margin-bottom: 12px; font-size: 0.85rem; opacity: 0.7;" data-i18n="Aggressively hibernate tabs to stay under a specific memory footprint.">Aggressively hibernate tabs to stay under
               a specific memory footprint.</p>
             <input type="range" id="ram-limit-slider" min="0" max="4000" value="0" step="256"
               style="width: 100%; accent-color: var(--primary-color);">
@@ -1205,8 +1224,8 @@
 
           <div class="setting-group toggle-group">
             <div>
-              <h3>Background activity limits</h3>
-              <p>Suspend inactive tabs to save memory after 5 minutes.</p>
+              <h3 data-i18n="Background activity limits">Background activity limits</h3>
+              <p data-i18n="Suspend inactive tabs to save memory after 5 minutes.">Suspend inactive tabs to save memory after 5 minutes.</p>
             </div>
             <label class="switch"><input type="checkbox" id="background-limit" checked><span
                 class="slider"></span></label>
@@ -1215,52 +1234,51 @@
 
         <!-- Notifications -->
         <div class="settings-section" id="sec-notifications">
-          <h1>Notifications</h1>
+          <h1 data-i18n="Notifications">Notifications</h1>
           <div class="setting-group toggle-group">
             <div>
-              <h3>Master Notification Toggle</h3>
-              <p>Allow websites to ask for notification permissions</p>
+              <h3 data-i18n="Master Notification Toggle">Master Notification Toggle</h3>
+              <p data-i18n="Allow websites to ask for notification permissions">Allow websites to ask for notification permissions</p>
             </div>
             <label class="switch"><input type="checkbox" id="allow-notifications" checked><span
                 class="slider"></span></label>
           </div>
           <div class="setting-group">
-            <h3>Per-site Control</h3>
-            <button class="settings-btn" id="btn-allowed-sites">Manage Allowed Sites</button>
+            <h3 data-i18n="Per-site Control">Per-site Control</h3>
+            <button class="settings-btn" id="btn-allowed-sites" data-i18n="Manage Allowed Sites">Manage Allowed Sites</button>
           </div>
         </div>
 
         <!-- Downloads -->
         <div class="settings-section" id="sec-downloads">
-          <h1>Downloads</h1>
+          <h1 data-i18n="Downloads">Downloads</h1>
           <div class="setting-group">
-            <h3>Default location</h3>
+            <h3 data-i18n="Default location">Default location</h3>
             <div style="display:flex; gap: 10px;">
               <input type="text" id="download-path" readonly value="C:\Users\quinn\Downloads">
-              <button class="settings-btn" id="btn-change-download">Change</button>
+              <button class="settings-btn" id="btn-change-download" data-i18n="Change">Change</button>
             </div>
           </div>
           <div class="setting-group toggle-group">
             <div>
-              <h3>Ask where to save</h3>
-              <p>Prompt for location before downloading each file</p>
+              <h3 data-i18n="Ask where to save">Ask where to save</h3>
+              <p data-i18n="Prompt for location before downloading each file">Prompt for location before downloading each file</p>
             </div>
             <label class="switch"><input type="checkbox" id="ask-download"><span class="slider"></span></label>
           </div>
         </div>
 
-
         <!-- Advanced -->
         <div class="settings-section" id="sec-advanced">
-          <h1>Advanced</h1>
+          <h1 data-i18n="Advanced">Advanced</h1>
           <div class="setting-group">
-            <h3>Custom User Agent</h3>
+            <h3 data-i18n="Custom User Agent">Custom User Agent</h3>
             <input type="text" id="custom-ua" placeholder="Mozilla/5.0...">
           </div>
           <div class="setting-group toggle-group">
             <div>
-              <h3>DNS over HTTPS</h3>
-              <p>Use secure DNS for privacy (Cloudflare 1.1.1.1)</p>
+              <h3 data-i18n="DNS over HTTPS">DNS over HTTPS</h3>
+              <p data-i18n="Use secure DNS for privacy (Cloudflare 1.1.1.1)">Use secure DNS for privacy (Cloudflare 1.1.1.1)</p>
             </div>
             <label class="switch"><input type="checkbox" id="doh-toggle" checked><span class="slider"></span></label>
           </div>
@@ -1269,8 +1287,8 @@
             <input type="text" id="proxy-url" placeholder="http://proxy:8080">
           </div>
           <div class="setting-group">
-            <h3>Developer Tools</h3>
-            <button class="settings-btn" id="btn-open-flags-advanced" style="width: auto;">Leef Labs</button>
+            <h3 data-i18n="Developer Tools">Developer Tools</h3>
+            <button class="settings-btn" id="btn-open-flags-advanced" style="width: auto;" data-i18n="Labs">Labs</button>
           </div>
           <div class="setting-group">
             <h3>Bug Report Diagnostics</h3>
@@ -1701,7 +1719,7 @@
       </div>
 
       <!-- Step 2: Language -->
-      <div class="onboarding-step" data-step="1" style="display: none;">
+      <div class="onboarding-step" data-step="1">
         <div class="onboarding-header-section">
           <h1 data-i18n="Language Preference">Language Preference</h1>
           <p data-i18n="Select your regional spelling for the browser interface.">Select your regional spelling for the browser interface.</p>
@@ -1726,9 +1744,9 @@
       </div>
 
       <!-- Step 3: Ad Block -->
-      <div class="onboarding-step" data-step="2" style="display: none;">
+      <div class="onboarding-step" data-step="2">
         <div class="onboarding-header-section">
-          <h1 data-i18n="Ad &amp; Tracker Protection">Ad & Tracker Protection</h1>
+          <h1 data-i18n="Ad & Tracker Protection">Ad & Tracker Protection</h1>
           <p data-i18n="Choose your level of protection. You can adjust this later in settings.">Choose your level of protection. You can adjust this later in settings.</p>
         </div>
         <div class="onboarding-options">
@@ -1756,7 +1774,7 @@
       </div>
 
       <!-- Step 4: Privacy & Tweaks -->
-      <div class="onboarding-step" data-step="3" style="display: none;">
+      <div class="onboarding-step" data-step="3">
         <div class="onboarding-header-section">
           <h1 data-i18n="Custom Features">Custom Features</h1>
           <p data-i18n="Toggle advanced features to tailor your experience.">Toggle advanced features to tailor your experience.</p>
@@ -1792,9 +1810,9 @@
       </div>
 
       <!-- Step 5: System & Audio -->
-      <div class="onboarding-step" data-step="4" style="display: none;">
+      <div class="onboarding-step" data-step="4">
         <div class="onboarding-header-section">
-          <h1 data-i18n="System &amp; Audio">System & Audio</h1>
+          <h1 data-i18n="System & Audio">System & Audio</h1>
           <p data-i18n="Configure background tools and multimedia options.">Configure background tools and multimedia options.</p>
         </div>
         <div class="onboarding-options">
@@ -1819,7 +1837,7 @@
       </div>
 
       <!-- Step 6: Transparency & Start -->
-      <div class="onboarding-step" data-step="5" style="display: none;">
+      <div class="onboarding-step" data-step="5">
         <div class="onboarding-header-section">
           <img class="brand-icon" src="./images/icon-mark.svg" style="height: 80px; margin-bottom: 10px;">
           <h1 data-i18n="You're Ready to Go!">You're Ready to Go!</h1>
@@ -1842,7 +1860,7 @@
             <line x1="19" y1="12" x2="5" y2="12"></line>
             <polyline points="12 19 5 12 12 5"></polyline>
           </svg>
-          Back
+          <span data-i18n="Back">Back</span>
         </button>
 
         <div class="onboarding-progress-dots">
@@ -1856,7 +1874,7 @@
 
         <button id="btn-onboarding-next" class="nav-btn btn-primary"
           style="font-size: 0.95rem; font-weight: 600; padding: 8px 18px; border-radius: 20px; display: flex; align-items: center; gap: 6px; background: var(--primary-color); color: white;">
-          Next
+          <span data-i18n="Next">Next</span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
             stroke-linecap="round" stroke-linejoin="round">
             <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -1864,8 +1882,8 @@
           </svg>
         </button>
         <button id="btn-onboarding-finish" class="nav-btn btn-primary"
-          style="display: none; font-size: 0.95rem; font-weight: 600; padding: 8px 18px; border-radius: 20px; display: flex; align-items: center; gap: 6px; background: var(--primary-color); color: white;">
-          Start Browsing
+          style="display: none; font-size: 0.95rem; font-weight: 600; padding: 8px 18px; border-radius: 20px; align-items: center; gap: 6px; background: var(--primary-color); color: white;">
+          <span data-i18n="Start Browsing">Start Browsing</span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
             stroke-linecap="round" stroke-linejoin="round">
             <line x1="5" y1="12" x2="19" y2="12"></line>

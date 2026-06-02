@@ -3495,3 +3495,57 @@ body.efficiency-mode .hub-tile:hover {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* Linux Window Corner Rounding */
+body.linux-os {
+  background: transparent !important;
+}
+
+body.linux-os:not(.maximized):not(.fullscreen) {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Linux Custom Window Controls */
+.linux-window-controls {
+  display: none;
+}
+
+body.linux-os .linux-window-controls {
+  display: flex;
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 40px;
+  align-items: center;
+  padding-right: 12px;
+  -webkit-app-region: no-drag;
+}
+
+body.linux-os .linux-control-btn {
+  background: transparent;
+  border: none;
+  color: #000000;
+  opacity: 0.75;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  padding: 0;
+  margin-left: 2px;
+}
+
+body.linux-os .linux-control-btn:hover {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+body.linux-os .linux-control-btn#btn-linux-close:hover {
+  background-color: #ff453a;
+  color: white;
+}

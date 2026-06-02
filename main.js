@@ -32,6 +32,10 @@ if (process.platform === 'win32') {
   app.commandLine.appendSwitch('force-color-profile', 'srgb');
 }
 
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('enable-transparent-visuals');
+}
+
 const isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
 console.log('Leef Browser: isDev =', isDev, '| app.isPackaged =', app.isPackaged);
 
@@ -218,6 +222,24 @@ ipcMain.on('exit-app', () => {
   app.quit();
 });
 
+ipcMain.on('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.on('window-maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.on('window-close', () => {
+  if (mainWindow) mainWindow.close();
+});
+
 let isCriticalMode = false;
 ipcMain.on('set-critical-mode', (event, active) => {
   isCriticalMode = active;
@@ -369,6 +391,7 @@ function createWindow() {
 
   Menu.setApplicationMenu(null);
 
+  const isLinux = process.platform === 'linux';
   mainWindow = new BrowserWindow({
     width: isRecoveryMode ? 900 : 1200,
     height: isRecoveryMode ? 550 : 800,
@@ -376,22 +399,40 @@ function createWindow() {
     minHeight: 500,
     resizable: !isRecoveryMode,
     center: true,
+    frame: !isLinux,
+    transparent: isLinux,
     webPreferences: {
-
       nodeIntegration: true,
       contextIsolation: false,
       webviewTag: true,
       webSecurity: true,
       session: sess
     },
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
+    titleBarStyle: isLinux ? undefined : 'hidden',
+    titleBarOverlay: isLinux ? undefined : {
       color: '#5aef7e', // matches --topbar-bg in style.css exactly
       symbolColor: '#000000'
     },
-    backgroundColor: '#000000', // Fixes "see-through" gaps in fullscreen (v0.6.0)
+    ...(!isLinux ? {
+      backgroundColor: '#000000' // Fixes "see-through" gaps in fullscreen (v0.6.0)
+    } : {}),
     icon: path.join(__dirname, 'images/icon.png')
   });
+
+  if (isLinux) {
+    mainWindow.on('maximize', () => {
+      safeSend('window-state-changed', 'maximized');
+    });
+    mainWindow.on('unmaximize', () => {
+      safeSend('window-state-changed', 'normal');
+    });
+    mainWindow.on('enter-html-full-screen', () => {
+      safeSend('window-state-changed', 'fullscreen');
+    });
+    mainWindow.on('leave-html-full-screen', () => {
+      safeSend('window-state-changed', mainWindow.isMaximized() ? 'maximized' : 'normal');
+    });
+  }
 
   // Explicitly force size and centering to override any OS-level window persistence
   if (isRecoveryMode) {
@@ -567,8 +608,11 @@ ipcMain.on('apply-settings', async (event, settings) => {
   const sess = session.fromPartition('persist:leef-session');
 
   let acceptLang = 'en-US,en';
+  if (settings.language === 'en-gb') acceptLang = 'en-GB,en;q=0.9';
+  if (settings.language === 'en-ca') acceptLang = 'en-CA,en;q=0.9';
   if (settings.language === 'fr') acceptLang = 'fr-FR,fr,en;q=0.9';
   if (settings.language === 'es') acceptLang = 'es-ES,es,en;q=0.9';
+  if (settings.language === 'nl') acceptLang = 'nl-NL,nl,en;q=0.9';
   if (settings.language === 'it') acceptLang = 'it-IT,it,en;q=0.9';
 
   // Custom User Agent & Language
