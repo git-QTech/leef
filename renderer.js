@@ -776,7 +776,16 @@ class HubManager {
     this.urlInput = document.getElementById('hub-add-url');
     this.btnConfirm = document.getElementById('hub-add-confirm');
     this.btnCancel = document.getElementById('hub-add-cancel');
-    this.colorOpts = document.querySelectorAll('.color-opt');
+
+    // HSL slider elements
+    this.pickerHue = document.getElementById('picker-hue');
+    this.pickerHueVal = document.getElementById('picker-hue-val');
+    this.pickerSat = document.getElementById('picker-saturation');
+    this.pickerSatVal = document.getElementById('picker-sat-val');
+    this.pickerLight = document.getElementById('picker-lightness');
+    this.pickerLightVal = document.getElementById('picker-light-val');
+    this.tilePreview = document.getElementById('hub-tile-preview');
+    this.tilePreviewName = document.getElementById('hub-tile-preview-name');
 
     if (!this.modal) return;
 
@@ -785,7 +794,10 @@ class HubManager {
     this.btnConfirm.addEventListener('click', () => {
       const name = this.nameInput.value.trim();
       const url = this.urlInput.value.trim();
-      const activeColor = document.querySelector('.color-opt.active')?.dataset.color || '#92ff78';
+      
+      const activeColor = this.pickerHue && this.pickerSat && this.pickerLight 
+        ? `hsl(${this.pickerHue.value}, ${this.pickerSat.value}%, ${this.pickerLight.value}%)` 
+        : '#92ff78';
 
       if (!name || !url) {
         if (window.toastManager) window.toastManager.show('⚠️ Missing Info', 'Please enter both a name and URL.', 3000);
@@ -808,13 +820,45 @@ class HubManager {
       if (e.target === this.modal) this.closeModal();
     });
 
-    // Color options
-    this.colorOpts.forEach(opt => {
-      opt.addEventListener('click', () => {
-        this.colorOpts.forEach(o => o.classList.remove('active'));
-        opt.classList.add('active');
-      });
+    // Real-time site name preview sync
+    this.nameInput.addEventListener('input', () => {
+      if (this.tilePreviewName) {
+        this.tilePreviewName.textContent = this.nameInput.value.trim() || 'Site Name';
+      }
     });
+
+    // Color slider listeners
+    const sliderHandler = () => this.updateTileColorPreview();
+    if (this.pickerHue) this.pickerHue.addEventListener('input', sliderHandler);
+    if (this.pickerSat) this.pickerSat.addEventListener('input', sliderHandler);
+    if (this.pickerLight) this.pickerLight.addEventListener('input', sliderHandler);
+
+    this.updateTileColorPreview();
+  }
+
+  updateTileColorPreview() {
+    if (!this.pickerHue || !this.pickerSat || !this.pickerLight || !this.tilePreview) return;
+    const h = this.pickerHue.value;
+    const s = this.pickerSat.value;
+    const l = this.pickerLight.value;
+
+    // Update text labels
+    if (this.pickerHueVal) this.pickerHueVal.textContent = h + '°';
+    if (this.pickerSatVal) this.pickerSatVal.textContent = s + '%';
+    if (this.pickerLightVal) this.pickerLightVal.textContent = l + '%';
+
+    // Dynamic slider backgrounds for premium feedback
+    this.pickerSat.style.background = `linear-gradient(to right, hsl(${h}, 0%, ${l}%), hsl(${h}, 100%, ${l}%))`;
+    this.pickerLight.style.background = `linear-gradient(to right, #000, hsl(${h}, ${s}%, 50%), #fff)`;
+
+    // Update preview tile color
+    const colorStr = `hsl(${h}, ${s}%, ${l}%)`;
+    this.tilePreview.style.backgroundColor = colorStr;
+    this.tilePreview.style.backgroundImage = 'none';
+
+    // Adjust text color dynamically based on lightness
+    const isDark = l < 60;
+    this.tilePreview.style.color = isDark ? '#fff' : '#111';
   }
 
   render() {
@@ -828,8 +872,26 @@ class HubManager {
       if (tile.color) {
         el.style.backgroundColor = tile.color;
         el.style.backgroundImage = 'none';
-        // Adjust text color for visibility if needed
-        if (tile.color === '#555555' || tile.color === '#333333') el.style.color = '#fff';
+        
+        // Auto-calculate text color based on lightness
+        let isDark = false;
+        if (tile.color.startsWith('hsl')) {
+          const match = tile.color.match(/,\s*([\d.]+)%\s*\)/);
+          if (match) {
+            const lightness = parseFloat(match[1]);
+            isDark = lightness < 60;
+          }
+        } else if (tile.color.startsWith('#')) {
+          const hex = tile.color.replace('#', '');
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+          isDark = brightness < 150;
+        } else {
+          if (tile.color === '#555555' || tile.color === '#333333') isDark = true;
+        }
+        el.style.color = isDark ? '#fff' : '#111';
       }
 
       el.innerHTML = `
@@ -863,9 +925,15 @@ class HubManager {
     if (!this.modal) return;
     this.nameInput.value = '';
     this.urlInput.value = '';
-    // Reset colors
-    this.colorOpts.forEach(o => o.classList.remove('active'));
-    document.querySelector('.color-opt[data-color="#92ff78"]')?.classList.add('active');
+    if (this.tilePreviewName) {
+      this.tilePreviewName.textContent = 'Site Name';
+    }
+    
+    // Reset colors to default brand green HSL (109, 100%, 74%)
+    if (this.pickerHue) this.pickerHue.value = 109;
+    if (this.pickerSat) this.pickerSat.value = 100;
+    if (this.pickerLight) this.pickerLight.value = 74;
+    this.updateTileColorPreview();
 
     this.modal.style.display = 'flex';
     document.body.classList.add('modal-open');
@@ -1041,7 +1109,7 @@ class NewsService {
         <div class="news-content">
           <p>${BrowserUtils.sanitize(item.title)}</p>
           <div class="news-bottom">
-            <div class="news-source source-yahoo">Yahoo News <span class="external-icon">&#8599;</span></div>
+            <div class="news-source source-yahoo">Yahoo News <svg class="external-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 4px;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></div>
             <button class="news-dismiss-btn" data-slot="${slotIdx}" title="I don't care">✕ I don't care</button>
           </div>
         </div>
@@ -3071,6 +3139,7 @@ class SiteIdentityManager {
     this.gpcRowEl = document.getElementById('si-gpc-row');
     this.btnClearCookies = document.getElementById('btn-clear-site-cookies');
     this.gpcAlertEl = document.getElementById('gpc-alert-indicator');
+    this.gpcBadgeDot = document.getElementById('gpc-badge-dot');
     this._gpcCache = new Map(); // domain -> { verified: bool, fetchedAt: ts }
 
     // Remote GPC Non-Compliant Gist Configuration (v0.6.1)
@@ -3388,8 +3457,22 @@ class SiteIdentityManager {
       tab.gpcManuallyVerified = false;
     }
 
-    // Hide the alert indicator by default
-    if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
+    // Always reset the absolute-positioned GPC badge dot
+    if (this.gpcBadgeDot) {
+      this.gpcBadgeDot.className = 'gpc-badge-dot';
+      this.gpcBadgeDot.innerHTML = '';
+    }
+
+    // Hide the alert indicator and reset its collapsed class on actual tab switches
+    const tabChanged = tab && tab.id !== this.lastActiveTabId;
+    if (tabChanged) {
+      this.lastActiveTabId = tab.id;
+      if (this.gpcAlertEl) {
+        this.gpcAlertEl.style.display = 'none';
+        this.gpcAlertEl.className = 'gpc-alert-indicator';
+        void this.gpcAlertEl.offsetWidth; // Force reflow
+      }
+    }
 
     const gpcEnabled = window.settingsManager?.currentSettings?.gpc !== false;
     if (!gpcEnabled || !tab || tab.isInternal) {
@@ -3397,6 +3480,7 @@ class SiteIdentityManager {
       el.className = 'gpc-badge gpc-disabled';
       if (timer) timer.textContent = '';
       if (row) row.style.opacity = '0.5';
+      if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
       return;
     }
 
@@ -3444,6 +3528,9 @@ class SiteIdentityManager {
       tab.gpcManualReason = manualReason;
       tab.gpcManualCaveat = manualCaveat;
       tab.gpcVerified = true;
+      if (this.gpcBadgeDot) {
+        this.gpcBadgeDot.className = 'gpc-badge-dot manual show';
+      }
       if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
       return;
     }
@@ -3465,17 +3552,30 @@ class SiteIdentityManager {
       tab.gpcVerified = false;
       if (this.gpcAlertEl) {
         this.gpcAlertEl.style.display = 'flex';
+        // Ensure default class structure is kept
+        this.gpcAlertEl.className = 'gpc-alert-indicator';
+        this.gpcAlertEl.innerHTML = `
+          <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span>No GPC Support</span>
+        `;
         if (!tab.gpcAlertCollapsed) {
           this.gpcAlertEl.classList.remove('collapsed');
+          if (this.gpcBadgeDot) this.gpcBadgeDot.className = 'gpc-badge-dot';
           if (this._gpcCollapseTimeout) clearTimeout(this._gpcCollapseTimeout);
           this._gpcCollapseTimeout = setTimeout(() => {
             tab.gpcAlertCollapsed = true;
             if (window.tabManager && window.tabManager.getActiveTab() === tab) {
               if (this.gpcAlertEl) this.gpcAlertEl.classList.add('collapsed');
+              if (this.gpcBadgeDot) this.gpcBadgeDot.className = 'gpc-badge-dot unsupported show';
             }
           }, 3500);
         } else {
           this.gpcAlertEl.classList.add('collapsed');
+          if (this.gpcBadgeDot) this.gpcBadgeDot.className = 'gpc-badge-dot unsupported show';
         }
       }
       return;
@@ -3492,11 +3592,21 @@ class SiteIdentityManager {
             : null;
           timer.textContent = diff === null ? '' : diff > 10 ? '(>10s)' : '(' + Math.max(0.1, diff).toFixed(1) + 's)';
         }
+        if (this.gpcBadgeDot) {
+          this.gpcBadgeDot.className = 'gpc-badge-dot verified show';
+          this.gpcBadgeDot.innerHTML = `
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="#000000" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          `;
+        }
+        if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
         return;
       } else {
         el.textContent = 'Unverified';
         el.className = 'gpc-badge gpc-unverified';
         if (timer) timer.textContent = '(no response)';
+        if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
         return;
       }
     }
@@ -3505,6 +3615,7 @@ class SiteIdentityManager {
     el.textContent = 'Sent';
     el.className = 'gpc-badge gpc-sent';
     if (timer) timer.textContent = '(checking...)';
+    if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
 
     // Check /.well-known/gpc.json — the GPC spec's official compliance declaration
 
@@ -4941,12 +5052,14 @@ window.onload = async () => {
         const qs = document.getElementById('quick-settings-dropdown');
         const bm = document.getElementById('bookmarks-dropdown');
         const dl = document.getElementById('downloads-dropdown');
+        const si = document.getElementById('site-identity-dropdown');
         const webviewsContainer = document.getElementById('webviews-container');
         
         let activeDropdown = null;
         if (qs && qs.style.display !== 'none') activeDropdown = qs;
         else if (bm && bm.style.display !== 'none') activeDropdown = bm;
         else if (dl && dl.style.display !== 'none') activeDropdown = dl;
+        else if (si && si.style.display !== 'none') activeDropdown = si;
         
         if (webviewsContainer) {
           if (activeDropdown) {
@@ -4970,9 +5083,11 @@ window.onload = async () => {
       const qsEl = document.getElementById('quick-settings-dropdown');
       const bmEl = document.getElementById('bookmarks-dropdown');
       const dlEl = document.getElementById('downloads-dropdown');
+      const siEl = document.getElementById('site-identity-dropdown');
       if (qsEl) observer.observe(qsEl, config);
       if (bmEl) observer.observe(bmEl, config);
       if (dlEl) observer.observe(dlEl, config);
+      if (siEl) observer.observe(siEl, config);
     } catch (e) {
       console.error('Failed to initialize dropdown mutation observer:', e);
     }

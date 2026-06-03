@@ -52,13 +52,26 @@
       </div>
 
       <div class="address-bar-container">
-        <button id="btn-site-identity" class="site-identity-btn" title="Site Information">
-          <svg class="globe-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="2" y1="12" x2="22" y2="12"></line>
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-          </svg>
-        </button>
+        <div class="site-identity-wrapper">
+          <button id="btn-site-identity" class="site-identity-btn" title="Site Information">
+            <svg class="globe-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
+            <div id="gpc-badge-dot" class="gpc-badge-dot"></div>
+          </button>
+
+          <div id="gpc-alert-indicator" class="gpc-alert-indicator" style="display: none;"
+            title="Global Privacy Control (GPC) is unsupported on this website.">
+            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span>No GPC Support</span>
+          </div>
+        </div>
 
         <div id="drm-indicator" class="drm-indicator" style="display: none;"
           title="Protected DRM Content (Widevine) Active">
@@ -68,16 +81,6 @@
             </path>
           </svg>
           <span>DRM</span>
-        </div>
-
-        <div id="gpc-alert-indicator" class="gpc-alert-indicator" style="display: none;"
-          title="Global Privacy Control (GPC) is unsupported on this website.">
-          <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
-          <span>No GPC Support</span>
         </div>
 
         <div id="site-identity-dropdown" class="site-identity-dropdown" style="display: none;">
@@ -1404,19 +1407,36 @@
       <input type="text" id="hub-add-name" placeholder="e.g. GitHub" autocomplete="off" spellcheck="false" />
       <label for="hub-add-url">Site URL</label>
       <input type="text" id="hub-add-url" placeholder="e.g. https://github.com" autocomplete="off" spellcheck="false" />
-      <label>Tile Color</label>
-      <div class="hub-add-colors" id="hub-add-colors">
-        <div class="color-opt active" data-color="#ffd699" style="background: #ffd699;" title="Orange"></div>
-        <div class="color-opt" data-color="#ff8597" style="background: #ff8597;" title="Pink"></div>
-        <div class="color-opt" data-color="#ff8585" style="background: #4184ff;" title="Red"></div>
-        <div class="color-opt" data-color="#76acff" style="background: #ffb84e;" title="Blue"></div>
-        <div class="color-opt" data-color="#8c82ff" style="background: #8c82ff;" title="Purple"></div>
-        <div class="color-opt" data-color="#92ff78" style="background: #92ff78;" title="Leef Green"></div>
-        <div class="color-opt" data-color="#00d1c1" style="background: #00d1c1;" title="Teal"></div>
-        <div class="color-opt" data-color="#ffffff" style="background: #ffffff; border: 1.5px solid rgba(0,0,0,0.1);"
-          title="White"></div>
-        <div class="color-opt" data-color="#333333" style="background: #333333;" title="Black"></div>
-        <div class="color-opt" data-color="#aaaaaa" style="background: #aaaaaa;" title="Gray"></div>
+      <label>Tile Preview</label>
+      <div class="hub-tile-preview-container">
+        <div id="hub-tile-preview" class="hub-tile hub-tile-custom" style="background-color: hsl(109, 100%, 74%); background-image: none; color: #111;">
+          <span id="hub-tile-preview-name">Site Name</span>
+        </div>
+      </div>
+
+      <label>Customize Color</label>
+      <div class="color-picker-sliders">
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>Hue</span>
+            <span id="picker-hue-val">109°</span>
+          </div>
+          <input type="range" id="picker-hue" min="0" max="360" value="109" class="premium-slider hue-slider" />
+        </div>
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>Saturation</span>
+            <span id="picker-sat-val">100%</span>
+          </div>
+          <input type="range" id="picker-saturation" min="0" max="100" value="100" class="premium-slider sat-slider" />
+        </div>
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>Lightness</span>
+            <span id="picker-light-val">74%</span>
+          </div>
+          <input type="range" id="picker-lightness" min="0" max="100" value="74" class="premium-slider light-slider" />
+        </div>
       </div>
       <div class="hub-modal-actions">
         <button id="hub-add-cancel" class="hub-modal-btn hub-modal-cancel">Cancel</button>
