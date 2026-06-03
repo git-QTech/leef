@@ -374,6 +374,35 @@ async function runKeyCheck() {
       console.error('Leef Browser: Shift key check failed:', e.message);
       isRecoveryMode = false;
     }
+  } else if (process.platform === 'linux') {
+    try {
+      const listOutput = execSync('xinput --list', { timeout: 2000, encoding: 'utf8' });
+      const ids = [];
+      const lines = listOutput.split('\n');
+      for (const line of lines) {
+        if (/keyboard/i.test(line)) {
+          const match = line.match(/id=(\d+)/);
+          if (match) {
+            ids.push(match[1]);
+          }
+        }
+      }
+      for (const id of ids) {
+        try {
+          const queryOutput = execSync(`xinput query-state ${id}`, { timeout: 1000, encoding: 'utf8' });
+          if (queryOutput.includes('key[50]=down') || queryOutput.includes('key[62]=down')) {
+            isRecoveryMode = true;
+            console.log('Leef Browser: Recovery Mode activated via Shift key (Linux).');
+            break;
+          }
+        } catch (e) {
+          // Ignore failures for specific devices and try next
+        }
+      }
+    } catch (e) {
+      console.error('Leef Browser: Shift key check failed on Linux:', e.message);
+      isRecoveryMode = false;
+    }
   }
 }
 
