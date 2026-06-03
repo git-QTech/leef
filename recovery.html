@@ -237,6 +237,7 @@
         document.getElementById('btn-report-bug').addEventListener('click', () => {
             document.getElementById('bug-reporting').style.display = 'block';
             document.getElementById('btn-report-bug').style.borderColor = 'var(--accent-color)';
+            ipcRenderer.send('recovery-action', 'expand-window');
         });
 
         document.getElementById('btn-save-log').addEventListener('click', () => {

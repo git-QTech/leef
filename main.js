@@ -938,6 +938,10 @@ ipcMain.on('recovery-action', async (event, action) => {
       mainWindow.center();
       break;
 
+    case 'expand-window':
+      mainWindow.setSize(900, 750, true);
+      break;
+
     case 'open-appdata':
       shell.openPath(app.getPath('userData'));
       break;
