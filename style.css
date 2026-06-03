@@ -3531,8 +3531,7 @@ body.linux-os:not(.maximized):not(.fullscreen) {
 }
 
 body.linux-os:not(.maximized):not(.fullscreen) .main-content,
-body.linux-os:not(.maximized):not(.fullscreen) .webview-container,
-body.linux-os:not(.maximized):not(.fullscreen) webview {
+body.linux-os:not(.maximized):not(.fullscreen) .webview-container {
   border-radius: 0 0 11px 11px;
   overflow: hidden;
 }
