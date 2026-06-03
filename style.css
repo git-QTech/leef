@@ -3565,3 +3565,24 @@ body.linux-os .linux-control-btn#btn-linux-close:hover {
   background-color: #ff453a;
   color: white;
 }
+
+/* Prerelease Banner Styling */
+.prerelease-banner {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  background: rgba(255, 69, 58, 0.9);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  z-index: 999999;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(4px);
+}
