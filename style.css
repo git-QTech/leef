@@ -357,6 +357,7 @@ body.mac-os .brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  -webkit-app-region: no-drag;
 }
 
 .actions .action-btn {
