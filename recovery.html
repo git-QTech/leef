@@ -259,6 +259,11 @@
 
 
 
+        const isWin = (typeof process !== 'undefined' && process.platform === 'win32');
+        if (!isWin) {
+            document.getElementById('btn-open-github').innerText = 'Open GitHub';
+        }
+
         document.getElementById('btn-open-github').addEventListener('click', () => {
             ipcRenderer.send('recovery-action', 'open-github');
         });
