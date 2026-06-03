@@ -134,6 +134,7 @@ class SettingsManager {
       efficiencyMode: false,
       cpuLimit: 100,
       ramLimit: 0,
+      customNewTab: 'home',
       sitePermissions: {}
     };
     // Load previously saved settings and merge with defaults
@@ -238,6 +239,11 @@ class SettingsManager {
     if (el('flag-gpc')) el('flag-gpc').checked = s.gpc !== false; // Default to true
     document.querySelectorAll(`input[name="startup"]`).forEach(r => { r.checked = r.value === s.startup; });
     document.querySelectorAll(`input[name="tracking"]`).forEach(r => { r.checked = r.value === s.tracking; });
+    if (el('custom-new-tab')) el('custom-new-tab').value = s.customNewTab || '';
+    const homepageContainer = el('startup-homepage-container');
+    if (homepageContainer) {
+      homepageContainer.style.display = s.startup === 'homepage' ? 'block' : 'none';
+    }
 
     if (el('efficiency-mode')) el('efficiency-mode').checked = !!s.efficiencyMode;
     if (el('cpu-limit-slider')) {
@@ -251,6 +257,22 @@ class SettingsManager {
 
     // Show adblock badge based on saved setting
     this.updateAdblockBadge(s.adBlockerMode || 'none');
+
+    // Populate About Leef build info
+    try {
+      const ipc = window.require('electron').ipcRenderer;
+      const appVersion = ipc.sendSync('get-app-version') || '0.1.5';
+      if (el('build-leef-version')) el('build-leef-version').textContent = 'v' + appVersion;
+    } catch (e) {
+      if (el('build-leef-version')) el('build-leef-version').textContent = 'v0.1.5';
+    }
+    if (el('build-chrome-version')) el('build-chrome-version').textContent = process.versions.chrome || '—';
+    if (el('build-electron-version')) el('build-electron-version').textContent = process.versions.electron || '—';
+    if (el('build-platform-os')) {
+      const platformNames = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
+      const osName = platformNames[process.platform] || process.platform;
+      el('build-platform-os').textContent = `${osName} (${process.arch})`;
+    }
 
     // Apply regional spelling (Color vs Colour)
     this.applyLocalization();
@@ -277,6 +299,84 @@ class SettingsManager {
         item.classList.add('active');
         document.getElementById(item.getAttribute('data-section')).classList.add('active');
       });
+    });
+
+    // Settings search filter logic
+    const settingsSearch = document.getElementById('settings-search');
+    if (settingsSearch) {
+      settingsSearch.addEventListener('input', () => {
+        const query = settingsSearch.value.trim().toLowerCase();
+        
+        if (query.length > 0) {
+          // Temporarily disable/fade normal sidebar nav item selection
+          settingsNavItems.forEach(item => {
+            item.style.pointerEvents = 'none';
+            item.style.opacity = '0.4';
+          });
+          
+          settingsSections.forEach(sec => {
+            let sectionHasMatch = false;
+            const groups = sec.querySelectorAll('.setting-group');
+            
+            groups.forEach(group => {
+              // Extract all user-facing text from headers, paragraphs, labels, spans, options
+              const textContent = Array.from(group.querySelectorAll('h3, p, label, span, strong, option'))
+                .map(node => node.textContent.trim())
+                .join(' ')
+                .toLowerCase();
+              
+              if (textContent.includes(query) || group.textContent.toLowerCase().includes(query)) {
+                group.classList.remove('search-hidden');
+                sectionHasMatch = true;
+              } else {
+                group.classList.add('search-hidden');
+              }
+            });
+            
+            if (sectionHasMatch) {
+              sec.classList.add('active');
+              sec.classList.remove('search-hidden');
+            } else {
+              sec.classList.remove('active');
+              sec.classList.add('search-hidden');
+            }
+          });
+        } else {
+          // Restore normal tab navigation and clickability
+          settingsNavItems.forEach(item => {
+            item.style.pointerEvents = '';
+            item.style.opacity = '';
+          });
+          
+          const activeNav = document.querySelector('.settings-nav li.active');
+          const activeSectionId = activeNav ? activeNav.getAttribute('data-section') : 'sec-general';
+          
+          settingsSections.forEach(sec => {
+            sec.classList.remove('search-hidden');
+            sec.querySelectorAll('.setting-group').forEach(group => {
+              group.classList.remove('search-hidden');
+            });
+            if (sec.id === activeSectionId) {
+              sec.classList.add('active');
+            } else {
+              sec.classList.remove('active');
+            }
+          });
+        }
+      });
+    }
+
+    // Sync custom homepage visibility on radio change
+    const startupRadios = document.querySelectorAll('input[name="startup"]');
+    const homepageContainer = document.getElementById('startup-homepage-container');
+    const updateHomepageVisibility = () => {
+      const selected = document.querySelector('input[name="startup"]:checked')?.value;
+      if (homepageContainer) {
+        homepageContainer.style.display = selected === 'homepage' ? 'block' : 'none';
+      }
+    };
+    startupRadios.forEach(radio => {
+      radio.addEventListener('change', updateHomepageVisibility);
     });
 
     // Auto-save settings on change because i fucked up the first 3 times
@@ -574,7 +674,8 @@ class SettingsManager {
       newsManualRefresh: document.getElementById('news-manual-refresh').checked,
       efficiencyMode: document.getElementById('efficiency-mode').checked,
       cpuLimit: parseInt(document.getElementById('cpu-limit-slider').value),
-      ramLimit: parseInt(document.getElementById('ram-limit-slider').value)
+      ramLimit: parseInt(document.getElementById('ram-limit-slider').value),
+      customNewTab: document.getElementById('custom-new-tab')?.value || ''
     };
 
     this.applyVisualSettings();
@@ -635,6 +736,47 @@ class SettingsManager {
   }
 }
 
+// --- DROPDOWN TRANSITION UTILS (v0.5.2) ---
+const DropdownUtils = {
+  show(el, displayType = 'block') {
+    if (!el) return;
+    el.style.display = displayType;
+    // Force browser reflow to register display change before adding class
+    el.offsetHeight;
+    el.classList.add('visible');
+  },
+  hide(el) {
+    if (!el) return;
+    if (!el.classList.contains('visible')) {
+      el.style.display = 'none';
+      return;
+    }
+    el.classList.remove('visible');
+    
+    let cleaned = false;
+    const onTransitionEnd = (e) => {
+      if (e.propertyName === 'opacity' || e.propertyName === 'transform') {
+        if (!cleaned) {
+          cleaned = true;
+          el.removeEventListener('transitionend', onTransitionEnd);
+          el.style.display = 'none';
+        }
+      }
+    };
+    el.addEventListener('transitionend', onTransitionEnd);
+    
+    // Fallback timeout to ensure display is set to none if transition doesn't fire
+    setTimeout(() => {
+      if (!cleaned) {
+        cleaned = true;
+        el.removeEventListener('transitionend', onTransitionEnd);
+        el.style.display = 'none';
+      }
+    }, 220);
+  }
+};
+
+
 class BookmarksManager {
   constructor() {
     this.btnBookmarks = document.getElementById('btn-bookmarks');
@@ -683,7 +825,7 @@ class BookmarksManager {
         if (e.target.classList.contains('bookmark-delete')) return;
         if (window.tabManager) {
           window.tabManager.navigateToUrl(bm.url);
-          this.dropdown.style.display = 'none';
+          DropdownUtils.hide(this.dropdown);
         }
       });
 
@@ -705,14 +847,19 @@ class BookmarksManager {
 
     this.btnBookmarks.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (this.dropdown.style.display === 'none') {
+      const isVisible = this.dropdown.classList.contains('visible');
+      if (!isVisible) {
         this.render();
-        this.dropdown.style.display = 'flex';
+        DropdownUtils.show(this.dropdown, 'flex');
         // Close other dropdowns
         const d = document.getElementById('downloads-dropdown');
-        if (d) d.style.display = 'none';
+        if (d) DropdownUtils.hide(d);
+        const q = document.getElementById('quick-settings-dropdown');
+        if (q) DropdownUtils.hide(q);
+        const s = document.getElementById('site-identity-dropdown');
+        if (s) DropdownUtils.hide(s);
       } else {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
       }
     });
 
@@ -734,8 +881,8 @@ class BookmarksManager {
     });
 
     document.addEventListener('click', (e) => {
-      if (this.dropdown.style.display !== 'none' && !this.dropdown.contains(e.target) && e.target !== this.btnBookmarks && !this.btnBookmarks.contains(e.target)) {
-        this.dropdown.style.display = 'none';
+      if (this.dropdown.classList.contains('visible') && !this.dropdown.contains(e.target) && e.target !== this.btnBookmarks && !this.btnBookmarks.contains(e.target)) {
+        DropdownUtils.hide(this.dropdown);
       }
     });
   }
@@ -1200,6 +1347,14 @@ class TabManager {
   }
 
   createTab(route = 'home') {
+    // If opening a new tab ('home') and a custom homepage URL is configured, use it instead
+    if (route === 'home') {
+      const s = this.settings.currentSettings;
+      if (s.startup === 'homepage' && s.customNewTab) {
+        route = s.customNewTab;
+      }
+    }
+
     // URL Debounce: Prevent the exact same URL from opening twice within 500ms
     // Fixes "double tabs" caused by click interceptors fighting with native handlers.
     const now = Date.now();
@@ -1435,6 +1590,7 @@ class TabManager {
       tab.gpcStartTime = Date.now(); // START TIMER: from when navigation begins
       tab.volumeBoost = 1; // Reset volume on moving to a new tab
       tab.blockedAds = 0; // Reset adblock stats on moving to a new tab
+      tab.blockedTrackers = 0; // Reset trackers stats on moving to a new tab
       tab.hasDRM = false; // Reset DRM status
       if (this.activeTabId === tab.id) {
         const drmIndicator = document.getElementById('drm-indicator');
@@ -1494,6 +1650,11 @@ class TabManager {
       tab.canGoBack = tab.webviewEl.canGoBack();
       tab.canGoForward = tab.webviewEl.canGoForward();
       this.updateTabUI(tab);
+
+      // Force scroll reset to top of page on cross-page navigation
+      try {
+        tab.webviewEl.executeJavaScript('window.scrollTo(0, 0);').catch(() => {});
+      } catch (err) {}
 
       const s = this.settings.currentSettings;
       const tabUrl = e.url || '';
@@ -1576,6 +1737,15 @@ class TabManager {
 
       // Build the injection payload conditionally
       const chunks = [];
+
+      // Scroll-reset (always on DOM ready to fix scrolling carryover bug)
+      chunks.push(`
+        (function() {
+          window.scrollTo(0, 0);
+          if (document.documentElement) document.documentElement.scrollTop = 0;
+          if (document.body) document.body.scrollTop = 0;
+        })();
+      `);
 
       // 1. New-tab interceptor (always)
       chunks.push(`
@@ -1795,7 +1965,7 @@ class TabManager {
       }
 
       // 9. YouTube Ad-Protection (YouTube only)
-      if (isYouTube) {
+      if (isYouTube && s.adBlockerMode !== 'none') {
         chunks.push(`
           (function() {
             if (window.__leefYTAdBlock) return;
@@ -1837,7 +2007,7 @@ class TabManager {
       }
 
       // YouTube SPA re-injection hook (event listener, not a JS injection)
-      if (isYouTube && !tab._ytNavHooked) {
+      if (isYouTube && s.adBlockerMode !== 'none' && !tab._ytNavHooked) {
         tab._ytNavHooked = true;
         let ytNavTimer;
         tab.webviewEl.addEventListener('did-navigate-in-page', (e) => {
@@ -1846,6 +2016,7 @@ class TabManager {
             clearTimeout(ytNavTimer);
             ytNavTimer = setTimeout(() => {
               const s2 = this.settings.currentSettings;
+              if (s2.adBlockerMode === 'none') return;
               const labs2 = window.labsManager;
               const isWarp2 = !!(labs2 && labs2.isFlagEnabled('yt_warp_speed'));
               tab.webviewEl.executeJavaScript(`
@@ -1992,6 +2163,19 @@ class TabManager {
     tab.webviewEl.addEventListener('leave-html-full-screen', () => {
       document.body.classList.remove('video-fullscreen');
       try { document.exitFullscreen(); } catch (e) {}
+    });
+
+    // Close dropdowns when clicking on the webview (registers as focus)
+    tab.webviewEl.addEventListener('focus', () => {
+      const dropdowns = ['bookmarks-dropdown', 'downloads-dropdown', 'quick-settings-dropdown', 'site-identity-dropdown'];
+      dropdowns.forEach(id => {
+        const d = document.getElementById(id);
+        if (d) DropdownUtils.hide(d);
+      });
+      if (window.siteIdentityManager && window.siteIdentityManager._updateInterval) {
+        clearInterval(window.siteIdentityManager._updateInterval);
+        window.siteIdentityManager._updateInterval = null;
+      }
     });
   }
 
@@ -2277,34 +2461,113 @@ class TabManager {
     if (index === -1) return;
 
     const tab = this.tabs[index];
-    // Clean up webview to prevent memory leaks
-    if (tab.webviewEl) {
-      tab.webviewEl.removeAttribute('src');  // Stop any loading
-      tab.webviewEl.remove();                // Detach from DOM
+
+    // Determine target tab to switch to first if we are closing the active tab
+    let targetTabId = null;
+    if (this.activeTabId === tabId && this.tabs.length > 1) {
+      const nextIndex = index === this.tabs.length - 1 ? index - 1 : index + 1;
+      targetTabId = this.tabs[nextIndex].id;
     }
-    tab.tabEl.remove();
-    // Null out references so GC can collect
-    tab.webviewEl = null;
-    tab.tabEl = null;
-    tab.tabTitle = null;
+
+    // Stop and redirect webview immediately to cut off resource/network usage
+    if (tab.webviewEl) {
+      try { tab.webviewEl.stop(); } catch (e) { }
+      try { tab.webviewEl.src = 'about:blank'; } catch (e) { }
+
+      // Hide the webview's parent wrapper immediately so it doesn't linger visually
+      try {
+        const wrapper = tab.webviewEl.closest('.webview-wrapper') || tab.webviewEl.parentNode;
+        if (wrapper) {
+          wrapper.style.display = 'none';
+        }
+      } catch (e) { }
+    }
+
+    // Capture tab details for recently closed history before mutating
+    const tabUrl = tab.url;
+    const tabTitle = tab.title;
+    const tabIsInternal = tab.isInternal;
+
+    // Splice tab out of our logical list immediately so logical queries don't find it
     this.tabs.splice(index, 1);
 
+    // Switch or create tabs immediately to maintain snappy user interface response
     if (this.tabs.length === 0) {
       this.createTab('home');
-    } else if (this.activeTabId === tabId) {
-      this.switchTab(this.tabs[Math.max(0, index - 1)].id);
+    } else if (targetTabId) {
+      this.switchTab(targetTabId);
     }
 
-    // Recently Closed Tabs (v0.3.2)
-    if (!tab.isInternal && tab.url && !tab.url.startsWith('file://')) {
+    // Recently Closed Tabs stack (v0.3.2)
+    if (!tabIsInternal && tabUrl && !tabUrl.startsWith('file://')) {
       if (!this.closedTabsStack) this.closedTabsStack = [];
-      this.closedTabsStack.push({ url: tab.url, title: tab.title });
+      this.closedTabsStack.push({ url: tabUrl, title: tabTitle });
       if (this.closedTabsStack.length > 20) this.closedTabsStack.shift(); // Limit size
 
       // Tell main process that we have closed tabs now
       try {
         window.require('electron').ipcRenderer.send('update-closed-tabs-count', this.closedTabsStack.length);
       } catch (e) { }
+    }
+
+    // Trigger visual close transition
+    const tabEl = tab.tabEl;
+    if (tabEl) {
+      tabEl.classList.add('closing');
+
+      const cleanup = () => {
+        try {
+          if (tabEl.parentNode) {
+            tabEl.remove();
+          }
+        } catch (e) { }
+
+        // Final cleanup of the webview element to prevent memory leaks and break closures
+        if (tab.webviewEl) {
+          try {
+            const clone = tab.webviewEl.cloneNode(false);
+            if (tab.webviewEl.parentNode) {
+              tab.webviewEl.parentNode.replaceChild(clone, tab.webviewEl);
+            }
+            clone.remove();
+          } catch (e) {
+            try { tab.webviewEl.remove(); } catch (err) { }
+          }
+        }
+
+        // Null out references to allow garbage collection
+        tab.webviewEl = null;
+        tab.tabEl = null;
+        tab.tabTitle = null;
+      };
+
+      // Listen for transitionend or use a timeout fallback to perform cleanup
+      let cleaned = false;
+      const onTransitionEnd = (e) => {
+        if (e.propertyName === 'max-width' || e.propertyName === 'width' || e.propertyName === 'opacity') {
+          if (!cleaned) {
+            cleaned = true;
+            tabEl.removeEventListener('transitionend', onTransitionEnd);
+            cleanup();
+          }
+        }
+      };
+      tabEl.addEventListener('transitionend', onTransitionEnd);
+
+      // Fallback timer slightly longer than 0.22s CSS transition
+      setTimeout(() => {
+        if (!cleaned) {
+          cleaned = true;
+          tabEl.removeEventListener('transitionend', onTransitionEnd);
+          cleanup();
+        }
+      }, 250);
+    } else {
+      // If there's no tabEl, perform final webview cleanup immediately
+      if (tab.webviewEl) {
+        try { tab.webviewEl.remove(); } catch (e) { }
+        tab.webviewEl = null;
+      }
     }
   }
 
@@ -2486,7 +2749,10 @@ class TabManager {
       window.require('electron').ipcRenderer.on('adblock-items-blocked-batch', (event, data) => {
         const tab = this.tabs.find(t => t.webviewEl && t.webviewEl.getWebContentsId() === data.tabId);
         if (tab) {
-          tab.blockedAds = (tab.blockedAds || 0) + data.count;
+          const ads = data.ads || 0;
+          const trackers = data.trackers || 0;
+          tab.blockedAds = (tab.blockedAds || 0) + ads;
+          tab.blockedTrackers = (tab.blockedTrackers || 0) + trackers;
           if (this.activeTabId === tab.id && window.siteIdentityManager) {
             window.siteIdentityManager.updateUI();
           }
@@ -2494,7 +2760,7 @@ class TabManager {
             try {
               // Record one event per batch to save CPU, but increment the total counter
               const domain = new URL(data.url).hostname;
-              window.privacyManager.totalBlocked += data.count;
+              window.privacyManager.totalBlocked += (ads + trackers);
               window.privacyManager.recordBlock(domain); // Record last domain for recent list
             } catch (e) { }
           }
@@ -2706,17 +2972,26 @@ class DownloadManager {
     if (this.el) {
       this.el.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.dropdown.style.display = this.dropdown.style.display === 'none' ? 'block' : 'none';
-        // Close other dropdowns
-        const b = document.getElementById('bookmarks-dropdown');
-        if (b) b.style.display = 'none';
+        const isVisible = this.dropdown.classList.contains('visible');
+        if (isVisible) {
+          DropdownUtils.hide(this.dropdown);
+        } else {
+          DropdownUtils.show(this.dropdown, 'block');
+          // Close other dropdowns
+          const b = document.getElementById('bookmarks-dropdown');
+          if (b) DropdownUtils.hide(b);
+          const q = document.getElementById('quick-settings-dropdown');
+          if (q) DropdownUtils.hide(q);
+          const s = document.getElementById('site-identity-dropdown');
+          if (s) DropdownUtils.hide(s);
+        }
       });
     }
 
     // Global close
     document.addEventListener('click', (e) => {
       if (this.dropdown && !this.dropdown.contains(e.target) && e.target !== this.el) {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
       }
     });
 
@@ -2735,7 +3010,7 @@ class DownloadManager {
         this.downloads.set(id, { ...data, id, received: 0, startTime: Date.now() });
         this.renderItem(id);
         // Show dropdown when download starts
-        this.dropdown.style.display = 'block';
+        DropdownUtils.show(this.dropdown, 'block');
       } else if (data.status === 'progressing') {
         const dl = this.downloads.get(id);
         if (dl) {
@@ -2995,37 +3270,42 @@ class QuickSettingsManager {
     if (this.el) {
       this.el.addEventListener('click', (e) => {
         e.stopPropagation();
-        const isVisible = this.dropdown.style.display === 'grid';
-        this.dropdown.style.display = isVisible ? 'none' : 'grid';
+        const isVisible = this.dropdown.classList.contains('visible');
+        if (isVisible) {
+          DropdownUtils.hide(this.dropdown);
+        } else {
+          DropdownUtils.show(this.dropdown, 'grid');
+          this.updateUI();
 
-        if (!isVisible) this.updateUI();
-
-        // Close other dropdowns
-        const b = document.getElementById('bookmarks-dropdown');
-        if (b) b.style.display = 'none';
-        const d = document.getElementById('downloads-dropdown');
-        if (d) d.style.display = 'none';
+          // Close other dropdowns
+          const b = document.getElementById('bookmarks-dropdown');
+          if (b) DropdownUtils.hide(b);
+          const d = document.getElementById('downloads-dropdown');
+          if (d) DropdownUtils.hide(d);
+          const s = document.getElementById('site-identity-dropdown');
+          if (s) DropdownUtils.hide(s);
+        }
       });
     }
 
     // Global close
     document.addEventListener('click', (e) => {
       if (this.dropdown && !this.dropdown.contains(e.target) && e.target !== this.el) {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
       }
     });
 
     if (this.btnChangelog) {
       this.btnChangelog.addEventListener('click', () => {
         if (window.tabManager) window.tabManager.createTab('changelog');
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
       });
     }
 
     if (this.btnSettings) {
       this.btnSettings.addEventListener('click', () => {
         if (window.tabManager) window.tabManager.createTab('settings');
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
       });
     }
 
@@ -3089,7 +3369,7 @@ class QuickSettingsManager {
     if (this.btnScreenshot) {
       this.btnScreenshot.addEventListener('click', () => {
         // Close menu first and wait for browser to repaint before capturing
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
         setTimeout(() => {
           if (window.toastManager) window.toastManager.show('📸 Screenshot', 'Capturing and copying to clipboard...', 2000);
           window.require('electron').ipcRenderer.send('capture-page');
@@ -3107,7 +3387,7 @@ class QuickSettingsManager {
 
     if (this.btnBug) {
       this.btnBug.addEventListener('click', () => {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
         const confirmed = window.confirm(
           "Generating a bug report will save a diagnostics file to your PC.\n\n" +
           "This file contains system specs and configurations to help with bug reports. " +
@@ -3134,6 +3414,7 @@ class SiteIdentityManager {
     this.domainEl = document.getElementById('si-domain');
     this.statusEl = document.getElementById('si-status');
     this.adblockCountEl = document.getElementById('si-adblock-count');
+    this.trackerCountEl = document.getElementById('si-tracker-count');
     this.gpcStatusEl = document.getElementById('si-gpc-status');
     this.gpcTimerEl = document.getElementById('si-gpc-timer');
     this.gpcRowEl = document.getElementById('si-gpc-row');
@@ -3277,23 +3558,28 @@ class SiteIdentityManager {
     if (this.btnGlobe) {
       this.btnGlobe.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.dropdown.style.display = this.dropdown.style.display === 'none' ? 'block' : 'none';
-        // Close others
-        const d1 = document.getElementById('bookmarks-dropdown');
-        const d2 = document.getElementById('downloads-dropdown');
-        const d3 = document.getElementById('quick-settings-dropdown');
-        if (d1) d1.style.display = 'none';
-        if (d2) d2.style.display = 'none';
-        if (d3) d3.style.display = 'none';
+        const isVisible = this.dropdown.classList.contains('visible');
+        if (isVisible) {
+          DropdownUtils.hide(this.dropdown);
+        } else {
+          DropdownUtils.show(this.dropdown, 'block');
+          // Close others
+          const d1 = document.getElementById('bookmarks-dropdown');
+          const d2 = document.getElementById('downloads-dropdown');
+          const d3 = document.getElementById('quick-settings-dropdown');
+          if (d1) DropdownUtils.hide(d1);
+          if (d2) DropdownUtils.hide(d2);
+          if (d3) DropdownUtils.hide(d3);
 
-        this.updateUI();
+          this.updateUI();
+        }
 
         // Real-time updates while open, but only while the answer is still pending
-        if (this.dropdown.style.display === 'block') {
+        if (this.dropdown.classList.contains('visible')) {
           if (this._updateInterval) clearInterval(this._updateInterval);
           this._updateInterval = setInterval(() => {
             // Stop if closed
-            if (this.dropdown.style.display === 'none') {
+            if (!this.dropdown.classList.contains('visible')) {
               clearInterval(this._updateInterval);
               this._updateInterval = null;
               return;
@@ -3314,7 +3600,7 @@ class SiteIdentityManager {
 
     document.addEventListener('click', (e) => {
       if (this.dropdown && !this.dropdown.contains(e.target) && e.target !== this.btnGlobe && !this.btnGlobe.contains(e.target)) {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
         if (this._updateInterval) { clearInterval(this._updateInterval); this._updateInterval = null; }
       }
     });
@@ -3329,7 +3615,7 @@ class SiteIdentityManager {
           const url = new URL(tab.url);
           window.require('electron').ipcRenderer.send('clear-site-data', url.hostname);
           if (window.toastManager) window.toastManager.show('🍪 Cookies Cleared', `Cleared cookies for ${url.hostname}.`, 3000);
-          this.dropdown.style.display = 'none';
+          DropdownUtils.hide(this.dropdown);
         } catch (e) { }
       });
     }
@@ -3337,7 +3623,7 @@ class SiteIdentityManager {
     const btnDashboard = document.getElementById('btn-si-dashboard');
     if (btnDashboard) {
       btnDashboard.addEventListener('click', () => {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
         if (window.tabManager) {
           window.tabManager.createTab('privacy');
         }
@@ -3347,7 +3633,7 @@ class SiteIdentityManager {
     const btnWhois = document.getElementById('btn-si-whois');
     if (btnWhois) {
       btnWhois.addEventListener('click', () => {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
         const tab = window.tabManager.getActiveTab();
         if (tab && !tab.isInternal) {
           try {
@@ -3358,15 +3644,15 @@ class SiteIdentityManager {
       });
     }
 
-    // Bind Click to GPC Badge for info modal (v0.6.2)
-    if (this.gpcStatusEl) {
-      this.gpcStatusEl.addEventListener('click', (e) => {
+    // Bind Click to GPC Row/Card for info modal (v0.6.2)
+    if (this.gpcRowEl) {
+      this.gpcRowEl.addEventListener('click', (e) => {
         e.stopPropagation();
         const tab = window.tabManager?.getActiveTab();
         if (!tab) return;
 
         // Close the Site Identity dropdown first
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
         if (this._updateInterval) {
           clearInterval(this._updateInterval);
           this._updateInterval = null;
@@ -3405,38 +3691,43 @@ class SiteIdentityManager {
     if (!tab) return;
 
     const isInternal = tab.isInternal || tab.url.startsWith('leef:') || tab.url.startsWith('file:') || tab.url.startsWith('chrome:');
+    const headerIcon = document.getElementById('si-header-icon');
+
+    // Helper to set status pill state
+    const setStatus = (text, state) => {
+      if (this.statusEl) {
+        this.statusEl.textContent = text;
+        this.statusEl.className = 'si-status-pill' + (state ? ` ${state}` : '');
+        this.statusEl.style.color = '';
+      }
+      if (headerIcon) {
+        headerIcon.className = 'si-header-icon' + (state ? ` ${state}` : '');
+      }
+    };
 
     if (isInternal) {
       if (this.domainEl) this.domainEl.textContent = 'Leef Browser';
-      if (this.statusEl) {
-        this.statusEl.textContent = 'Local Application Page';
-        this.statusEl.style.color = '#777';
-      }
+      setStatus('Local Application Page', 'info');
       if (this.adblockCountEl) this.adblockCountEl.textContent = '0';
-      this._updateGPCStatus(tab); // This will handle the 'Disabled' state
+      if (this.trackerCountEl) this.trackerCountEl.textContent = '0';
+      this._updateGPCStatus(tab);
     } else {
       try {
         const urlObj = new URL(tab.url);
         if (this.domainEl) this.domainEl.textContent = urlObj.hostname;
 
         if (urlObj.protocol === 'https:') {
-          if (this.statusEl) {
-            if (tab.gpcVerified) {
-              this.statusEl.textContent = 'Your connection is secure & Leef privacy measures are in place';
-            } else {
-              this.statusEl.textContent = 'Connection is secure';
-            }
-            this.statusEl.style.color = '#4caf50';
-          }
+          const statusText = tab.gpcVerified
+            ? 'Secure & privacy-protected'
+            : 'Connection is secure';
+          setStatus(statusText, null); // default = green pill
         } else {
-          if (this.statusEl) {
-            this.statusEl.textContent = 'Connection is NOT secure';
-            this.statusEl.style.color = '#f44336';
-          }
+          setStatus('Connection is NOT secure', 'insecure');
         }
 
         // Adblock stats
         if (this.adblockCountEl) this.adblockCountEl.textContent = tab.blockedAds || '0';
+        if (this.trackerCountEl) this.trackerCountEl.textContent = tab.blockedTrackers || '0';
 
         // GPC indicator
         this._updateGPCStatus(tab);
@@ -4992,28 +5283,12 @@ window.onload = async () => {
   // Startup behavior
   const startup = settingsMgr.currentSettings.startup || 'newtab';
 
-  if (startup === 'continue') {
-    let lastTabs = [];
-    try { lastTabs = JSON.parse(localStorage.getItem('leef_last_tabs') || '[]'); } catch (e) { }
-    if (lastTabs.length > 0) {
-      lastTabs.forEach(url => window.tabManager.createTab(url));
-    } else {
-      window.tabManager.createTab('home');
-    }
-  } else if (startup === 'homepage') {
+  if (startup === 'homepage') {
     const homepage = settingsMgr.currentSettings.customNewTab || 'home';
     window.tabManager.createTab(homepage);
   } else {
     window.tabManager.createTab('home');
   }
-
-  // Persist tabs on close for 'continue' mode
-  window.addEventListener('beforeunload', () => {
-    const urls = window.tabManager.tabs
-      .filter(t => !t.isInternal)
-      .map(t => t.url);
-    localStorage.setItem('leef_last_tabs', JSON.stringify(urls));
-  });
 
   // Handle Linux window controls and state changes
   if (process.platform === 'linux') {

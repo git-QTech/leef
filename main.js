@@ -125,11 +125,16 @@ async function initAdBlocker(enabled = false) {
     // Enable cosmetic filtering and IPC handlers (Once)
     blocker.enableBlockingInSession(sess);
     // IPC Batching: Throttled updates to reduce CPU usage (v0.5.0)
-    const pendingBlocks = new Map(); // tabId -> { count, lastUrl }
+    const pendingBlocks = new Map(); // tabId -> { ads, trackers, lastUrl }
     blocker.on('request-blocked', (request) => {
       const tabId = request.tabId;
-      const stats = pendingBlocks.get(tabId) || { count: 0, lastUrl: '' };
-      stats.count++;
+      const stats = pendingBlocks.get(tabId) || { ads: 0, trackers: 0, lastUrl: '' };
+      const type = request.type || '';
+      if (['script', 'xmlhttprequest', 'ping', 'beacon', 'websocket'].includes(type.toLowerCase())) {
+        stats.trackers++;
+      } else {
+        stats.ads++;
+      }
       stats.lastUrl = request.url;
       pendingBlocks.set(tabId, stats);
     });
@@ -137,7 +142,12 @@ async function initAdBlocker(enabled = false) {
     setInterval(() => {
       if (pendingBlocks.size > 0) {
         pendingBlocks.forEach((stats, tabId) => {
-          safeSend('adblock-items-blocked-batch', { tabId, count: stats.count, url: stats.lastUrl });
+          safeSend('adblock-items-blocked-batch', {
+            tabId,
+            ads: stats.ads,
+            trackers: stats.trackers,
+            url: stats.lastUrl
+          });
         });
         pendingBlocks.clear();
       }

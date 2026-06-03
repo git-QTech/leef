@@ -1,3 +1,6 @@
+!pragma warning disable 6001
+!pragma warning disable 6010
+
 Var WelcomeTitle
 Var WelcomeText
 
@@ -22,15 +25,3 @@ Var WelcomeText
     StrCpy $WelcomeText "This should only take a moment..."
   end:
 !macroend
-
-# Set page show callbacks to style the wizard elements with Leef Mint Green
-!define MUI_PAGE_CUSTOMFUNCTION_SHOW WelcomePageShow
-!define MUI_PAGE_CUSTOMFUNCTION_SHOW InstFilesPageShow
-
-Function WelcomePageShow
-  SetCtlColors $HWNDPARENT "0x121212" "0xEBFBEB"
-FunctionEnd
-
-Function InstFilesPageShow
-  SetCtlColors $HWNDPARENT "0x121212" "0xEBFBEB"
-FunctionEnd
