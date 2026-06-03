@@ -34,6 +34,7 @@ if (process.platform === 'win32') {
 
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-transparent-visuals');
+  app.commandLine.appendSwitch('enable-blink-features', 'MiddleClickAutoscroll');
 }
 
 // Suppress noisy internal Chromium logs (e.g. VA-API/GPU decoding failures)
