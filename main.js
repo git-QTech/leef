@@ -51,7 +51,7 @@ if (isDev) {
 
 let mainWindow;
 let blocker;
-const permissionCallbacks = {};
+const permissionCallbacks = Object.create(null);
 let permReqId = 0;
 let globalSettings = {};
 let adblockerEnabled = false;
@@ -86,7 +86,7 @@ async function initAdBlocker(enabled = false) {
   if (adblockerEnabled || adblockerLoading) return; // Already setup or in progress
   adblockerLoading = true;
 
-  const cachePath = path.join(app.getPath('userData'), 'adblock-engine-v3.bin');
+  const cachePath = path.normalize(path.join(app.getPath('userData'), 'adblock-engine-v3.bin'));
 
   try {
     if (fs.existsSync(cachePath)) {
@@ -272,23 +272,24 @@ let startupError = 'None';
 
 async function generateDiagnosticLog(error = 'None') {
   const userData = app.getPath('userData');
-  const logPath = path.join(userData, 'leef-diagnostic.txt');
+  const logPath = path.normalize(path.join(userData, 'leef-diagnostic.txt'));
 
   const scrub = (str) => {
     if (!str) return '';
-    const home = os.homedir().replace(/\\/g, '\\\\');
-    return str.replace(new RegExp(home, 'g'), '<User>');
+    const home = os.homedir();
+    const escapedHome = home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return str.replace(new RegExp(escapedHome, 'g'), '<User>');
   };
 
   let gpuInfo = {};
   try { gpuInfo = await app.getGPUInfo('basic'); } catch (e) { gpuInfo = { error: 'Failed to fetch' }; }
 
   const fileChecks = {
-    'index.html': fs.existsSync(path.join(__dirname, 'index.html')),
-    'renderer.js': fs.existsSync(path.join(__dirname, 'renderer.js')),
-    'style.css': fs.existsSync(path.join(__dirname, 'style.css')),
-    'package.json': fs.existsSync(path.join(__dirname, 'package.json')),
-    'Recovery UI': fs.existsSync(path.join(__dirname, 'recovery.html'))
+    'index.html': fs.existsSync(path.normalize(path.join(__dirname, 'index.html'))),
+    'renderer.js': fs.existsSync(path.normalize(path.join(__dirname, 'renderer.js'))),
+    'style.css': fs.existsSync(path.normalize(path.join(__dirname, 'style.css'))),
+    'package.json': fs.existsSync(path.normalize(path.join(__dirname, 'package.json'))),
+    'Recovery UI': fs.existsSync(path.normalize(path.join(__dirname, 'recovery.html')))
   };
 
   const logContent = [
@@ -322,7 +323,7 @@ async function generateDiagnosticLog(error = 'None') {
     `Arguments: ${scrub(process.argv.join(' '))}`
   ].join('\n');
 
-  fs.writeFileSync(logPath, logContent);
+  fs.writeFileSync(path.normalize(logPath), logContent);
 }
 
 async function runKeyCheck() {
@@ -739,22 +740,28 @@ ipcMain.on('apply-settings', async (event, settings) => {
     try { origin = new URL(details.requestingUrl).origin; } catch (e) { }
 
     if (permission === 'notifications') {
-      if (settings.sitePermissions && settings.sitePermissions[origin] && settings.sitePermissions[origin].notifications !== undefined) {
-        return callback(settings.sitePermissions[origin].notifications);
+      const hostPerms = settings.sitePermissions && Object.prototype.hasOwnProperty.call(settings.sitePermissions, origin)
+        ? settings.sitePermissions[origin]
+        : undefined;
+      if (hostPerms && Object.prototype.hasOwnProperty.call(hostPerms, 'notifications') && hostPerms.notifications !== undefined) {
+        return callback(hostPerms.notifications);
       }
       return callback(settings.allowNotifications === true);
     }
 
     if (permission === 'media' || permission === 'geolocation') {
-      if (settings.sitePermissions && settings.sitePermissions[origin] && settings.sitePermissions[origin][permission] !== undefined) {
-        return callback(settings.sitePermissions[origin][permission]);
+      const hostPerms = settings.sitePermissions && Object.prototype.hasOwnProperty.call(settings.sitePermissions, origin)
+        ? settings.sitePermissions[origin]
+        : undefined;
+      if (hostPerms && Object.prototype.hasOwnProperty.call(hostPerms, permission) && hostPerms[permission] !== undefined) {
+        return callback(hostPerms[permission]);
       }
 
       // Dynamic Prompt
       // Dynamic Prompt with 30s expiry to prevent memory leaks
       const reqId = ++permReqId;
       const timeout = setTimeout(() => {
-        if (permissionCallbacks[reqId]) {
+        if (Object.prototype.hasOwnProperty.call(permissionCallbacks, reqId)) {
           permissionCallbacks[reqId](false);
           delete permissionCallbacks[reqId];
           console.log(`Permission request ${reqId} timed out.`);
@@ -773,7 +780,9 @@ ipcMain.on('apply-settings', async (event, settings) => {
           origin
         });
       } else {
-        permissionCallbacks[reqId](false);
+        if (Object.prototype.hasOwnProperty.call(permissionCallbacks, reqId)) {
+          permissionCallbacks[reqId](false);
+        }
       }
     } else {
       callback(true); // allow other benign permissions
@@ -808,7 +817,7 @@ ipcMain.on('apply-settings', async (event, settings) => {
 
 ipcMain.on('refresh-adblock', async () => {
   // Force re-download by deleting cache and re-initializing
-  const cachePath = path.join(app.getPath('userData'), 'adblock-engine-v3.bin');
+  const cachePath = path.normalize(path.join(app.getPath('userData'), 'adblock-engine-v3.bin'));
   if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
   adblockerEnabled = false;
   adblockerLoading = false;
@@ -834,7 +843,7 @@ ipcMain.on('start-download', () => {
 });
 
 ipcMain.on('permission-response', (event, data) => {
-  if (permissionCallbacks[data.id]) {
+  if (data && data.id && Object.prototype.hasOwnProperty.call(permissionCallbacks, data.id)) {
     permissionCallbacks[data.id](data.granted);
     delete permissionCallbacks[data.id];
   }
@@ -880,7 +889,7 @@ ipcMain.on('recovery-action', async (event, action) => {
       break;
 
     case 'show-diagnostic-log':
-      const logFile = path.join(app.getPath('userData'), 'leef-diagnostic.txt');
+      const logFile = path.normalize(path.join(app.getPath('userData'), 'leef-diagnostic.txt'));
       if (fs.existsSync(logFile)) {
         shell.showItemInFolder(logFile);
       }
@@ -1197,7 +1206,7 @@ ipcMain.on('generate-bug-log', (event, data = {}) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `leef-diagnostics-${timestamp}.txt`;
     const downloadsPath = app.getPath('downloads');
-    const filePath = path.join(downloadsPath, filename);
+    const filePath = path.normalize(path.join(downloadsPath, filename));
 
     const cpuInfo = os.cpus();
     const cpuModel = cpuInfo.length > 0 ? cpuInfo[0].model : 'Unknown CPU';
@@ -1247,7 +1256,7 @@ ${JSON.stringify(labs, null, 2)}
 END OF LOG
 --------------------------------------------------`;
 
-    fs.writeFileSync(filePath, logContent, 'utf8');
+    fs.writeFileSync(path.normalize(filePath), logContent, 'utf8');
     event.sender.send('bug-log-generated', { success: true, filename });
   } catch (error) {
     console.error('Failed to generate bug log:', error);
@@ -1287,7 +1296,7 @@ ipcMain.on('capture-page', async (event, data) => {
     const buffer = image.toPNG();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `Leef_Screenshot_${timestamp}.png`;
-    const filePath = path.join(app.getPath('downloads'), filename);
+    const filePath = path.normalize(path.join(app.getPath('downloads'), filename));
 
     const dlId = 'screenshot-' + Date.now();
     const size = buffer.length;
@@ -1300,7 +1309,7 @@ ipcMain.on('capture-page', async (event, data) => {
       total: size
     });
 
-    fs.writeFileSync(filePath, buffer);
+    fs.writeFileSync(path.normalize(filePath), buffer);
 
     safeSend('download-status', {
       id: dlId,
