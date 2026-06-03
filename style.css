@@ -3523,6 +3523,13 @@ body.linux-os:not(.maximized):not(.fullscreen) {
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
+body.linux-os:not(.maximized):not(.fullscreen) .main-content,
+body.linux-os:not(.maximized):not(.fullscreen) .webview-container,
+body.linux-os:not(.maximized):not(.fullscreen) webview {
+  border-radius: 0 0 11px 11px;
+  overflow: hidden;
+}
+
 /* Hide default webkit resize handle */
 ::-webkit-resizer {
   display: none !important;
