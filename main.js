@@ -36,6 +36,9 @@ if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-transparent-visuals');
 }
 
+// Suppress noisy internal Chromium logs (e.g. VA-API/GPU decoding failures)
+app.commandLine.appendSwitch('log-level', '3');
+
 const isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
 console.log('Leef Browser: isDev =', isDev, '| app.isPackaged =', app.isPackaged);
 
