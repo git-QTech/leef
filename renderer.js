@@ -4885,4 +4885,30 @@ window.onload = async () => {
       console.warn('IPC / Electron not available for window controls', e);
     }
   }
+
+  // Set up MutationObserver to shift webviews down when dropdown menus are open
+  try {
+    const observer = new MutationObserver(() => {
+      const qs = document.getElementById('quick-settings-dropdown');
+      const bm = document.getElementById('bookmarks-dropdown');
+      const dl = document.getElementById('downloads-dropdown');
+      const anyOpen = (qs && qs.style.display !== 'none') || 
+                      (bm && bm.style.display !== 'none') || 
+                      (dl && dl.style.display !== 'none');
+      if (anyOpen) {
+        document.body.classList.add('dropdown-open');
+      } else {
+        document.body.classList.remove('dropdown-open');
+      }
+    });
+    const config = { attributes: true, attributeFilter: ['style'] };
+    const qsEl = document.getElementById('quick-settings-dropdown');
+    const bmEl = document.getElementById('bookmarks-dropdown');
+    const dlEl = document.getElementById('downloads-dropdown');
+    if (qsEl) observer.observe(qsEl, config);
+    if (bmEl) observer.observe(bmEl, config);
+    if (dlEl) observer.observe(dlEl, config);
+  } catch (e) {
+    console.error('Failed to initialize dropdown mutation observer:', e);
+  }
 };
