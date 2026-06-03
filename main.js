@@ -267,6 +267,31 @@ ipcMain.handle('fetch-autocomplete', async (event, query) => {
   }
 });
 
+function getOSFriendlyName() {
+  if (process.platform === 'linux') {
+    try {
+      if (fs.existsSync('/etc/os-release')) {
+        const content = fs.readFileSync('/etc/os-release', 'utf8');
+        const lines = content.split('\n');
+        const releaseData = Object.create(null);
+        for (const line of lines) {
+          const [key, value] = line.split('=');
+          if (key && value) {
+            releaseData[key] = value.replace(/^"|"$/g, '');
+          }
+        }
+        return releaseData.PRETTY_NAME || releaseData.NAME || 'Linux';
+      }
+    } catch (e) { }
+    return 'Linux';
+  } else if (process.platform === 'win32') {
+    return `Windows ${os.release()}`;
+  } else if (process.platform === 'darwin') {
+    return `macOS ${os.release()}`;
+  }
+  return process.platform;
+}
+
 let isRecoveryMode = false;
 let startupError = 'None';
 
@@ -306,7 +331,7 @@ async function generateDiagnosticLog(error = 'None') {
     `Electron Version: ${process.versions.electron}`,
     `Chrome Version: ${process.versions.chrome}`,
     `Node Version: ${process.versions.node}`,
-    `Platform: ${process.platform} (${os.release()})`,
+    `Platform: ${getOSFriendlyName()} (${process.arch})`,
     `Arch: ${process.arch}`,
     `Process Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`,
     `----------------------------------------------------`,
@@ -1232,12 +1257,12 @@ Leef Version: ${app.getVersion()}
 Chrome: ${process.versions.chrome}
 Electron: ${process.versions.electron}
 Node: ${process.versions.node}
-Platform: ${process.platform} (${process.arch})
+Platform: ${getOSFriendlyName()} (${process.arch})
 
 --------------------------------------------------
 SYSTEM INFO
 --------------------------------------------------
-OS: ${os.type()} ${os.release()}
+OS: ${getOSFriendlyName()} (${os.release()})
 Total Memory: ${(os.totalmem() / (1024 * 1024 * 1024)).toFixed(2)} GB
 Free Memory: ${(os.freemem() / (1024 * 1024 * 1024)).toFixed(2)} GB
 CPU: ${cpuModel} (${cpuCores} cores)
