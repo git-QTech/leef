@@ -3523,6 +3523,11 @@ body.linux-os:not(.maximized):not(.fullscreen) {
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
+/* Hide default webkit resize handle */
+::-webkit-resizer {
+  display: none !important;
+}
+
 /* Linux Custom Window Controls */
 .linux-window-controls {
   display: none;
