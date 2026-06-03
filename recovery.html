@@ -199,7 +199,7 @@
     </div>
 
     <script>
-        const ipcRenderer = window.leefAPI.ipc;
+        const ipcRenderer = (window.leefAPI && window.leefAPI.ipc) || window.require('electron').ipcRenderer;
         const descEl = document.getElementById('action-desc');
         const defaultDesc = 'Hover over an option to see what it does';
 
