@@ -432,7 +432,7 @@ function createWindow() {
         const protocol = url.protocol.toLowerCase();
 
         // Allow internal Leef files and essential protocols
-        if (protocol === 'file:' || protocol === 'data:' || protocol === 'blob:') {
+        if (protocol === 'about:' || protocol === 'file:' || protocol === 'data:' || protocol === 'blob:') {
           return callback({ cancel: false });
         }
 
@@ -756,10 +756,13 @@ ipcMain.on('apply-settings', async (event, settings) => {
   // because Ghostery only hooks onBeforeRequest, not onBeforeSendHeaders.
   sess.webRequest.onBeforeSendHeaders(null);
   sess.webRequest.onBeforeSendHeaders((details, callback) => {
-    const url = details.url;
+    const url = details.url || '';
 
-    // Strip SafeSearch enforcement headers
-    const headers = details.requestHeaders;
+    if (url.startsWith('about:') || url.startsWith('file:') || url.startsWith('data:') || url.startsWith('blob:')) {
+      return callback({ cancel: false });
+    }
+
+    const headers = details.requestHeaders || {};
     delete headers['X-SafeSearch-Enforced'];
     delete headers['X-Google-SafeSearch'];
     delete headers['X-Youtube-Edu-Filter'];
