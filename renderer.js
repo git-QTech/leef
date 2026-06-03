@@ -1422,6 +1422,11 @@ class TabManager {
     });
 
     tab.webviewEl.addEventListener('did-navigate', (e) => {
+      tab.url = tab.webviewEl.getURL();
+      tab.canGoBack = tab.webviewEl.canGoBack();
+      tab.canGoForward = tab.webviewEl.canGoForward();
+      this.updateTabUI(tab);
+
       const s = this.settings.currentSettings;
       const tabUrl = e.url || '';
       const isGoogle = tabUrl.includes('google.com') || tabUrl.includes('google.co.');
@@ -1443,6 +1448,13 @@ class TabManager {
         `;
         tab.webviewEl.insertCSS(aiCSS).catch(() => { });
       }
+    });
+
+    tab.webviewEl.addEventListener('did-navigate-in-page', (e) => {
+      tab.url = tab.webviewEl.getURL();
+      tab.canGoBack = tab.webviewEl.canGoBack();
+      tab.canGoForward = tab.webviewEl.canGoForward();
+      this.updateTabUI(tab);
     });
 
     tab.webviewEl.addEventListener('did-stop-loading', () => {
@@ -1994,6 +2006,23 @@ class TabManager {
 
       if (window.siteIdentityManager) {
         window.siteIdentityManager.updateUI();
+      }
+
+      // Update back/forward buttons disabled states
+      if (tab.isInternal) {
+        UI.buttons.back.disabled = true;
+        UI.buttons.forward.disabled = true;
+      } else if (tab.webviewEl) {
+        try {
+          UI.buttons.back.disabled = !tab.webviewEl.canGoBack();
+          UI.buttons.forward.disabled = !tab.webviewEl.canGoForward();
+        } catch (e) {
+          UI.buttons.back.disabled = true;
+          UI.buttons.forward.disabled = true;
+        }
+      } else {
+        UI.buttons.back.disabled = true;
+        UI.buttons.forward.disabled = true;
       }
     }
 
@@ -2585,6 +2614,23 @@ class DownloadManager {
     this.downloads = new Map();
     this.ipc = window.require('electron').ipcRenderer;
     this.bindEvents();
+    this.updateEmptyState();
+  }
+
+  updateEmptyState() {
+    if (!this.list) return;
+    if (this.list.children.length === 0 || (this.list.children.length === 1 && this.list.querySelector('.downloads-empty-placeholder'))) {
+      if (!this.list.querySelector('.downloads-empty-placeholder')) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'downloads-empty-placeholder';
+        placeholder.style.cssText = 'padding: 24px; text-align: center; color: var(--text-dark); opacity: 0.6; font-size: 0.85rem; font-style: italic;';
+        placeholder.textContent = 'No downloads yet';
+        this.list.appendChild(placeholder);
+      }
+    } else {
+      const placeholder = this.list.querySelector('.downloads-empty-placeholder');
+      if (placeholder) placeholder.remove();
+    }
   }
 
 
@@ -2753,6 +2799,8 @@ class DownloadManager {
         }
       }
     }
+
+    this.updateEmptyState();
   }
 
   updateItemProgress(id) {
@@ -4886,29 +4934,47 @@ window.onload = async () => {
     }
   }
 
-  // Set up MutationObserver to shift webviews down when dropdown menus are open
-  try {
-    const observer = new MutationObserver(() => {
-      const qs = document.getElementById('quick-settings-dropdown');
-      const bm = document.getElementById('bookmarks-dropdown');
-      const dl = document.getElementById('downloads-dropdown');
-      const anyOpen = (qs && qs.style.display !== 'none') || 
-                      (bm && bm.style.display !== 'none') || 
-                      (dl && dl.style.display !== 'none');
-      if (anyOpen) {
-        document.body.classList.add('dropdown-open');
-      } else {
-        document.body.classList.remove('dropdown-open');
-      }
-    });
-    const config = { attributes: true, attributeFilter: ['style'] };
-    const qsEl = document.getElementById('quick-settings-dropdown');
-    const bmEl = document.getElementById('bookmarks-dropdown');
-    const dlEl = document.getElementById('downloads-dropdown');
-    if (qsEl) observer.observe(qsEl, config);
-    if (bmEl) observer.observe(bmEl, config);
-    if (dlEl) observer.observe(dlEl, config);
-  } catch (e) {
-    console.error('Failed to initialize dropdown mutation observer:', e);
+  // Set up MutationObserver to shift webviews down when dropdown menus are open (Linux only)
+  if (process.platform === 'linux') {
+    try {
+      const observer = new MutationObserver(() => {
+        const qs = document.getElementById('quick-settings-dropdown');
+        const bm = document.getElementById('bookmarks-dropdown');
+        const dl = document.getElementById('downloads-dropdown');
+        const webviewsContainer = document.getElementById('webviews-container');
+        
+        let activeDropdown = null;
+        if (qs && qs.style.display !== 'none') activeDropdown = qs;
+        else if (bm && bm.style.display !== 'none') activeDropdown = bm;
+        else if (dl && dl.style.display !== 'none') activeDropdown = dl;
+        
+        if (webviewsContainer) {
+          if (activeDropdown) {
+            const rect = activeDropdown.getBoundingClientRect();
+            const mainContent = document.querySelector('.main-content');
+            if (mainContent) {
+              const mainRect = mainContent.getBoundingClientRect();
+              const L = Math.max(0, rect.left - mainRect.left + 2); // overlap under dropdown border
+              const R = Math.min(mainRect.width, rect.right - mainRect.left - 2); // overlap under dropdown border
+              const H = Math.max(0, rect.bottom - mainRect.top - 2); // overlap under dropdown border
+              webviewsContainer.style.clipPath = `polygon(0 0, ${L}px 0, ${L}px ${H}px, ${R}px ${H}px, ${R}px 0, 100% 0, 100% 100%, 0 100%)`;
+            }
+            webviewsContainer.style.marginTop = '0px';
+          } else {
+            webviewsContainer.style.clipPath = 'none';
+            webviewsContainer.style.marginTop = '0px';
+          }
+        }
+      });
+      const config = { attributes: true, attributeFilter: ['style'] };
+      const qsEl = document.getElementById('quick-settings-dropdown');
+      const bmEl = document.getElementById('bookmarks-dropdown');
+      const dlEl = document.getElementById('downloads-dropdown');
+      if (qsEl) observer.observe(qsEl, config);
+      if (bmEl) observer.observe(bmEl, config);
+      if (dlEl) observer.observe(dlEl, config);
+    } catch (e) {
+      console.error('Failed to initialize dropdown mutation observer:', e);
+    }
   }
 };
