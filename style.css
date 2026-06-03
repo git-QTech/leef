@@ -3571,18 +3571,17 @@ body.linux-os .linux-control-btn#btn-linux-close:hover {
   position: fixed;
   bottom: 12px;
   right: 12px;
-  background: rgba(255, 69, 58, 0.9);
-  color: white;
-  padding: 6px 12px;
+  background: rgba(255, 69, 58, 0.2);
+  color: rgba(255, 255, 255, 0.55);
+  padding: 4px 10px;
   border-radius: 20px;
   font-family: 'Outfit', 'Inter', sans-serif;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   z-index: 999999;
   pointer-events: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 69, 58, 0.15);
+  backdrop-filter: blur(2px);
 }
