@@ -123,6 +123,7 @@ class SettingsManager {
       allowNotifications: true,
       askDownload: false,
       blockAIOverview: true,
+      nativeDictionary: true,
       autoCheckUpdates: true,
       customUa: '',
       dohToggle: true,
@@ -216,6 +217,7 @@ class SettingsManager {
     const s = this.currentSettings;
     const el = id => document.getElementById(id);
     if (el('search-engine-select')) el('search-engine-select').value = s.searchEngine;
+    if (el('search-engine-select-browsing')) el('search-engine-select-browsing').value = s.searchEngine;
     if (el('language-select')) {
       el('language-select').value = s.language || 'en';
       // If still empty (e.g. value not in list), force to 'en'
@@ -231,11 +233,20 @@ class SettingsManager {
     if (document.getElementById('news-manual-refresh')) document.getElementById('news-manual-refresh').checked = s.newsManualRefresh;
     if (el('allow-notifications')) el('allow-notifications').checked = s.allowNotifications;
     if (el('ask-download')) el('ask-download').checked = s.askDownload;
+    
     if (el('block-ai')) el('block-ai').checked = s.blockAIOverview;
+    if (el('block-ai-browsing')) el('block-ai-browsing').checked = s.blockAIOverview;
+    
+    if (el('native-dictionary')) el('native-dictionary').checked = s.nativeDictionary !== false;
+    if (el('native-dictionary-browsing')) el('native-dictionary-browsing').checked = s.nativeDictionary !== false;
+    
     if (el('custom-ua')) el('custom-ua').value = s.customUa || '';
     if (el('doh-toggle')) el('doh-toggle').checked = s.dohToggle;
     if (el('proxy-url')) el('proxy-url').value = s.proxyUrl || '';
+    
     if (el('live-autocomplete')) el('live-autocomplete').checked = s.liveAutocomplete;
+    if (el('live-autocomplete-browsing')) el('live-autocomplete-browsing').checked = s.liveAutocomplete;
+    
     if (el('flag-gpc')) el('flag-gpc').checked = s.gpc !== false; // Default to true
     document.querySelectorAll(`input[name="startup"]`).forEach(r => { r.checked = r.value === s.startup; });
     document.querySelectorAll(`input[name="tracking"]`).forEach(r => { r.checked = r.value === s.tracking; });
@@ -379,6 +390,21 @@ class SettingsManager {
       radio.addEventListener('change', updateHomepageVisibility);
     });
 
+    // Sync duplicate UI elements between tabs
+    ['search-engine-select', 'block-ai', 'native-dictionary', 'live-autocomplete'].forEach(baseId => {
+      const el1 = document.getElementById(baseId);
+      const el2 = document.getElementById(baseId + '-browsing');
+      if (el1 && el2) {
+        if (el1.tagName === 'SELECT') {
+          el1.addEventListener('change', () => el2.value = el1.value);
+          el2.addEventListener('change', () => el1.value = el2.value);
+        } else {
+          el1.addEventListener('change', () => el2.checked = el1.checked);
+          el2.addEventListener('change', () => el1.checked = el2.checked);
+        }
+      }
+    });
+
     // Auto-save settings on change because i fucked up the first 3 times
     let saveDebounce = null;
     document.querySelectorAll('.settings-layout input, .settings-layout select').forEach(el => {
@@ -397,7 +423,18 @@ class SettingsManager {
     const btnOpenPrivacySettings = document.getElementById('btn-open-privacy-settings');
     if (btnOpenPrivacySettings) {
       btnOpenPrivacySettings.addEventListener('click', () => {
-        if (window.tabManager) window.tabManager.createTab('privacy');
+        const privacyTab = document.querySelector('[data-section="sec-privacy"]');
+        if (privacyTab) privacyTab.click();
+      });
+    }
+
+    if (document.getElementById('dict-info-close')) {
+      document.getElementById('dict-info-close').addEventListener('click', () => {
+        const modal = document.getElementById('dict-info-modal');
+        if (modal) {
+          modal.style.opacity = '0';
+          setTimeout(() => { modal.style.display = 'none'; }, 200);
+        }
       });
     }
 
@@ -666,6 +703,7 @@ class SettingsManager {
       allowNotifications: document.getElementById('allow-notifications').checked,
       askDownload: document.getElementById('ask-download').checked,
       blockAIOverview: document.getElementById('block-ai').checked,
+      nativeDictionary: document.getElementById('native-dictionary') ? document.getElementById('native-dictionary').checked : true,
       customUa: document.getElementById('custom-ua').value,
       dohToggle: document.getElementById('doh-toggle').checked,
       proxyUrl: document.getElementById('proxy-url').value,
@@ -1305,6 +1343,361 @@ class NewsService {
   }
 }
 
+// --- NATIVE DICTIONARY HELPERS ---
+const LEEF_DICT_CSS = `
+  #leef-dict-card *{box-sizing:border-box;}
+  #leef-dict-card{
+    font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    border-radius:16px;
+    padding:20px 24px 18px;
+    margin-bottom:24px;
+    position:relative;
+    background:#f8fcf8;
+    border:2px solid #82efa2;
+    color:#111;
+    box-shadow:0 4px 15px rgba(23,179,64,0.08);
+  }
+  @media(prefers-color-scheme:dark){
+    #leef-dict-card{background:#111b13;color:#e2f5e4;border:2px solid #17b340;box-shadow:0 4px 18px rgba(0,0,0,0.4);}
+    #leef-dict-card .ld-phonetic span{color:#999;}
+  }
+  #leef-dict-badge{
+    position:absolute;top:14px;right:16px;
+    background:#17b340;
+    color:#fff;font-size:0.65rem;font-weight:700;letter-spacing:0.06em;
+    text-transform:uppercase;padding:3px 10px;border-radius:20px;
+  }
+  #leef-dict-word{font-size:2rem;font-weight:700;margin:0 0 6px;line-height:1.1;}
+  .ld-phonetic{font-size:1rem;color:#555;margin-bottom:16px;display:flex;align-items:center;gap:12px;}
+  #leef-audio-btn{background:none;border:none;cursor:pointer;
+    color:#17b340;padding:6px;border-radius:50%;display:flex;align-items:center;
+    transition:background 0.2s;margin-left:-6px;}
+  #leef-audio-btn:hover{background:rgba(23,179,64,0.12);}
+  #leef-audio-btn.playing{opacity:0.5;cursor:default;}
+  .ld-pos{font-style:italic;font-size:0.9rem;font-weight:600;color:#17b340;margin:14px 0 6px;text-transform:lowercase;}
+  .ld-def-ol{margin:0 0 0 24px;padding:0;list-style-type:decimal;}
+  .ld-def-li{margin-bottom:10px;font-size:0.95rem;line-height:1.5;}
+  .ld-example{font-style:italic;font-size:0.85rem;color:#777;margin-top:3px;}
+  .ld-footer{
+    position:absolute;bottom:14px;right:16px;
+    background:transparent;border:none;cursor:pointer;
+    color:#17b340;opacity:0.6;padding:4px;border-radius:50%;
+    transition:opacity 0.2s,background 0.2s;display:flex;
+  }
+  .ld-footer:hover{opacity:1;background:rgba(23,179,64,0.1);}
+
+  /* Skeleton animation styles */
+  @keyframes ld-pulse {
+    0%, 100% { opacity: 0.3; }
+    50%       { opacity: 0.65; }
+  }
+  .ld-skel {
+    border-radius: 7px;
+    background: rgba(23, 179, 64, 0.25);
+    animation: ld-pulse 1.4s ease-in-out infinite;
+    margin-bottom: 7px;
+  }
+  @media(prefers-color-scheme:light){
+    .ld-skel {
+      background: rgba(23, 179, 64, 0.15);
+    }
+  }
+  .ld-fetching {
+    margin-top: 14px;
+    font-size: 0.75rem;
+    color: #17b340;
+    opacity: 0.7;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ld-fetching::before {
+    content: '';
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #17b340;
+    animation: ld-pulse 1s ease-in-out infinite;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+`;
+
+function getInjectSkeletonJS() {
+  return `
+    (() => {
+      if (document.getElementById('leef-dict-card')) return;
+      window.__leefDictFetched = false;
+
+      if (!document.getElementById('leef-dict-styles')) {
+        const s = document.createElement('style');
+        s.id = 'leef-dict-styles';
+        s.textContent = ${JSON.stringify(LEEF_DICT_CSS)};
+        document.head.appendChild(s);
+      }
+
+      function getCol() {
+        return document.getElementById('center_col') ||
+               document.getElementById('rso') ||
+               document.getElementById('search');
+      }
+
+      function inject(colEl) {
+        if (document.getElementById('leef-dict-card')) return;
+        const card = document.createElement('div');
+        card.id = 'leef-dict-card';
+        card.innerHTML = \`
+          <div id="leef-dict-badge">Leef Dictionary</div>
+          <div class="ld-skel" style="width:42%;height:28px;margin-bottom:8px;"></div>
+          <div class="ld-skel" style="width:22%;height:13px;margin-bottom:18px;"></div>
+          <div class="ld-skel" style="width:10%;height:11px;margin-bottom:6px;"></div>
+          <div class="ld-skel" style="width:82%;height:12px;"></div>
+          <div class="ld-skel" style="width:65%;height:12px;"></div>
+          <div class="ld-skel" style="width:10%;height:11px;margin-top:12px;margin-bottom:6px;"></div>
+          <div class="ld-skel" style="width:88%;height:12px;"></div>
+          <div class="ld-skel" style="width:52%;height:12px;"></div>
+          <div class="ld-fetching">Fetching definition\u2026</div>
+        \`;
+        colEl.insertBefore(card, colEl.firstChild);
+        console.log('LEEF_DICT_HIDE_LOADER');
+      }
+
+      function start() {
+        const col = getCol();
+        if (col) {
+          inject(col);
+          setupObserver(col);
+        } else {
+          const docObserver = new MutationObserver(() => {
+            const colEl = getCol();
+            if (colEl) {
+              docObserver.disconnect();
+              inject(colEl);
+              setupObserver(colEl);
+            }
+          });
+          docObserver.observe(document.documentElement, { childList: true, subtree: true });
+          window.__leefDictDocObserver = docObserver;
+        }
+      }
+
+      function setupObserver(colEl) {
+        if (window.__leefDictObserver) {
+          window.__leefDictObserver.disconnect();
+        }
+        if (window.__leefDictDocObserver) {
+          window.__leefDictDocObserver.disconnect();
+          delete window.__leefDictDocObserver;
+        }
+        const observer = new MutationObserver(() => {
+          if (!document.getElementById('leef-dict-card') && !window.__leefDictFetched) {
+            // colEl may have been replaced by Google; re-resolve
+            const freshCol = getCol();
+            inject(freshCol || colEl);
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        window.__leefDictObserver = observer;
+      }
+
+      start();
+    })();
+  `;
+}
+
+function getInjectSuccessJS(entry) {
+  const phoneticText = entry.phonetic ||
+    (entry.phonetics && entry.phonetics.find(p => p.text)?.text) || '';
+  const audioUrl = (entry.phonetics &&
+    entry.phonetics.find(p => p.audio && p.audio.startsWith('https'))?.audio) || '';
+
+  const meaningsData = entry.meanings.slice(0, 3).map(m => ({
+    pos: m.partOfSpeech,
+    defs: m.definitions.slice(0, 2).map(d => ({
+      def: d.definition || '',
+      example: d.example || ''
+    }))
+  }));
+
+  const payload = JSON.stringify({
+    word: entry.word,
+    phonetic: phoneticText,
+    audio: audioUrl,
+    meanings: meaningsData
+  });
+
+  return `
+    (() => {
+      window.__leefDictFetched = true;
+      if (window.__leefDictObserver) {
+        window.__leefDictObserver.disconnect();
+        delete window.__leefDictObserver;
+      }
+      if (window.__leefDictDocObserver) {
+        window.__leefDictDocObserver.disconnect();
+        delete window.__leefDictDocObserver;
+      }
+
+      function getCol() {
+        return document.getElementById('center_col') ||
+               document.getElementById('rso') ||
+               document.getElementById('search');
+      }
+
+      const d = ${payload};
+
+      function render(col) {
+        let card = document.getElementById('leef-dict-card');
+        if (!card) {
+          card = document.createElement('div');
+          card.id = 'leef-dict-card';
+          col.insertBefore(card, col.firstChild);
+        }
+
+        if (!document.getElementById('leef-dict-styles')) {
+          const s = document.createElement('style');
+          s.id = 'leef-dict-styles';
+          s.textContent = ${JSON.stringify(LEEF_DICT_CSS)};
+          document.head.appendChild(s);
+        }
+
+        let meanHtml = '<div style="margin-top:10px;border-top:1px solid rgba(23,179,64,0.2);padding-top:10px;">';
+        d.meanings.forEach(function(m) {
+          meanHtml += '<div class="ld-pos">' + m.pos + '</div><ol class="ld-def-ol">';
+          m.defs.forEach(function(def) {
+            meanHtml += '<li class="ld-def-li"><div>' + def.def + '</div>';
+            if (def.example) meanHtml += '<div class="ld-example">' + def.example + '</div>';
+            meanHtml += '</li>';
+          });
+          meanHtml += '</ol>';
+        });
+        meanHtml += '</div>';
+
+        const audioBtn = d.audio
+          ? '<button id="leef-audio-btn" title="Hear pronunciation"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg></button>'
+          : '';
+
+        card.innerHTML =
+          '<div id="leef-dict-badge">Leef Dictionary</div>' +
+          '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">' +
+            '<h2 id="leef-dict-word">' + d.word + '</h2>' +
+            '<div class="ld-phonetic">' + (d.phonetic ? '<span>' + d.phonetic + '</span>' : '') + audioBtn + '</div>' +
+          '</div>' +
+          meanHtml +
+          '<button class="ld-footer" id="leef-dict-why" title="Why is this here?"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg></button>';
+
+        if (d.audio) {
+          const btn = card.querySelector('#leef-audio-btn');
+          if (btn) {
+            btn.addEventListener('click', function() {
+              if (btn.classList.contains('playing')) return;
+              const audio = new Audio(d.audio);
+              btn.classList.add('playing');
+              audio.play()
+                .then(function() { audio.onended = function() { btn.classList.remove('playing'); }; })
+                .catch(function() { btn.classList.remove('playing'); });
+            });
+          }
+        }
+
+        const why = card.querySelector('#leef-dict-why');
+        if (why) {
+          why.addEventListener('click', function() {
+            console.log('LEEF_DICT_MODAL');
+          });
+        }
+
+        console.log('LEEF_DICT_HIDE_LOADER');
+      }
+
+      const col = getCol();
+      if (col) {
+        render(col);
+      } else {
+        const successDocObserver = new MutationObserver(() => {
+          const colEl = getCol();
+          if (colEl) {
+            successDocObserver.disconnect();
+            render(colEl);
+          }
+        });
+        successDocObserver.observe(document.documentElement, { childList: true, subtree: true });
+      }
+    })();
+  `;
+}
+
+function getRemoveSkeletonJS() {
+  return `
+    (() => {
+      window.__leefDictFetched = true;
+      if (window.__leefDictObserver) {
+        window.__leefDictObserver.disconnect();
+        delete window.__leefDictObserver;
+      }
+      const card = document.getElementById('leef-dict-card');
+      if (card && card.querySelector('.ld-skel')) {
+        card.remove();
+      }
+      console.log('LEEF_DICT_HIDE_LOADER');
+    })();
+  `;
+}
+
+function handleAutocorrectFallback(tab) {
+  if (!tab._dictWord) return;
+
+  const currentTitle = tab.webviewEl.getTitle() || '';
+  let titleQuery = currentTitle
+    .replace(/\s+-\s+Google\s+Search$/i, '')
+    .replace(/\s+—\s+Google\s+Search$/i, '')
+    .trim();
+
+  if (!titleQuery) return;
+
+  const defineRegex = /^(?:define\s+|meaning\s+of\s+)(.+)$/i;
+  const meaningRegex = /^(.+?)(?:\s+meaning|\s+definition)$/i;
+  let correctedWord = '';
+
+  const m1 = titleQuery.match(defineRegex);
+  if (m1) {
+    correctedWord = m1[1].trim();
+  } else {
+    const m2 = titleQuery.match(meaningRegex);
+    if (m2) correctedWord = m2[1].trim();
+  }
+
+  if (correctedWord &&
+      correctedWord.toLowerCase() !== tab._dictWord.toLowerCase() &&
+      /^[a-zA-Z][a-zA-Z\s'-]*$/.test(correctedWord) &&
+      correctedWord.length < 40) {
+
+    console.log('[Dict Autocorrect] Correcting', tab._dictWord, '->', correctedWord);
+    tab._dictWord = correctedWord;
+    tab._dictLoading = true;
+    tab._dictResolvedJS = null;
+
+    if (window.toastManager) window.toastManager.show('📖 Leef Dictionary', `Looking up "${correctedWord}"…`, 15000);
+    tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => {});
+
+    tab._dictFetch = fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(correctedWord.toLowerCase())}`)
+      .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
+      .then(data => {
+        tab._dictLoading = false;
+        if (!data || !data.length) throw new Error('empty');
+        const successJS = getInjectSuccessJS(data[0]);
+        tab._dictResolvedJS = successJS;
+        tab.webviewEl.executeJavaScript(successJS).catch(() => {});
+        return successJS;
+      })
+      .catch(() => {
+        tab._dictLoading = false;
+        tab._dictResolvedJS = getRemoveSkeletonJS();
+        tab.webviewEl.executeJavaScript(getRemoveSkeletonJS()).catch(() => {});
+        return null;
+      });
+  }
+}
+
 
 class TabManager {
   constructor(settingsInstance) {
@@ -1624,6 +2017,18 @@ class TabManager {
         const url = e.message.replace('LEEF_NEW_TAB:', '');
         this.createTab(url);
       }
+      
+      if (e.message === 'LEEF_DICT_MODAL') {
+        const modal = document.getElementById('dict-info-modal');
+        if (modal) {
+          modal.style.display = 'flex';
+          modal.style.opacity = '1';
+        }
+      }
+
+      if (e.message === 'LEEF_DICT_HIDE_LOADER') {
+        if (window.toastManager) window.toastManager.hide();
+      }
     });
 
     tab.webviewEl.addEventListener('did-start-navigation', (e) => {
@@ -1693,6 +2098,25 @@ class TabManager {
         tab.title = currentTitle;
         this.updateTabUI(tab);
       }
+
+      tab._didStopLoadingFired = true;
+
+      // ── Native Dictionary (injected after page is fully hydrated) ────
+      if (this.settings.currentSettings.nativeDictionary !== false) {
+        const stopUrl = tab.webviewEl.getURL ? tab.webviewEl.getURL() : tab.url;
+        const isGoogleSearch = stopUrl.includes('google.com/search') ||
+          (stopUrl.includes('google.co.') && stopUrl.includes('/search'));
+
+        if (isGoogleSearch) {
+          if (tab._dictResolvedJS) {
+            tab.webviewEl.executeJavaScript(tab._dictResolvedJS).catch(() => {});
+          } else if (tab._dictLoading) {
+            tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => {});
+          } else {
+            handleAutocorrectFallback(tab);
+          }
+        }
+      }
     });
 
     tab.webviewEl.addEventListener('dom-ready', () => {
@@ -1705,6 +2129,71 @@ class TabManager {
         try { tab.webviewEl.setZoomFactor(parseFloat(this.settings.currentSettings.zoom) || 1.0); } catch (e) { }
       }
       this.updateTabUI(tab);
+      const currentTabUrl = tab.url || '';
+      const isGoogleSearch = currentTabUrl.includes('google.com/search') ||
+        (currentTabUrl.includes('google.co.') && currentTabUrl.includes('/search'));
+
+      // ── Native Dictionary: kick off fetch early during dom-ready ──
+      tab._dictFetch = null;
+      tab._dictLoading = false;
+      tab._dictResolvedJS = null;
+      tab._dictWord = '';
+      tab._didStopLoadingFired = false;
+
+      if (this.settings.currentSettings.nativeDictionary !== false && isGoogleSearch) {
+        let searchQuery = '';
+        try {
+          const urlObj = new URL(currentTabUrl);
+          searchQuery = urlObj.searchParams.get('q') || '';
+        } catch (e) {}
+
+        const rawQuery = searchQuery.trim();
+        if (rawQuery) {
+          const defineRegex = /^(?:define\s+|meaning\s+of\s+)(.+)$/i;
+          const meaningRegex = /^(.+?)(?:\s+meaning|\s+definition)$/i;
+          let searchWord = '';
+          const m1 = rawQuery.match(defineRegex);
+          if (m1) {
+            searchWord = m1[1].trim();
+          } else {
+            const m2 = rawQuery.match(meaningRegex);
+            if (m2) searchWord = m2[1].trim();
+          }
+
+          if (searchWord && /^[a-zA-Z][a-zA-Z\s'-]*$/.test(searchWord) && searchWord.length < 40) {
+            tab._dictWord = searchWord;
+            tab._dictLoading = true;
+
+            // Show a toast spinner immediately — runs in Leef's own UI, no webview injection needed.
+            if (window.toastManager) window.toastManager.show('📖 Leef Dictionary', `Looking up "${searchWord}"…`, 15000);
+
+            // Also try skeleton in the webview (best-effort).
+            tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => {});
+
+            tab._dictFetch = fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(searchWord.toLowerCase())}`)
+              .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
+              .then(data => {
+                tab._dictLoading = false;
+                if (!data || !data.length) throw new Error('empty');
+                const successJS = getInjectSuccessJS(data[0]);
+                tab._dictResolvedJS = successJS;
+                if (tab._didStopLoadingFired) {
+                  tab.webviewEl.executeJavaScript(successJS).catch(() => {});
+                }
+                return successJS;
+              })
+              .catch(() => {
+                tab._dictLoading = false;
+                tab._dictResolvedJS = getRemoveSkeletonJS();
+                if (tab._didStopLoadingFired) {
+                  handleAutocorrectFallback(tab);
+                }
+                return null;
+              });
+          }
+        }
+      }
+
 
       // BATCHED JS INJECTION (Performance: single IPC round-trip per page load)
       // All per-page scripts are assembled here and fired in ONE executeJavaScript call.
@@ -2582,10 +3071,12 @@ class TabManager {
   }
 
   bindGlobalEvents() {
-    UI.tabsContainer.addEventListener('contextmenu', (e) => {
-      if (e.target === UI.tabsContainer) {
+    UI.tabsContainer.parentElement.addEventListener('contextmenu', (e) => {
+      if (!e.target.closest('.tab') && !e.target.closest('.new-tab-btn')) {
         e.preventDefault();
-        e.stopPropagation();
+        try {
+          window.require('electron').ipcRenderer.send('show-tab-context-menu', { tabId: null });
+        } catch (err) { }
       }
     });
 
@@ -2699,7 +3190,7 @@ class TabManager {
       if (e.target.tagName === 'WEBVIEW') return;
 
       // Tab Bar Background Context Menu (v0.3.2)
-      if (e.target.id === 'tabs-container' || e.target.classList.contains('tabs-row')) {
+      if (e.target.closest('.tabs-bar-container')) {
         e.preventDefault();
         window.require('electron').ipcRenderer.send('show-tab-context-menu', { tabId: null });
         return;
@@ -5180,6 +5671,7 @@ window.onload = async () => {
       document.getElementById('btn-onboarding-finish').addEventListener('click', () => {
         const aiChecked = document.getElementById('onboard-ai').checked;
         const autoChecked = document.getElementById('onboard-autocomplete').checked;
+        const dictChecked = document.getElementById('onboard-dictionary').checked;
         const adblockVal = document.querySelector('input[name="onboard-adblock-tier"]:checked')?.value || 'none';
         const langVal = document.getElementById('onboard-language').value;
         const volumeChecked = document.getElementById('onboard-volumeboost').checked;
@@ -5191,6 +5683,9 @@ window.onload = async () => {
 
         const autoEl = document.getElementById('live-autocomplete');
         if (autoEl) autoEl.checked = autoChecked;
+        
+        const dictEl = document.getElementById('native-dictionary');
+        if (dictEl) dictEl.checked = dictChecked;
 
         const langEl = document.getElementById('language-select');
         if (langEl) langEl.value = langVal;

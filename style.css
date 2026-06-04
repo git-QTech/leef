@@ -178,6 +178,11 @@ body.mac-os .brand {
   margin-left: 10px;
 }
 
+body.mac-os .onboarding-brand-header {
+  left: auto;
+  right: 24px;
+}
+
 .brand {
   display: flex;
   align-items: center;

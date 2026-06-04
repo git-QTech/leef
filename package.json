@@ -22,6 +22,7 @@
     "preview": "vite preview",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux"
   },
   "dependencies": {

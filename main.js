@@ -371,7 +371,19 @@ async function runKeyCheck() {
     return;
   }
 
-  if (process.platform === 'win32') {
+  if (process.platform === 'darwin') {
+    try {
+      const cmd = 'osascript -l JavaScript -e "ObjC.import(\'Cocoa\'); ($.NSEvent.modifierFlags & $.NSEventModifierFlagShift) > 0"';
+      const output = execSync(cmd, { timeout: 2000, encoding: 'utf8' }).trim();
+      if (output === 'true') {
+        isRecoveryMode = true;
+        console.log('Leef Browser: Recovery Mode activated via Shift key (macOS).');
+      }
+    } catch (e) {
+      console.error('Leef Browser: Shift key check failed on macOS:', e.message);
+      isRecoveryMode = false;
+    }
+  } else if (process.platform === 'win32') {
     try {
       // Fast check using partial assembly loading
       const cmd = 'powershell -NoProfile -NonInteractive -Command "[Reflection.Assembly]::LoadWithPartialName(\'System.Windows.Forms\') | Out-Null; [System.Windows.Forms.Control]::ModifierKeys"';
@@ -458,7 +470,67 @@ function createWindow() {
     callback({ cancel: false });
   });
 
-  Menu.setApplicationMenu(null);
+  if (process.platform === 'darwin') {
+    const template = [
+      {
+        label: app.name,
+        submenu: [
+          { role: 'about' },
+          { type: 'separator' },
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' }
+        ]
+      },
+      {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'pasteAndMatchStyle' },
+          { role: 'delete' },
+          { role: 'selectAll' }
+        ]
+      },
+      {
+        label: 'View',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' }
+        ]
+      },
+      {
+        label: 'Window',
+        submenu: [
+          { role: 'minimize' },
+          { role: 'zoom' },
+          { type: 'separator' },
+          { role: 'front' },
+          { type: 'separator' },
+          { role: 'window' }
+        ]
+      }
+    ];
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
+  } else {
+    Menu.setApplicationMenu(null);
+  }
 
   const isLinux = process.platform === 'linux';
   mainWindow = new BrowserWindow({
@@ -478,10 +550,13 @@ function createWindow() {
       session: sess
     },
     titleBarStyle: isLinux ? undefined : 'hidden',
-    titleBarOverlay: isLinux ? undefined : {
+    titleBarOverlay: process.platform === 'win32' ? {
       color: '#5aef7e', // matches --topbar-bg in style.css exactly
       symbolColor: '#000000'
-    },
+    } : false,
+    ...(process.platform === 'darwin' ? {
+      trafficLightPosition: { x: 12, y: 16 }
+    } : {}),
     ...(!isLinux ? {
       backgroundColor: '#000000' // Fixes "see-through" gaps in fullscreen (v0.6.0)
     } : {}),
