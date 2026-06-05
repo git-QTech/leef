@@ -23,12 +23,15 @@ if (process.platform === 'win32') {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Fix for washed out colors on Windows/HDR (v0.1.3+)
-// D3D9 is a "Goldilocks" fix: it avoids washed-out colors but handles fullscreen better than OpenGL.
-// Surgical fix for the "alpha bug" fullscreen border (v0.6.0)
+// Disable Chromium's window/tab occlusion tracking to prevent rendering freezes/blank screens when tabbing back in
+const disabledFeatures = ['MacWebContentsOcclusion', 'CalculateNativeWinOcclusion'];
+if (process.platform === 'win32') {
+  disabledFeatures.push('MediaFoundationVideoDecoder', 'DirectCompositionVideoOverlays');
+}
+app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
+
 if (process.platform === 'win32') {
   app.commandLine.appendSwitch('use-angle', 'd3d9');
-  app.commandLine.appendSwitch('disable-features', 'MediaFoundationVideoDecoder,DirectCompositionVideoOverlays');
   app.commandLine.appendSwitch('force-color-profile', 'srgb');
 }
 
