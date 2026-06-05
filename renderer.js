@@ -1446,7 +1446,7 @@ function getInjectSkeletonJS() {
         const card = document.createElement('div');
         card.id = 'leef-dict-card';
         card.innerHTML = \`
-          <div id="leef-dict-badge">Leef Dictionary</div>
+          <div id="leef-dict-badge">Leef Dictionary <span style="font-size: 0.52rem; font-weight: 800; background: rgba(255,255,255,0.22); color: #fff; padding: 1px 4px; border-radius: 4px; margin-left: 4px; vertical-align: middle; display: inline-block;">BETA</span></div>
           <div class="ld-skel" style="width:42%;height:28px;margin-bottom:8px;"></div>
           <div class="ld-skel" style="width:22%;height:13px;margin-bottom:18px;"></div>
           <div class="ld-skel" style="width:10%;height:11px;margin-bottom:6px;"></div>
@@ -1577,7 +1577,7 @@ function getInjectSuccessJS(entry) {
           : '';
 
         card.innerHTML =
-          '<div id="leef-dict-badge">Leef Dictionary</div>' +
+          '<div id="leef-dict-badge">Leef Dictionary <span style="font-size: 0.52rem; font-weight: 800; background: rgba(255,255,255,0.22); color: #fff; padding: 1px 4px; border-radius: 4px; margin-left: 4px; vertical-align: middle; display: inline-block;">BETA</span></div>' +
           '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">' +
             '<h2 id="leef-dict-word">' + d.word + '</h2>' +
             '<div class="ld-phonetic">' + (d.phonetic ? '<span>' + d.phonetic + '</span>' : '') + audioBtn + '</div>' +
@@ -1676,7 +1676,7 @@ function handleAutocorrectFallback(tab) {
     tab._dictLoading = true;
     tab._dictResolvedJS = null;
 
-    if (window.toastManager) window.toastManager.show('📖 Leef Dictionary', `Looking up "${correctedWord}"…`, 15000);
+    if (window.toastManager) window.toastManager.show('📖 Leef Dictionary (Beta)', `Looking up "${correctedWord}"…`, 15000);
     tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => {});
 
     tab._dictFetch = fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(correctedWord.toLowerCase())}`)
@@ -2165,7 +2165,7 @@ class TabManager {
             tab._dictLoading = true;
 
             // Show a toast spinner immediately — runs in Leef's own UI, no webview injection needed.
-            if (window.toastManager) window.toastManager.show('📖 Leef Dictionary', `Looking up "${searchWord}"…`, 15000);
+            if (window.toastManager) window.toastManager.show('📖 Leef Dictionary (Beta)', `Looking up "${searchWord}"…`, 15000);
 
             // Also try skeleton in the webview (best-effort).
             tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => {});
