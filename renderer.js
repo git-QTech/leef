@@ -2730,28 +2730,30 @@ class TabManager {
     tab.tabEl.title = tab.tabTitle.textContent;
 
     if (this.activeTabId === tab.id) {
-      if (!tab.isInternal) {
-        // Strip -noai from the address bar for a seamless display
-        let displayUrl = tab.url;
+      if (document.activeElement !== UI.inputs.address) {
+        if (!tab.isInternal) {
+          // Strip -noai from the address bar for a seamless display
+          let displayUrl = tab.url;
 
-        // Handle Offline Page URL Spoofing (v0.2.1)
-        if (displayUrl.startsWith('file://') && displayUrl.includes('offline.html')) {
-          try {
-            const urlObj = new URL(displayUrl);
-            const params = new URLSearchParams(urlObj.search);
-            const spoofUrl = params.get('url');
-            if (spoofUrl) displayUrl = spoofUrl;
-          } catch (e) { }
-        }
+          // Handle Offline Page URL Spoofing (v0.2.1)
+          if (displayUrl.startsWith('file://') && displayUrl.includes('offline.html')) {
+            try {
+              const urlObj = new URL(displayUrl);
+              const params = new URLSearchParams(urlObj.search);
+              const spoofUrl = params.get('url');
+              if (spoofUrl) displayUrl = spoofUrl;
+            } catch (e) { }
+          }
 
-        if (this.settings.currentSettings.blockAIOverview && displayUrl.includes('google.com/search')) {
-          displayUrl = displayUrl.replace(/(\+|\%20)-noai/g, '');
-          displayUrl = displayUrl.replace(/([?&])udm=14(&?)/g, (match, p1, p2) => p2 ? p1 : '');
-          displayUrl = displayUrl.replace(/[?&]$/, '');
+          if (this.settings.currentSettings.blockAIOverview && displayUrl.includes('google.com/search')) {
+            displayUrl = displayUrl.replace(/(\+|\%20)-noai/g, '');
+            displayUrl = displayUrl.replace(/([?&])udm=14(&?)/g, (match, p1, p2) => p2 ? p1 : '');
+            displayUrl = displayUrl.replace(/[?&]$/, '');
+          }
+          UI.inputs.address.value = displayUrl;
         }
-        UI.inputs.address.value = displayUrl;
+        else UI.inputs.address.value = '';
       }
-      else UI.inputs.address.value = '';
 
       if (window.siteIdentityManager) {
         window.siteIdentityManager.updateUI();
