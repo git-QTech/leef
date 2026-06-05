@@ -1971,7 +1971,7 @@ class TabManager {
 
     // Background Tab Performance (v0.4.0)
     // Prevent throttling unless the user explicitly enabled the background limiter.
-    tab.webviewEl.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=no, nodeIntegration=no');
+    tab.webviewEl.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=no, nodeIntegration=no, backgroundThrottling=no');
 
     UI.views.webviewsContainer.appendChild(tab.webviewEl);
 

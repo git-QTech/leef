@@ -29,6 +29,9 @@ if (process.platform === 'win32') {
   disabledFeatures.push('MediaFoundationVideoDecoder', 'DirectCompositionVideoOverlays');
 }
 app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
 
 if (process.platform === 'win32') {
   app.commandLine.appendSwitch('use-angle', 'd3d9');
@@ -550,6 +553,7 @@ function createWindow() {
       contextIsolation: false,
       webviewTag: true,
       webSecurity: true,
+      backgroundThrottling: false,
       session: sess
     },
     titleBarStyle: isLinux ? undefined : 'hidden',
