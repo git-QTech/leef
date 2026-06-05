@@ -1979,6 +1979,7 @@ class TabManager {
     if (window.findManager) window.findManager.attachToWebview(tab.webviewEl);
 
     tab.webviewEl.addEventListener('did-start-loading', () => {
+      if (tab.isHibernated) return;
       tab.url = tab.webviewEl.src;
       tab.gpcStartTime = Date.now(); // START TIMER: from when navigation begins
       tab.volumeBoost = 1; // Reset volume on moving to a new tab
@@ -1998,11 +1999,13 @@ class TabManager {
     });
 
     tab.webviewEl.addEventListener('page-title-updated', (e) => {
+      if (tab.isHibernated) return;
       tab.title = e.title;
       this.updateTabUI(tab);
     });
 
     tab.webviewEl.addEventListener('page-favicon-updated', (e) => {
+      if (tab.isHibernated) return;
       if (e.favicons && e.favicons.length > 0) {
         tab.faviconUrl = e.favicons[0];
         this.updateTabUI(tab);
@@ -2032,6 +2035,7 @@ class TabManager {
     });
 
     tab.webviewEl.addEventListener('did-start-navigation', (e) => {
+      if (tab.isHibernated) return;
       if (e.isMainFrame) {
         tab.title = 'Loading...';
         tab.url = e.url; // Update URL identity immediately to prevent state leaks
@@ -2051,6 +2055,7 @@ class TabManager {
     });
 
     tab.webviewEl.addEventListener('did-navigate', (e) => {
+      if (tab.isHibernated) return;
       tab.url = tab.webviewEl.getURL();
       tab.canGoBack = tab.webviewEl.canGoBack();
       tab.canGoForward = tab.webviewEl.canGoForward();
@@ -2085,6 +2090,7 @@ class TabManager {
     });
 
     tab.webviewEl.addEventListener('did-navigate-in-page', (e) => {
+      if (tab.isHibernated) return;
       tab.url = tab.webviewEl.getURL();
       tab.canGoBack = tab.webviewEl.canGoBack();
       tab.canGoForward = tab.webviewEl.canGoForward();
@@ -2092,6 +2098,7 @@ class TabManager {
     });
 
     tab.webviewEl.addEventListener('did-stop-loading', () => {
+      if (tab.isHibernated) return;
       // Final title sync once everything is done
       const currentTitle = tab.webviewEl.getTitle();
       if (currentTitle && currentTitle !== 'Loading...') {
@@ -2120,6 +2127,7 @@ class TabManager {
     });
 
     tab.webviewEl.addEventListener('dom-ready', () => {
+      if (tab.isHibernated) return;
       tab.title = tab.webviewEl.getTitle() || tab.url;
       tab.url = tab.webviewEl.getURL();
       tab.isInternal = tab.url.startsWith('leef:') || (tab.url.startsWith('file:') && !tab.url.includes('offline.html')) || tab.url.startsWith('chrome:');
