@@ -1091,6 +1091,7 @@ body.mac-os .onboarding-brand-header {
   margin-left: -3px;
 }
 
+.footer-logo button#btn-plugin-store,
 .footer-logo button#btn-whats-new,
 .footer-logo button#btn-credits,
 .footer-logo button#btn-open-flags {
@@ -1109,6 +1110,7 @@ body.mac-os .onboarding-brand-header {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
 }
 
+.footer-logo button#btn-plugin-store:hover,
 .footer-logo button#btn-whats-new:hover,
 .footer-logo button#btn-credits:hover,
 .footer-logo button#btn-open-flags:hover {
@@ -2707,6 +2709,7 @@ body.modal-open .browser-top {
 .qs-tile svg {
   width: 32px;
   height: 32px;
+  flex-shrink: 0;
 }
 
 .qs-tile img {
@@ -2729,10 +2732,19 @@ body.modal-open .browser-top {
   grid-row: 1;
 }
 
-/* ---- Row 3 - Bug Report (Bottom) ---- */
+/* ---- Row 3 - Bug Report (Left half) + Troubleshooter (Right half) ---- */
 .qs-tile-bug {
   background: #ff9999;
-  grid-column: 1 / span 10;
+  grid-column: 1 / span 5;
+  grid-row: 3;
+  flex-direction: row;
+  justify-content: center;
+  gap: 12px;
+}
+
+.qs-tile-troubleshooter {
+  background: #9ac8f5;
+  grid-column: 6 / span 5;
   grid-row: 3;
   flex-direction: row;
   justify-content: center;
@@ -3682,6 +3694,11 @@ body.modal-open .browser-top {
 .onboarding-step.active .onboarding-options>.onboarding-card:nth-child(3) {
   animation-delay: 0.26s;
 }
+
+.onboarding-step.active .onboarding-options>.onboarding-card:nth-child(4) {
+  animation-delay: 0.34s;
+}
+
 
 .onboarding-card {
   background: rgba(23, 179, 64, 0.04);

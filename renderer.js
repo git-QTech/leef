@@ -2,26 +2,6 @@ let TRANSLATIONS = {};
 
 async function loadTranslations() {
   try {
-    if (typeof window !== 'undefined' && window.require) {
-      const fs = window.require('fs');
-      const path = window.require('path');
-      let filePath = 'translations.js';
-      try {
-        filePath = path.join(process.cwd(), 'translations.js');
-      } catch (err) {
-        // fallback
-      }
-      const fileContent = fs.readFileSync(filePath, 'utf8');
-      const jsContent = fileContent.replace(/export\s+const\s+TRANSLATIONS\s*=/, 'window.TRANSLATIONS =');
-      eval(jsContent);
-      TRANSLATIONS = window.TRANSLATIONS;
-      return;
-    }
-  } catch (e) {
-    console.warn("Failed to load translations via Node fs", e);
-  }
-
-  try {
     const module = await import('./translations.js');
     TRANSLATIONS = module.TRANSLATIONS;
   } catch (e) {
@@ -29,21 +9,37 @@ async function loadTranslations() {
   }
 }
 
+// Perf: Cache language at module level — avoids localStorage read + JSON.parse on every t() call.
+// Call window.refreshLang() whenever settings are saved.
+let _cachedLang = 'en';
+window.refreshLang = function() {
+  try {
+    const s = localStorage.getItem('leef_settings');
+    if (s) _cachedLang = JSON.parse(s).language || 'en';
+  } catch (e) {}
+};
+window.refreshLang();
+
+window.t = function(key) {
+  if (_cachedLang !== 'en' && TRANSLATIONS[_cachedLang] && TRANSLATIONS[_cachedLang][key]) {
+    return TRANSLATIONS[_cachedLang][key];
+  }
+  return key;
+};
+
 let APP_VERSION = '1.0.0'; // Fallback
 
-async function initVersion() {
+function initVersion() {
+  // Use already-running main process instead of re-fetching package.json from disk
   try {
-    const response = await fetch('./package.json');
-    const pkg = await response.json();
-    APP_VERSION = pkg.version;
-
-    // Auto-populate any elements that need the version string
-    document.querySelectorAll('.leef-version-val').forEach(el => {
-      el.textContent = APP_VERSION;
-    });
+    const ver = window.require('electron').ipcRenderer.sendSync('get-app-version');
+    if (ver) APP_VERSION = ver;
   } catch (e) {
-    console.error('Failed to load version from package.json:', e);
+    console.warn('Failed to get version via IPC:', e);
   }
+  document.querySelectorAll('.leef-version-val').forEach(el => {
+    el.textContent = APP_VERSION;
+  });
 }
 
 initVersion();
@@ -170,35 +166,35 @@ class SettingsManager {
     const i18nElements = document.querySelectorAll('[data-i18n]');
     i18nElements.forEach(el => {
       const key = el.getAttribute('data-i18n');
-      if (!el.hasAttribute('data-original-text')) {
-        el.setAttribute('data-original-text', el.textContent.trim());
+      if (!el.hasAttribute('data-original-html')) {
+        el.setAttribute('data-original-html', el.innerHTML.trim());
       }
       if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) {
-        el.textContent = TRANSLATIONS[lang][key];
+        el.innerHTML = TRANSLATIONS[lang][key];
       } else {
-        el.textContent = el.getAttribute('data-original-text') || key;
+        el.innerHTML = el.getAttribute('data-original-html') || key;
       }
+    });
+
+    // Re-inject dynamic version string
+    document.querySelectorAll('.leef-version-val').forEach(el => {
+      el.textContent = APP_VERSION;
     });
 
     // Translate dynamic placeholders
     const addressInput = document.getElementById('address-input');
     if (addressInput) {
-      const key = "Search or enter web address";
-      if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) {
-        addressInput.placeholder = TRANSLATIONS[lang][key];
-      } else {
-        addressInput.placeholder = key;
-      }
+      addressInput.placeholder = window.t("Search or enter web address");
     }
 
     const homeSearchInput = document.getElementById('home-search');
     if (homeSearchInput) {
-      const key = "Search or enter a URL...";
-      if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) {
-        homeSearchInput.placeholder = TRANSLATIONS[lang][key];
-      } else {
-        homeSearchInput.placeholder = key;
-      }
+      homeSearchInput.placeholder = window.t("Search or enter a URL...");
+    }
+
+    const settingsSearchInput = document.getElementById('settings-search');
+    if (settingsSearchInput) {
+      settingsSearchInput.placeholder = window.t("Search settings...");
     }
 
     if (lang === 'en-gb' || lang === 'en-ca') {
@@ -686,6 +682,7 @@ class SettingsManager {
     if (!document.getElementById('search-engine-select')) return; // safety
 
     const existingPermissions = this.currentSettings.sitePermissions || {};
+    const oldLanguage = this.currentSettings.language || 'en';
 
     this.currentSettings = {
       sitePermissions: existingPermissions,
@@ -727,7 +724,17 @@ class SettingsManager {
       // Persist to localStorage AND send to main process
       localStorage.setItem('leef_settings', JSON.stringify(this.currentSettings));
       window.require('electron').ipcRenderer.send('apply-settings', settingsWithLabs);
-      if (window.toastManager) window.toastManager.show('⚙️ Settings Saved', 'Your preferences have been applied.', 3000);
+      
+      if (window.toastManager) {
+        if (oldLanguage !== this.currentSettings.language) {
+          window.toastManager.show('⚙️ Settings Saved', 'Your preferences have been applied. Please restart the browser to complete the language change.', 6000);
+        } else {
+          window.toastManager.show('⚙️ Settings Saved', 'Your preferences have been applied.', 3000);
+        }
+      }
+
+      // Perf fix: Refresh cached language so window.t() picks up the new language without a page reload
+      if (window.refreshLang) window.refreshLang();
 
       // Update adblock badge immediately based on current mode
       this.updateAdblockBadge(this.currentSettings.adBlockerMode);
@@ -778,6 +785,7 @@ class SettingsManager {
 const DropdownUtils = {
   show(el, displayType = 'block') {
     if (!el) return;
+    el.style.pointerEvents = '';
     el.style.display = displayType;
     // Force browser reflow to register display change before adding class
     el.offsetHeight;
@@ -785,6 +793,9 @@ const DropdownUtils = {
   },
   hide(el) {
     if (!el) return;
+    // Immediately block pointer events so hidden/animating dropdowns
+    // never intercept clicks on inputs or other elements beneath them
+    el.style.pointerEvents = 'none';
     if (!el.classList.contains('visible')) {
       el.style.display = 'none';
       return;
@@ -1811,7 +1822,7 @@ class TabManager {
 
     const tabTitle = document.createElement('span');
     tabTitle.className = 'tab-title';
-    tabTitle.textContent = route === 'home' ? 'Leef Browser | Home' : (route === 'settings' ? 'Settings' : (route === 'changelog' ? "What's New" : (route === 'credits' ? 'Credits' : (route === 'flags' ? 'Leef Labs' : (route === 'privacy' ? 'Privacy Center' : 'Loading...')))));
+    tabTitle.textContent = route === 'home' ? window.t('Leef Browser | Home') : (route === 'settings' ? window.t('Settings') : (route === 'changelog' ? window.t("What's New") : (route === 'credits' ? window.t('Credits') : (route === 'flags' ? window.t('Leef Labs') : (route === 'privacy' ? window.t('Privacy Center') : window.t('Loading...'))))));
 
     const tabClose = document.createElement('button');
     tabClose.className = 'tab-close';
@@ -2493,7 +2504,9 @@ class TabManager {
                 document.head.appendChild(s);
               }
             }
-            (function loop() { skipAd(); setTimeout(loop, document.hidden ? 2000 : 1000); })();
+            // Perf fix: Store handle so each re-injection clears the previous loop (prevents orphaned timers)
+            if (window.__leefYTTimer) clearTimeout(window.__leefYTTimer);
+            (function loop() { skipAd(); window.__leefYTTimer = setTimeout(loop, document.hidden ? 2000 : 1000); })();
           })();
         `);
       }
@@ -2506,12 +2519,12 @@ class TabManager {
       // YouTube SPA re-injection hook (event listener, not a JS injection)
       if (isYouTube && s.adBlockerMode !== 'none' && !tab._ytNavHooked) {
         tab._ytNavHooked = true;
-        let ytNavTimer;
+        tab._ytNavTimer = null; // Stored on tab so closeTab() can clear it
         tab.webviewEl.addEventListener('did-navigate-in-page', (e) => {
           if (!e.isMainFrame) return; // Prevent iframe navigation IPC floods!
           if (tab.webviewEl.getURL().includes('youtube.com')) {
-            clearTimeout(ytNavTimer);
-            ytNavTimer = setTimeout(() => {
+            clearTimeout(tab._ytNavTimer);
+            tab._ytNavTimer = setTimeout(() => {
               const s2 = this.settings.currentSettings;
               if (s2.adBlockerMode === 'none') return;
               const labs2 = window.labsManager;
@@ -2531,7 +2544,8 @@ class TabManager {
                       else if (video.duration > 0 && isFinite(video.duration) && video.currentTime < video.duration - 0.2) { video.muted = true; video.currentTime = video.duration; }
                     } else if (video && video.playbackRate === 16) { video.playbackRate = 1; video.muted = false; }
                   }
-                  (function loop() { skipAd(); setTimeout(loop, document.hidden ? 2000 : 1000); })();
+                  if (window.__leefYTTimer) clearTimeout(window.__leefYTTimer);
+                  (function loop() { skipAd(); window.__leefYTTimer = setTimeout(loop, document.hidden ? 2000 : 1000); })();
                 })();
               `).catch(() => { });
             }, 500);
@@ -2713,13 +2727,13 @@ class TabManager {
   }
 
   updateTabUI(tab) {
-    if (tab.url === 'home') tab.tabTitle.textContent = 'Leef Browser | Home';
-    else if (tab.url === 'settings') tab.tabTitle.textContent = 'Settings';
-    else if (tab.url === 'changelog') tab.tabTitle.textContent = "What's New";
-    else if (tab.url === 'flags') tab.tabTitle.textContent = "Leef Labs";
-    else if (tab.url === 'privacy') tab.tabTitle.textContent = "Privacy Center";
+    if (tab.url === 'home') tab.tabTitle.textContent = window.t('Leef Browser | Home');
+    else if (tab.url === 'settings') tab.tabTitle.textContent = window.t('Settings');
+    else if (tab.url === 'changelog') tab.tabTitle.textContent = window.t("What's New");
+    else if (tab.url === 'flags') tab.tabTitle.textContent = window.t("Leef Labs");
+    else if (tab.url === 'privacy') tab.tabTitle.textContent = window.t("Privacy Center");
     else {
-      let displayTitle = tab.title || 'Loading...';
+      let displayTitle = window.t(tab.title || 'Loading...');
       if (this.settings.currentSettings.blockAIOverview) {
         displayTitle = displayTitle.replace(/ -noai/gi, '');
       }
@@ -2973,9 +2987,9 @@ class TabManager {
       try { tab.webviewEl.stop(); } catch (e) { }
       try { tab.webviewEl.src = 'about:blank'; } catch (e) { }
 
-      // Hide the webview's parent wrapper immediately so it doesn't linger visually
+      // Hide the webview immediately so it doesn't linger visually
       try {
-        const wrapper = tab.webviewEl.closest('.webview-wrapper') || tab.webviewEl.parentNode;
+        const wrapper = tab.webviewEl.closest('.webview-wrapper') || tab.webviewEl;
         if (wrapper) {
           wrapper.style.display = 'none';
         }
@@ -3035,6 +3049,8 @@ class TabManager {
         }
 
         // Null out references to allow garbage collection
+        // Perf fix: clear any pending ytNavTimer to prevent post-close callbacks on destroyed webview
+        if (tab._ytNavTimer) { clearTimeout(tab._ytNavTimer); tab._ytNavTimer = null; }
         tab.webviewEl = null;
         tab.tabEl = null;
         tab.tabTitle = null;
@@ -3415,8 +3431,81 @@ class ToastManager {
 
   show(title, msg, durationMs = 8000) {
     if (!this.el) return;
-    this.el.querySelector('.leef-toast-title').textContent = title;
-    this.el.querySelector('.leef-toast-msg').textContent = msg;
+
+    // Translate title
+    const translatedTitle = window.t ? window.t(title) : title;
+
+    // Translate message with dynamic parameters fallback
+    let translatedMsg = msg;
+    if (window.t) {
+      translatedMsg = window.t(msg);
+      if (translatedMsg === msg) {
+        // Apply regex mappings for dynamic values
+        const patterns = [
+          {
+            regex: /Could not create the log file: (.*)/,
+            key: "Could not create the log file: {error}",
+            replace: (match, p1) => window.t("Could not create the log file: {error}").replace("{error}", p1)
+          },
+          {
+            regex: /(.*) is available\. Do you want to download and install it\?/,
+            key: "{version} is available. Do you want to download and install it?",
+            replace: (match, p1) => window.t("{version} is available. Do you want to download and install it?").replace("{version}", p1)
+          },
+          {
+            regex: /"(.*)" was removed from your bookmarks\./,
+            key: "\"{title}\" was removed from your bookmarks.",
+            replace: (match, p1) => window.t("\"{title}\" was removed from your bookmarks.").replace("{title}", p1)
+          },
+          {
+            regex: /"(.*)" has been saved to your bookmarks\./,
+            key: "\"{title}\" has been saved to your bookmarks.",
+            replace: (match, p1) => window.t("\"{title}\" has been saved to your bookmarks.").replace("{title}", p1)
+          },
+          {
+            regex: /"(.*)" has been added to your Hub\./,
+            key: "\"{title}\" has been added to your Hub.",
+            replace: (match, p1) => window.t("\"{title}\" has been added to your Hub.").replace("{title}", p1)
+          },
+          {
+            regex: /"(.*)" has been removed from your Hub\./,
+            key: "\"{title}\" has been removed from your Hub.",
+            replace: (match, p1) => window.t("\"{title}\" has been removed from your Hub.").replace("{title}", p1)
+          },
+          {
+            regex: /Looking up "(.*)"…/,
+            key: "Looking up \"{query}\"…",
+            replace: (match, p1) => window.t("Looking up \"{query}\"…").replace("{query}", p1)
+          },
+          {
+            regex: /"(.*)" was frozen to save system resources\./,
+            key: "\"{title}\" was frozen to save system resources.",
+            replace: (match, p1) => window.t("\"{title}\" was frozen to save system resources.").replace("{title}", p1)
+          },
+          {
+            regex: /Cleared cookies for (.*)\./,
+            key: "Cleared cookies for {host}.",
+            replace: (match, p1) => window.t("Cleared cookies for {host}.").replace("{host}", p1)
+          },
+          {
+            regex: /Error: (.*)/,
+            key: "Error: {error}",
+            replace: (match, p1) => window.t("Error: {error}").replace("{error}", p1)
+          }
+        ];
+
+        for (const p of patterns) {
+          const m = msg.match(p.regex);
+          if (m) {
+            translatedMsg = p.replace(m, m[1]);
+            break;
+          }
+        }
+      }
+    }
+
+    this.el.querySelector('.leef-toast-title').textContent = translatedTitle;
+    this.el.querySelector('.leef-toast-msg').textContent = translatedMsg;
 
     // Reset action div visibility so buttons don't leak between toasts
     const actionDiv = document.getElementById('leef-toast-action');
@@ -3722,6 +3811,7 @@ class QuickSettingsManager {
     this.btnChangelog = document.getElementById('btn-qs-changelog');
     this.btnScreenshot = document.getElementById('btn-qs-screenshot');
     this.btnBug = document.getElementById('btn-qs-bug');
+    this.btnTroubleshooter = document.getElementById('btn-qs-troubleshooter');
     this.sliderVolume = document.getElementById('qs-volume-slider');
     this.btnSettings = document.getElementById('btn-qs-settings');
     this.volumeTile = document.getElementById('qs-tile-volume');
@@ -3902,6 +3992,15 @@ class QuickSettingsManager {
           };
           window.require('electron').ipcRenderer.send('generate-bug-log', payload);
           if (window.toastManager) window.toastManager.show('⚙️ Generating...', 'Compiling system diagnostics. Please wait...', 3000);
+        }
+      });
+    }
+
+    if (this.btnTroubleshooter) {
+      this.btnTroubleshooter.addEventListener('click', () => {
+        DropdownUtils.hide(this.dropdown);
+        if (window.tabManager) {
+          window.tabManager.createTab('https://leefbrowser.site/troubleshooter');
         }
       });
     }
@@ -4848,7 +4947,8 @@ class HeroManager {
 
   start() {
     this.update();
-    setInterval(() => this.update(), 1000);
+    // Perf fix: Store handle to allow future cancellation and prevent double-registration
+    this._interval = setInterval(() => this.update(), 1000);
   }
 
   update() {
@@ -5171,9 +5271,12 @@ class AddressBarManager {
     this.selectedIndex = -1;
 
     // Helper to add items
-    const addItem = (title, url, iconHtml, isWeb) => {
+    const addItem = (title, url, iconHtml, isWeb, queryVal) => {
       const item = document.createElement('div');
       item.className = 'suggestion-item';
+      if (queryVal !== undefined && queryVal !== null) {
+        item.setAttribute('data-query', queryVal);
+      }
       item.innerHTML = iconHtml + '<div class="suggestion-info"><div class="suggestion-title">' + BrowserUtils.sanitize(title) + '</div><div class="suggestion-url" style="' + (isWeb ? 'display:none;' : '') + '">' + BrowserUtils.sanitize(url) + '</div></div>';
 
       item.addEventListener('click', () => {
@@ -5185,7 +5288,8 @@ class AddressBarManager {
     };
 
     // 1. Fallback / Current Input (Search for...)
-    addItem('Search for "' + val + '"', val, '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 10px; opacity: 0.6; flex-shrink: 0;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>', true);
+    const searchForText = window.t ? window.t('Search for "{query}"').replace('{query}', val) : 'Search for "' + val + '"';
+    addItem(searchForText, val, '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 10px; opacity: 0.6; flex-shrink: 0;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>', true, val);
 
     // 2. Bookmarks
     bookmarkMatches.forEach(match => {
@@ -5228,8 +5332,13 @@ class AddressBarManager {
     if (this.selectedIndex !== -1) {
       const urlEl = items[this.selectedIndex].querySelector('.suggestion-url');
       const titleEl = items[this.selectedIndex].querySelector('.suggestion-title');
-      // If it's a web suggestion, fill input with the title (query). If bookmark, fill with URL.
-      this.input.value = urlEl.style.display === 'none' ? titleEl.textContent.replace(/^Search for "/, '').replace(/"$/, '') : urlEl.textContent;
+      const queryVal = items[this.selectedIndex].getAttribute('data-query');
+      if (queryVal !== null) {
+        this.input.value = queryVal;
+      } else {
+        // If it's a web suggestion, fill input with the title (query). If bookmark, fill with URL.
+        this.input.value = urlEl.style.display === 'none' ? titleEl.textContent : urlEl.textContent;
+      }
     }
   }
 }
@@ -5426,18 +5535,27 @@ class PrivacyManager {
     this.recentBlocks.unshift({ domain, time: Date.now() });
     if (this.recentBlocks.length > 30) this.recentBlocks.pop();
 
-    localStorage.setItem('leef_privacy_total_blocked', this.totalBlocked);
-    this.updateUI();
+    // Perf fix: Only flush to localStorage every 10 blocks instead of every block.
+    // On pages with 50+ blocked requests this prevents 50 synchronous disk writes.
+    if (this.totalBlocked % 10 === 0) {
+      localStorage.setItem('leef_privacy_total_blocked', this.totalBlocked);
+    }
+
+    // Debounce the UI re-render so rapid-fire blocks don't thrash the DOM
+    clearTimeout(this._blockUITimer);
+    this._blockUITimer = setTimeout(() => this.updateUI(), 150);
   }
 
   recordRequest(isSecure) {
     this.totalRequests++;
     if (isSecure) this.secureRequests++;
 
-    localStorage.setItem('leef_privacy_total_requests', this.totalRequests);
-    localStorage.setItem('leef_privacy_secure_requests', this.secureRequests);
-
-    if (this.totalRequests % 5 === 0) this.updateUI(); // Throttled UI update
+    // Perf fix: Write every 50 requests instead of every 5 — cuts localStorage calls by 90%
+    if (this.totalRequests % 50 === 0) {
+      localStorage.setItem('leef_privacy_total_requests', this.totalRequests);
+      localStorage.setItem('leef_privacy_secure_requests', this.secureRequests);
+      this.updateUI();
+    }
   }
 
   updateUI() {
@@ -5871,5 +5989,13 @@ window.onload = async () => {
     } catch (e) {
       console.error('Failed to initialize dropdown mutation observer:', e);
     }
+  }
+
+  // Plugin Store Placeholder
+  const btnPlugins = document.getElementById('btn-plugin-store');
+  if (btnPlugins) {
+    btnPlugins.addEventListener('click', () => {
+      if (window.toastManager) window.toastManager.show('🧩 Plugin Store', 'The Plugin Store is a work in progress and will be coming soon!', 3000);
+    });
   }
 };

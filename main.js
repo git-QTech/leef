@@ -145,7 +145,9 @@ async function initAdBlocker(enabled = false) {
       pendingBlocks.set(tabId, stats);
     });
 
-    setInterval(() => {
+    // Perf fix: Guard against duplicate intervals if initAdBlocker is called multiple times
+    if (global.adblockBatchInterval) clearInterval(global.adblockBatchInterval);
+    global.adblockBatchInterval = setInterval(() => {
       if (pendingBlocks.size > 0) {
         pendingBlocks.forEach((stats, tabId) => {
           safeSend('adblock-items-blocked-batch', {
@@ -655,6 +657,12 @@ function createWindow() {
   // Consolidated global shortcut handler for all webContents (v0.3.5)
   app.on('web-contents-created', (event, contents) => {
     contents.setMaxListeners(100);
+
+    // Perf fix: Forcibly clear all listeners when the webview/contents is destroyed
+    // Prevents "ghost" webContents from leaking memory if Electron's GC is delayed
+    contents.once('destroyed', () => {
+      contents.removeAllListeners();
+    });
 
     contents.on('devtools-opened', () => {
       if (isCriticalMode) contents.closeDevTools();

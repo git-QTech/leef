@@ -375,10 +375,10 @@
                 <line x1="12" y1="20" x2="12.01" y2="20"></line>
             </svg>
         </div>
-        <h1>Connection Lost</h1>
-        <p class="status-text">Your device is currently offline. Please check your internet connection and try again.
+        <h1 data-i18n="Connection Lost">Connection Lost</h1>
+        <p class="status-text" data-i18n="Your device is currently offline. Please check your internet connection and try again.">Your device is currently offline. Please check your internet connection and try again.
         </p>
-        <button class="btn-action" id="btn-reconnect">Try Reconnecting</button>
+        <button class="btn-action" id="btn-reconnect" data-i18n="Try Reconnecting">Try Reconnecting</button>
     </div>
 
     <!-- SECRET GAME VIEW -->
@@ -392,7 +392,7 @@
                 <div class="score-lbl">Chlorophyll</div>
                 <div class="cps-lbl" id="cps">0.00 per second</div>
             </div>
-            <button class="btn-action" id="btn-reconnect-game" style="margin-top: 2rem;">Try Reconnecting</button>
+            <button class="btn-action" id="btn-reconnect-game" style="margin-top: 2rem;" data-i18n="Try Reconnecting">Try Reconnecting</button>
         </div>
 
         <div class="upgrade-pane">
@@ -407,6 +407,30 @@
         </div>
     </div>
 
+    <script type="module">
+        import { TRANSLATIONS } from './translations.js';
+        let lang = 'en';
+        try {
+            const settings = JSON.parse(localStorage.getItem('leef_settings'));
+            if (settings && settings.language) {
+                lang = settings.language;
+            }
+        } catch (e) {}
+
+        window.t = function(key) {
+            if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) {
+                return TRANSLATIONS[lang][key];
+            }
+            return key;
+        };
+
+        if (lang !== 'en') {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                el.innerHTML = window.t(key);
+            });
+        }
+    </script>
     <script>
         let chlorophyll = 0;
         let totalEarned = 0;
@@ -463,7 +487,7 @@
                 '-118': { title: 'Connection Timed Out', icon: 'clock' }
             };
             const info = errorMap[errCode] || { title: 'Page Load Failed', icon: 'alert' };
-            titleEl.textContent = info.title;
+            titleEl.textContent = window.t ? window.t(info.title) : info.title;
             iconEl.innerHTML = icons[info.icon];
             const isOffline = !errCode || errCode === '-106' || errCode === '-109';
             if (!isOffline) { iconEl.style.cursor = 'default'; iconEl.style.pointerEvents = 'none'; }
