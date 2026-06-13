@@ -4,9 +4,10 @@
 
 The following versions of Leef Browser currently receive security updates:
 
-| Version | Supported          |
+| Version | Supported |
 | ------- | ------------------ |
-| 0.x.x | ‼️Support ending June 1st ‼️ |
+| 1.x.x | ✅ Fully Supported |
+| 0.x.x | ❌ Support ended June 13th |
 
 ---
 
@@ -61,7 +62,9 @@ Please provide as much detail as possible:
 Leef Browser is built on **Electron** and uses the following security configuration:
 
 - `webSecurity: true` — enforces same-origin policy in webviews
-- `contextIsolation: false` / `nodeIntegration: true` — required for the current renderer architecture; a future update will migrate to a preload-based IPC model
+- `contextIsolation: true` / `nodeIntegration: false` — secure preload-based IPC model is used to isolate the renderer from Node.js capabilities
+- `sandbox: true` — WebViews explicitly run in an isolated OS-level sandbox
+- Content Security Policy (CSP) is active to prevent unauthorized inline script execution
 - All network-level ad/tracker blocking is handled in the main process via `session.webRequest`
 - No external analytics or telemetry is collected
 

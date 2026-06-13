@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https:;">
     <title>Leef Recovery</title>
     <style>
         :root {
@@ -135,6 +136,10 @@
         .card:nth-child(3) { animation-delay: 0.3s; }
         .card:nth-child(4) { animation-delay: 0.4s; }
 
+        ::-webkit-resizer {
+            display: none !important;
+        }
+
     </style>
 </head>
 <body>
@@ -198,7 +203,7 @@
     </div>
 
     <script>
-        const { ipcRenderer } = require('electron');
+        const ipcRenderer = (window.leefAPI && window.leefAPI.ipc) || window.require('electron').ipcRenderer;
         const descEl = document.getElementById('action-desc');
         const defaultDesc = 'Hover over an option to see what it does';
 
@@ -236,6 +241,7 @@
         document.getElementById('btn-report-bug').addEventListener('click', () => {
             document.getElementById('bug-reporting').style.display = 'block';
             document.getElementById('btn-report-bug').style.borderColor = 'var(--accent-color)';
+            ipcRenderer.send('recovery-action', 'expand-window');
         });
 
         document.getElementById('btn-save-log').addEventListener('click', () => {
@@ -256,6 +262,11 @@
         });
 
 
+
+        const isWin = (typeof process !== 'undefined' && process.platform === 'win32');
+        if (!isWin) {
+            document.getElementById('btn-open-github').innerText = 'Open GitHub';
+        }
 
         document.getElementById('btn-open-github').addEventListener('click', () => {
             ipcRenderer.send('recovery-action', 'open-github');

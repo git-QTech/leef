@@ -23,14 +23,28 @@ if (process.platform === 'win32') {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Fix for washed out colors on Windows/HDR (v0.1.3+)
-// D3D9 is a "Goldilocks" fix: it avoids washed-out colors but handles fullscreen better than OpenGL.
-// Surgical fix for the "alpha bug" fullscreen border (v0.6.0)
+// Disable Chromium's window/tab occlusion tracking to prevent rendering freezes/blank screens when tabbing back in
+const disabledFeatures = ['MacWebContentsOcclusion', 'CalculateNativeWinOcclusion'];
+if (process.platform === 'win32') {
+  disabledFeatures.push('MediaFoundationVideoDecoder', 'DirectCompositionVideoOverlays');
+}
+app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+
 if (process.platform === 'win32') {
   app.commandLine.appendSwitch('use-angle', 'd3d9');
-  app.commandLine.appendSwitch('disable-features', 'MediaFoundationVideoDecoder,DirectCompositionVideoOverlays');
   app.commandLine.appendSwitch('force-color-profile', 'srgb');
 }
+
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('enable-transparent-visuals');
+  app.commandLine.appendSwitch('enable-blink-features', 'MiddleClickAutoscroll');
+}
+
+// Suppress noisy internal Chromium logs (e.g. VA-API/GPU decoding failures)
+app.commandLine.appendSwitch('log-level', '3');
 
 const isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
 console.log('Leef Browser: isDev =', isDev, '| app.isPackaged =', app.isPackaged);
@@ -47,7 +61,7 @@ if (isDev) {
 
 let mainWindow;
 let blocker;
-const permissionCallbacks = {};
+const permissionCallbacks = Object.create(null);
 let permReqId = 0;
 let globalSettings = {};
 let adblockerEnabled = false;
@@ -82,7 +96,7 @@ async function initAdBlocker(enabled = false) {
   if (adblockerEnabled || adblockerLoading) return; // Already setup or in progress
   adblockerLoading = true;
 
-  const cachePath = path.join(app.getPath('userData'), 'adblock-engine-v3.bin');
+  const cachePath = path.normalize(path.join(app.getPath('userData'), 'adblock-engine-v3.bin'));
 
   try {
     if (fs.existsSync(cachePath)) {
@@ -117,19 +131,31 @@ async function initAdBlocker(enabled = false) {
     // Enable cosmetic filtering and IPC handlers (Once)
     blocker.enableBlockingInSession(sess);
     // IPC Batching: Throttled updates to reduce CPU usage (v0.5.0)
-    const pendingBlocks = new Map(); // tabId -> { count, lastUrl }
+    const pendingBlocks = new Map(); // tabId -> { ads, trackers, lastUrl }
     blocker.on('request-blocked', (request) => {
       const tabId = request.tabId;
-      const stats = pendingBlocks.get(tabId) || { count: 0, lastUrl: '' };
-      stats.count++;
+      const stats = pendingBlocks.get(tabId) || { ads: 0, trackers: 0, lastUrl: '' };
+      const type = request.type || '';
+      if (['script', 'xmlhttprequest', 'ping', 'beacon', 'websocket'].includes(type.toLowerCase())) {
+        stats.trackers++;
+      } else {
+        stats.ads++;
+      }
       stats.lastUrl = request.url;
       pendingBlocks.set(tabId, stats);
     });
 
-    setInterval(() => {
+    // Perf fix: Guard against duplicate intervals if initAdBlocker is called multiple times
+    if (global.adblockBatchInterval) clearInterval(global.adblockBatchInterval);
+    global.adblockBatchInterval = setInterval(() => {
       if (pendingBlocks.size > 0) {
         pendingBlocks.forEach((stats, tabId) => {
-          safeSend('adblock-items-blocked-batch', { tabId, count: stats.count, url: stats.lastUrl });
+          safeSend('adblock-items-blocked-batch', {
+            tabId,
+            ads: stats.ads,
+            trackers: stats.trackers,
+            url: stats.lastUrl
+          });
         });
         pendingBlocks.clear();
       }
@@ -218,6 +244,24 @@ ipcMain.on('exit-app', () => {
   app.quit();
 });
 
+ipcMain.on('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.on('window-maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.on('window-close', () => {
+  if (mainWindow) mainWindow.close();
+});
+
 let isCriticalMode = false;
 ipcMain.on('set-critical-mode', (event, active) => {
   isCriticalMode = active;
@@ -245,28 +289,54 @@ ipcMain.handle('fetch-autocomplete', async (event, query) => {
   }
 });
 
+function getOSFriendlyName() {
+  if (process.platform === 'linux') {
+    try {
+      if (fs.existsSync('/etc/os-release')) {
+        const content = fs.readFileSync('/etc/os-release', 'utf8');
+        const lines = content.split('\n');
+        const releaseData = Object.create(null);
+        for (const line of lines) {
+          const [key, value] = line.split('=');
+          if (key && value) {
+            releaseData[key] = value.replace(/^"|"$/g, '');
+          }
+        }
+        return releaseData.PRETTY_NAME || releaseData.NAME || 'Linux';
+      }
+    } catch (e) { }
+    return 'Linux';
+  } else if (process.platform === 'win32') {
+    return `Windows ${os.release()}`;
+  } else if (process.platform === 'darwin') {
+    return `macOS ${os.release()}`;
+  }
+  return process.platform;
+}
+
 let isRecoveryMode = false;
 let startupError = 'None';
 
 async function generateDiagnosticLog(error = 'None') {
   const userData = app.getPath('userData');
-  const logPath = path.join(userData, 'leef-diagnostic.txt');
+  const logPath = path.normalize(path.join(userData, 'leef-diagnostic.txt'));
 
   const scrub = (str) => {
     if (!str) return '';
-    const home = os.homedir().replace(/\\/g, '\\\\');
-    return str.replace(new RegExp(home, 'g'), '<User>');
+    const home = os.homedir();
+    const escapedHome = home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return str.replace(new RegExp(escapedHome, 'g'), '<User>');
   };
 
   let gpuInfo = {};
   try { gpuInfo = await app.getGPUInfo('basic'); } catch (e) { gpuInfo = { error: 'Failed to fetch' }; }
 
   const fileChecks = {
-    'index.html': fs.existsSync(path.join(__dirname, 'index.html')),
-    'renderer.js': fs.existsSync(path.join(__dirname, 'renderer.js')),
-    'style.css': fs.existsSync(path.join(__dirname, 'style.css')),
-    'package.json': fs.existsSync(path.join(__dirname, 'package.json')),
-    'Recovery UI': fs.existsSync(path.join(__dirname, 'recovery.html'))
+    'index.html': fs.existsSync(path.normalize(path.join(__dirname, 'index.html'))),
+    'renderer.js': fs.existsSync(path.normalize(path.join(__dirname, 'renderer.js'))),
+    'style.css': fs.existsSync(path.normalize(path.join(__dirname, 'style.css'))),
+    'package.json': fs.existsSync(path.normalize(path.join(__dirname, 'package.json'))),
+    'Recovery UI': fs.existsSync(path.normalize(path.join(__dirname, 'recovery.html')))
   };
 
   const logContent = [
@@ -277,13 +347,13 @@ async function generateDiagnosticLog(error = 'None') {
     `user credentials, and browsing history are NOT stored.`,
     `All local system paths have been anonymized.`,
     `----------------------------------------------------`,
-    `App Version: ${app.isPackaged ? app.getVersion() : '0.6.1'}`,
+    `App Version: ${app.isPackaged ? app.getVersion() : '1.0.0'}`,
 
 
     `Electron Version: ${process.versions.electron}`,
     `Chrome Version: ${process.versions.chrome}`,
     `Node Version: ${process.versions.node}`,
-    `Platform: ${process.platform} (${os.release()})`,
+    `Platform: ${getOSFriendlyName()} (${process.arch})`,
     `Arch: ${process.arch}`,
     `Process Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`,
     `----------------------------------------------------`,
@@ -300,7 +370,7 @@ async function generateDiagnosticLog(error = 'None') {
     `Arguments: ${scrub(process.argv.join(' '))}`
   ].join('\n');
 
-  fs.writeFileSync(logPath, logContent);
+  fs.writeFileSync(path.normalize(logPath), logContent);
 }
 
 async function runKeyCheck() {
@@ -309,7 +379,19 @@ async function runKeyCheck() {
     return;
   }
 
-  if (process.platform === 'win32') {
+  if (process.platform === 'darwin') {
+    try {
+      const cmd = 'osascript -l JavaScript -e "ObjC.import(\'Cocoa\'); ($.NSEvent.modifierFlags & $.NSEventModifierFlagShift) > 0"';
+      const output = execSync(cmd, { timeout: 2000, encoding: 'utf8' }).trim();
+      if (output === 'true') {
+        isRecoveryMode = true;
+        console.log('Leef Browser: Recovery Mode activated via Shift key (macOS).');
+      }
+    } catch (e) {
+      console.error('Leef Browser: Shift key check failed on macOS:', e.message);
+      isRecoveryMode = false;
+    }
+  } else if (process.platform === 'win32') {
     try {
       // Fast check using partial assembly loading
       const cmd = 'powershell -NoProfile -NonInteractive -Command "[Reflection.Assembly]::LoadWithPartialName(\'System.Windows.Forms\') | Out-Null; [System.Windows.Forms.Control]::ModifierKeys"';
@@ -320,6 +402,35 @@ async function runKeyCheck() {
       }
     } catch (e) {
       console.error('Leef Browser: Shift key check failed:', e.message);
+      isRecoveryMode = false;
+    }
+  } else if (process.platform === 'linux') {
+    try {
+      const listOutput = execSync('xinput --list', { timeout: 2000, encoding: 'utf8' });
+      const ids = [];
+      const lines = listOutput.split('\n');
+      for (const line of lines) {
+        if (/keyboard/i.test(line)) {
+          const match = line.match(/id=(\d+)/);
+          if (match) {
+            ids.push(match[1]);
+          }
+        }
+      }
+      for (const id of ids) {
+        try {
+          const queryOutput = execSync(`xinput query-state ${id}`, { timeout: 1000, encoding: 'utf8' });
+          if (queryOutput.includes('key[50]=down') || queryOutput.includes('key[62]=down')) {
+            isRecoveryMode = true;
+            console.log('Leef Browser: Recovery Mode activated via Shift key (Linux).');
+            break;
+          }
+        } catch (e) {
+          // Ignore failures for specific devices and try next
+        }
+      }
+    } catch (e) {
+      console.error('Leef Browser: Shift key check failed on Linux:', e.message);
       isRecoveryMode = false;
     }
   }
@@ -341,7 +452,7 @@ function createWindow() {
         const protocol = url.protocol.toLowerCase();
 
         // Allow internal Leef files and essential protocols
-        if (protocol === 'file:' || protocol === 'data:' || protocol === 'blob:') {
+        if (protocol === 'about:' || protocol === 'file:' || protocol === 'data:' || protocol === 'blob:') {
           return callback({ cancel: false });
         }
 
@@ -367,8 +478,69 @@ function createWindow() {
     callback({ cancel: false });
   });
 
-  Menu.setApplicationMenu(null);
+  if (process.platform === 'darwin') {
+    const template = [
+      {
+        label: app.name,
+        submenu: [
+          { role: 'about' },
+          { type: 'separator' },
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' }
+        ]
+      },
+      {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'pasteAndMatchStyle' },
+          { role: 'delete' },
+          { role: 'selectAll' }
+        ]
+      },
+      {
+        label: 'View',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' }
+        ]
+      },
+      {
+        label: 'Window',
+        submenu: [
+          { role: 'minimize' },
+          { role: 'zoom' },
+          { type: 'separator' },
+          { role: 'front' },
+          { type: 'separator' },
+          { role: 'window' }
+        ]
+      }
+    ];
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
+  } else {
+    Menu.setApplicationMenu(null);
+  }
 
+  const isLinux = process.platform === 'linux';
   mainWindow = new BrowserWindow({
     width: isRecoveryMode ? 900 : 1200,
     height: isRecoveryMode ? 550 : 800,
@@ -376,22 +548,44 @@ function createWindow() {
     minHeight: 500,
     resizable: !isRecoveryMode,
     center: true,
+    frame: !isLinux,
+    transparent: isLinux,
     webPreferences: {
-
       nodeIntegration: true,
       contextIsolation: false,
       webviewTag: true,
       webSecurity: true,
+      backgroundThrottling: false,
       session: sess
     },
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
+    titleBarStyle: isLinux ? undefined : 'hidden',
+    titleBarOverlay: process.platform === 'win32' ? {
       color: '#5aef7e', // matches --topbar-bg in style.css exactly
       symbolColor: '#000000'
-    },
-    backgroundColor: '#000000', // Fixes "see-through" gaps in fullscreen (v0.6.0)
+    } : false,
+    ...(process.platform === 'darwin' ? {
+      trafficLightPosition: { x: 12, y: 16 }
+    } : {}),
+    ...(!isLinux ? {
+      backgroundColor: '#000000' // Fixes "see-through" gaps in fullscreen (v0.6.0)
+    } : {}),
     icon: path.join(__dirname, 'images/icon.png')
   });
+
+  if (isLinux) {
+    mainWindow.on('maximize', () => {
+      safeSend('window-state-changed', 'maximized');
+    });
+    mainWindow.on('unmaximize', () => {
+      safeSend('window-state-changed', 'normal');
+    });
+    mainWindow.on('enter-html-full-screen', () => {
+      safeSend('window-state-changed', 'fullscreen');
+    });
+    mainWindow.on('leave-html-full-screen', () => {
+      safeSend('window-state-changed', mainWindow.isMaximized() ? 'maximized' : 'normal');
+    });
+  }
 
   // Explicitly force size and centering to override any OS-level window persistence
   if (isRecoveryMode) {
@@ -464,13 +658,19 @@ function createWindow() {
   app.on('web-contents-created', (event, contents) => {
     contents.setMaxListeners(100);
 
+    // Perf fix: Forcibly clear all listeners when the webview/contents is destroyed
+    // Prevents "ghost" webContents from leaking memory if Electron's GC is delayed
+    contents.once('destroyed', () => {
+      contents.removeAllListeners();
+    });
+
     contents.on('devtools-opened', () => {
       if (isCriticalMode) contents.closeDevTools();
     });
 
     contents.on('before-input-event', (e, input) => {
-      // Find in Page: Ctrl + F
-      if (input.control && !input.shift && input.key.toLowerCase() === 'f' && input.type === 'keyDown') {
+      // Find in Page: Ctrl + F or F3
+      if (((input.control && !input.shift && input.key.toLowerCase() === 'f') || input.key.toLowerCase() === 'f3') && input.type === 'keyDown') {
         if (isCriticalMode) { e.preventDefault(); return; }
         safeSend('trigger-find-in-page');
         e.preventDefault();
@@ -567,8 +767,11 @@ ipcMain.on('apply-settings', async (event, settings) => {
   const sess = session.fromPartition('persist:leef-session');
 
   let acceptLang = 'en-US,en';
+  if (settings.language === 'en-gb') acceptLang = 'en-GB,en;q=0.9';
+  if (settings.language === 'en-ca') acceptLang = 'en-CA,en;q=0.9';
   if (settings.language === 'fr') acceptLang = 'fr-FR,fr,en;q=0.9';
   if (settings.language === 'es') acceptLang = 'es-ES,es,en;q=0.9';
+  if (settings.language === 'nl') acceptLang = 'nl-NL,nl,en;q=0.9';
   if (settings.language === 'it') acceptLang = 'it-IT,it,en;q=0.9';
 
   // Custom User Agent & Language
@@ -643,10 +846,13 @@ ipcMain.on('apply-settings', async (event, settings) => {
   // because Ghostery only hooks onBeforeRequest, not onBeforeSendHeaders.
   sess.webRequest.onBeforeSendHeaders(null);
   sess.webRequest.onBeforeSendHeaders((details, callback) => {
-    const url = details.url;
+    const url = details.url || '';
 
-    // Strip SafeSearch enforcement headers
-    const headers = details.requestHeaders;
+    if (url.startsWith('about:') || url.startsWith('file:') || url.startsWith('data:') || url.startsWith('blob:')) {
+      return callback({ cancel: false });
+    }
+
+    const headers = details.requestHeaders || {};
     delete headers['X-SafeSearch-Enforced'];
     delete headers['X-Google-SafeSearch'];
     delete headers['X-Youtube-Edu-Filter'];
@@ -695,22 +901,28 @@ ipcMain.on('apply-settings', async (event, settings) => {
     try { origin = new URL(details.requestingUrl).origin; } catch (e) { }
 
     if (permission === 'notifications') {
-      if (settings.sitePermissions && settings.sitePermissions[origin] && settings.sitePermissions[origin].notifications !== undefined) {
-        return callback(settings.sitePermissions[origin].notifications);
+      const hostPerms = settings.sitePermissions && Object.prototype.hasOwnProperty.call(settings.sitePermissions, origin)
+        ? settings.sitePermissions[origin]
+        : undefined;
+      if (hostPerms && Object.prototype.hasOwnProperty.call(hostPerms, 'notifications') && hostPerms.notifications !== undefined) {
+        return callback(hostPerms.notifications);
       }
       return callback(settings.allowNotifications === true);
     }
 
     if (permission === 'media' || permission === 'geolocation') {
-      if (settings.sitePermissions && settings.sitePermissions[origin] && settings.sitePermissions[origin][permission] !== undefined) {
-        return callback(settings.sitePermissions[origin][permission]);
+      const hostPerms = settings.sitePermissions && Object.prototype.hasOwnProperty.call(settings.sitePermissions, origin)
+        ? settings.sitePermissions[origin]
+        : undefined;
+      if (hostPerms && Object.prototype.hasOwnProperty.call(hostPerms, permission) && hostPerms[permission] !== undefined) {
+        return callback(hostPerms[permission]);
       }
 
       // Dynamic Prompt
       // Dynamic Prompt with 30s expiry to prevent memory leaks
       const reqId = ++permReqId;
       const timeout = setTimeout(() => {
-        if (permissionCallbacks[reqId]) {
+        if (Object.prototype.hasOwnProperty.call(permissionCallbacks, reqId)) {
           permissionCallbacks[reqId](false);
           delete permissionCallbacks[reqId];
           console.log(`Permission request ${reqId} timed out.`);
@@ -729,7 +941,9 @@ ipcMain.on('apply-settings', async (event, settings) => {
           origin
         });
       } else {
-        permissionCallbacks[reqId](false);
+        if (Object.prototype.hasOwnProperty.call(permissionCallbacks, reqId)) {
+          permissionCallbacks[reqId](false);
+        }
       }
     } else {
       callback(true); // allow other benign permissions
@@ -764,7 +978,7 @@ ipcMain.on('apply-settings', async (event, settings) => {
 
 ipcMain.on('refresh-adblock', async () => {
   // Force re-download by deleting cache and re-initializing
-  const cachePath = path.join(app.getPath('userData'), 'adblock-engine-v3.bin');
+  const cachePath = path.normalize(path.join(app.getPath('userData'), 'adblock-engine-v3.bin'));
   if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
   adblockerEnabled = false;
   adblockerLoading = false;
@@ -790,7 +1004,7 @@ ipcMain.on('start-download', () => {
 });
 
 ipcMain.on('permission-response', (event, data) => {
-  if (permissionCallbacks[data.id]) {
+  if (data && data.id && Object.prototype.hasOwnProperty.call(permissionCallbacks, data.id)) {
     permissionCallbacks[data.id](data.granted);
     delete permissionCallbacks[data.id];
   }
@@ -827,6 +1041,10 @@ ipcMain.on('recovery-action', async (event, action) => {
       mainWindow.center();
       break;
 
+    case 'expand-window':
+      mainWindow.setSize(900, 750, true);
+      break;
+
     case 'open-appdata':
       shell.openPath(app.getPath('userData'));
       break;
@@ -836,7 +1054,7 @@ ipcMain.on('recovery-action', async (event, action) => {
       break;
 
     case 'show-diagnostic-log':
-      const logFile = path.join(app.getPath('userData'), 'leef-diagnostic.txt');
+      const logFile = path.normalize(path.join(app.getPath('userData'), 'leef-diagnostic.txt'));
       if (fs.existsSync(logFile)) {
         shell.showItemInFolder(logFile);
       }
@@ -1153,7 +1371,7 @@ ipcMain.on('generate-bug-log', (event, data = {}) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `leef-diagnostics-${timestamp}.txt`;
     const downloadsPath = app.getPath('downloads');
-    const filePath = path.join(downloadsPath, filename);
+    const filePath = path.normalize(path.join(downloadsPath, filename));
 
     const cpuInfo = os.cpus();
     const cpuModel = cpuInfo.length > 0 ? cpuInfo[0].model : 'Unknown CPU';
@@ -1179,12 +1397,12 @@ Leef Version: ${app.getVersion()}
 Chrome: ${process.versions.chrome}
 Electron: ${process.versions.electron}
 Node: ${process.versions.node}
-Platform: ${process.platform} (${process.arch})
+Platform: ${getOSFriendlyName()} (${process.arch})
 
 --------------------------------------------------
 SYSTEM INFO
 --------------------------------------------------
-OS: ${os.type()} ${os.release()}
+OS: ${getOSFriendlyName()} (${os.release()})
 Total Memory: ${(os.totalmem() / (1024 * 1024 * 1024)).toFixed(2)} GB
 Free Memory: ${(os.freemem() / (1024 * 1024 * 1024)).toFixed(2)} GB
 CPU: ${cpuModel} (${cpuCores} cores)
@@ -1203,7 +1421,7 @@ ${JSON.stringify(labs, null, 2)}
 END OF LOG
 --------------------------------------------------`;
 
-    fs.writeFileSync(filePath, logContent, 'utf8');
+    fs.writeFileSync(path.normalize(filePath), logContent, 'utf8');
     event.sender.send('bug-log-generated', { success: true, filename });
   } catch (error) {
     console.error('Failed to generate bug log:', error);
@@ -1243,7 +1461,7 @@ ipcMain.on('capture-page', async (event, data) => {
     const buffer = image.toPNG();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `Leef_Screenshot_${timestamp}.png`;
-    const filePath = path.join(app.getPath('downloads'), filename);
+    const filePath = path.normalize(path.join(app.getPath('downloads'), filename));
 
     const dlId = 'screenshot-' + Date.now();
     const size = buffer.length;
@@ -1256,7 +1474,7 @@ ipcMain.on('capture-page', async (event, data) => {
       total: size
     });
 
-    fs.writeFileSync(filePath, buffer);
+    fs.writeFileSync(path.normalize(filePath), buffer);
 
     safeSend('download-status', {
       id: dlId,

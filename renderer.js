@@ -1,26 +1,57 @@
-/**
- * Leef Browser 
- * Renderer Process Core Architecture
- */
+let TRANSLATIONS = {};
 
-let APP_VERSION = '0.6.1'; // Fallback
-
-async function initVersion() {
+async function loadTranslations() {
   try {
-    const response = await fetch('./package.json');
-    const pkg = await response.json();
-    APP_VERSION = pkg.version;
-
-    // Auto-populate any elements that need the version string
-    document.querySelectorAll('.leef-version-val').forEach(el => {
-      el.textContent = APP_VERSION;
-    });
+    const module = await import('./translations.js');
+    TRANSLATIONS = module.TRANSLATIONS;
   } catch (e) {
-    console.error('Failed to load version from package.json:', e);
+    console.error("Failed to load translations dynamically", e);
   }
 }
 
+// Perf: Cache language at module level — avoids localStorage read + JSON.parse on every t() call.
+// Call window.refreshLang() whenever settings are saved.
+let _cachedLang = 'en';
+window.refreshLang = function() {
+  try {
+    const s = localStorage.getItem('leef_settings');
+    if (s) _cachedLang = JSON.parse(s).language || 'en';
+  } catch (e) {}
+};
+window.refreshLang();
+
+window.t = function(key) {
+  if (_cachedLang !== 'en' && TRANSLATIONS[_cachedLang] && TRANSLATIONS[_cachedLang][key]) {
+    return TRANSLATIONS[_cachedLang][key];
+  }
+  return key;
+};
+
+let APP_VERSION = '1.0.0'; // Fallback
+
+function initVersion() {
+  // Use already-running main process instead of re-fetching package.json from disk
+  try {
+    const ver = window.require('electron').ipcRenderer.sendSync('get-app-version');
+    if (ver) APP_VERSION = ver;
+  } catch (e) {
+    console.warn('Failed to get version via IPC:', e);
+  }
+  document.querySelectorAll('.leef-version-val').forEach(el => {
+    el.textContent = APP_VERSION;
+  });
+}
+
 initVersion();
+
+// Inject OS-specific class for CSS styling (e.g., macOS traffic lights)
+if (process.platform === 'darwin') {
+  document.body.classList.add('mac-os');
+} else if (process.platform === 'linux') {
+  document.body.classList.add('linux-os');
+} else if (process.platform === 'win32') {
+  document.body.classList.add('win-os');
+}
 
 // --- UTILITIES ---
 class BrowserUtils {
@@ -88,6 +119,7 @@ class SettingsManager {
       allowNotifications: true,
       askDownload: false,
       blockAIOverview: true,
+      nativeDictionary: true,
       autoCheckUpdates: true,
       customUa: '',
       dohToggle: true,
@@ -99,6 +131,7 @@ class SettingsManager {
       efficiencyMode: false,
       cpuLimit: 100,
       ramLimit: 0,
+      customNewTab: 'home',
       sitePermissions: {}
     };
     // Load previously saved settings and merge with defaults
@@ -115,7 +148,7 @@ class SettingsManager {
       const saved = JSON.parse(localStorage.getItem('leef_settings') || '{}');
 
       // Fallback: If saved language is not supported anymore, default to en
-      const supported = ['en', 'en-gb', 'en-ca'];
+      const supported = ['en', 'en-gb', 'en-ca', 'fr', 'es', 'nl'];
       if (saved.language && !supported.includes(saved.language)) {
         saved.language = 'en';
       }
@@ -127,7 +160,43 @@ class SettingsManager {
   }
 
   applyLocalization() {
-    const lang = this.currentSettings.language;
+    const lang = this.currentSettings.language || 'en';
+
+    // First translate any elements with data-i18n attributes
+    const i18nElements = document.querySelectorAll('[data-i18n]');
+    i18nElements.forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      if (!el.hasAttribute('data-original-html')) {
+        el.setAttribute('data-original-html', el.innerHTML.trim());
+      }
+      if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) {
+        el.innerHTML = TRANSLATIONS[lang][key];
+      } else {
+        el.innerHTML = el.getAttribute('data-original-html') || key;
+      }
+    });
+
+    // Re-inject dynamic version string
+    document.querySelectorAll('.leef-version-val').forEach(el => {
+      el.textContent = APP_VERSION;
+    });
+
+    // Translate dynamic placeholders
+    const addressInput = document.getElementById('address-input');
+    if (addressInput) {
+      addressInput.placeholder = window.t("Search or enter web address");
+    }
+
+    const homeSearchInput = document.getElementById('home-search');
+    if (homeSearchInput) {
+      homeSearchInput.placeholder = window.t("Search or enter a URL...");
+    }
+
+    const settingsSearchInput = document.getElementById('settings-search');
+    if (settingsSearchInput) {
+      settingsSearchInput.placeholder = window.t("Search settings...");
+    }
+
     if (lang === 'en-gb' || lang === 'en-ca') {
       // Very simple string replacement for common regional spelling differences
       const targets = document.querySelectorAll('label, h1, h2, h3, p, li, span, strong');
@@ -144,6 +213,7 @@ class SettingsManager {
     const s = this.currentSettings;
     const el = id => document.getElementById(id);
     if (el('search-engine-select')) el('search-engine-select').value = s.searchEngine;
+    if (el('search-engine-select-browsing')) el('search-engine-select-browsing').value = s.searchEngine;
     if (el('language-select')) {
       el('language-select').value = s.language || 'en';
       // If still empty (e.g. value not in list), force to 'en'
@@ -159,14 +229,28 @@ class SettingsManager {
     if (document.getElementById('news-manual-refresh')) document.getElementById('news-manual-refresh').checked = s.newsManualRefresh;
     if (el('allow-notifications')) el('allow-notifications').checked = s.allowNotifications;
     if (el('ask-download')) el('ask-download').checked = s.askDownload;
+    
     if (el('block-ai')) el('block-ai').checked = s.blockAIOverview;
+    if (el('block-ai-browsing')) el('block-ai-browsing').checked = s.blockAIOverview;
+    
+    if (el('native-dictionary')) el('native-dictionary').checked = s.nativeDictionary !== false;
+    if (el('native-dictionary-browsing')) el('native-dictionary-browsing').checked = s.nativeDictionary !== false;
+    
     if (el('custom-ua')) el('custom-ua').value = s.customUa || '';
     if (el('doh-toggle')) el('doh-toggle').checked = s.dohToggle;
     if (el('proxy-url')) el('proxy-url').value = s.proxyUrl || '';
+    
     if (el('live-autocomplete')) el('live-autocomplete').checked = s.liveAutocomplete;
+    if (el('live-autocomplete-browsing')) el('live-autocomplete-browsing').checked = s.liveAutocomplete;
+    
     if (el('flag-gpc')) el('flag-gpc').checked = s.gpc !== false; // Default to true
     document.querySelectorAll(`input[name="startup"]`).forEach(r => { r.checked = r.value === s.startup; });
     document.querySelectorAll(`input[name="tracking"]`).forEach(r => { r.checked = r.value === s.tracking; });
+    if (el('custom-new-tab')) el('custom-new-tab').value = s.customNewTab || '';
+    const homepageContainer = el('startup-homepage-container');
+    if (homepageContainer) {
+      homepageContainer.style.display = s.startup === 'homepage' ? 'block' : 'none';
+    }
 
     if (el('efficiency-mode')) el('efficiency-mode').checked = !!s.efficiencyMode;
     if (el('cpu-limit-slider')) {
@@ -180,6 +264,22 @@ class SettingsManager {
 
     // Show adblock badge based on saved setting
     this.updateAdblockBadge(s.adBlockerMode || 'none');
+
+    // Populate About Leef build info
+    try {
+      const ipc = window.require('electron').ipcRenderer;
+      const appVersion = ipc.sendSync('get-app-version') || '0.1.5';
+      if (el('build-leef-version')) el('build-leef-version').textContent = 'v' + appVersion;
+    } catch (e) {
+      if (el('build-leef-version')) el('build-leef-version').textContent = 'v0.1.5';
+    }
+    if (el('build-chrome-version')) el('build-chrome-version').textContent = process.versions.chrome || '—';
+    if (el('build-electron-version')) el('build-electron-version').textContent = process.versions.electron || '—';
+    if (el('build-platform-os')) {
+      const platformNames = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
+      const osName = platformNames[process.platform] || process.platform;
+      el('build-platform-os').textContent = `${osName} (${process.arch})`;
+    }
 
     // Apply regional spelling (Color vs Colour)
     this.applyLocalization();
@@ -208,6 +308,99 @@ class SettingsManager {
       });
     });
 
+    // Settings search filter logic
+    const settingsSearch = document.getElementById('settings-search');
+    if (settingsSearch) {
+      settingsSearch.addEventListener('input', () => {
+        const query = settingsSearch.value.trim().toLowerCase();
+        
+        if (query.length > 0) {
+          // Temporarily disable/fade normal sidebar nav item selection
+          settingsNavItems.forEach(item => {
+            item.style.pointerEvents = 'none';
+            item.style.opacity = '0.4';
+          });
+          
+          settingsSections.forEach(sec => {
+            let sectionHasMatch = false;
+            const groups = sec.querySelectorAll('.setting-group');
+            
+            groups.forEach(group => {
+              // Extract all user-facing text from headers, paragraphs, labels, spans, options
+              const textContent = Array.from(group.querySelectorAll('h3, p, label, span, strong, option'))
+                .map(node => node.textContent.trim())
+                .join(' ')
+                .toLowerCase();
+              
+              if (textContent.includes(query) || group.textContent.toLowerCase().includes(query)) {
+                group.classList.remove('search-hidden');
+                sectionHasMatch = true;
+              } else {
+                group.classList.add('search-hidden');
+              }
+            });
+            
+            if (sectionHasMatch) {
+              sec.classList.add('active');
+              sec.classList.remove('search-hidden');
+            } else {
+              sec.classList.remove('active');
+              sec.classList.add('search-hidden');
+            }
+          });
+        } else {
+          // Restore normal tab navigation and clickability
+          settingsNavItems.forEach(item => {
+            item.style.pointerEvents = '';
+            item.style.opacity = '';
+          });
+          
+          const activeNav = document.querySelector('.settings-nav li.active');
+          const activeSectionId = activeNav ? activeNav.getAttribute('data-section') : 'sec-general';
+          
+          settingsSections.forEach(sec => {
+            sec.classList.remove('search-hidden');
+            sec.querySelectorAll('.setting-group').forEach(group => {
+              group.classList.remove('search-hidden');
+            });
+            if (sec.id === activeSectionId) {
+              sec.classList.add('active');
+            } else {
+              sec.classList.remove('active');
+            }
+          });
+        }
+      });
+    }
+
+    // Sync custom homepage visibility on radio change
+    const startupRadios = document.querySelectorAll('input[name="startup"]');
+    const homepageContainer = document.getElementById('startup-homepage-container');
+    const updateHomepageVisibility = () => {
+      const selected = document.querySelector('input[name="startup"]:checked')?.value;
+      if (homepageContainer) {
+        homepageContainer.style.display = selected === 'homepage' ? 'block' : 'none';
+      }
+    };
+    startupRadios.forEach(radio => {
+      radio.addEventListener('change', updateHomepageVisibility);
+    });
+
+    // Sync duplicate UI elements between tabs
+    ['search-engine-select', 'block-ai', 'native-dictionary', 'live-autocomplete'].forEach(baseId => {
+      const el1 = document.getElementById(baseId);
+      const el2 = document.getElementById(baseId + '-browsing');
+      if (el1 && el2) {
+        if (el1.tagName === 'SELECT') {
+          el1.addEventListener('change', () => el2.value = el1.value);
+          el2.addEventListener('change', () => el1.value = el2.value);
+        } else {
+          el1.addEventListener('change', () => el2.checked = el1.checked);
+          el2.addEventListener('change', () => el1.checked = el2.checked);
+        }
+      }
+    });
+
     // Auto-save settings on change because i fucked up the first 3 times
     let saveDebounce = null;
     document.querySelectorAll('.settings-layout input, .settings-layout select').forEach(el => {
@@ -226,7 +419,18 @@ class SettingsManager {
     const btnOpenPrivacySettings = document.getElementById('btn-open-privacy-settings');
     if (btnOpenPrivacySettings) {
       btnOpenPrivacySettings.addEventListener('click', () => {
-        if (window.tabManager) window.tabManager.createTab('privacy');
+        const privacyTab = document.querySelector('[data-section="sec-privacy"]');
+        if (privacyTab) privacyTab.click();
+      });
+    }
+
+    if (document.getElementById('dict-info-close')) {
+      document.getElementById('dict-info-close').addEventListener('click', () => {
+        const modal = document.getElementById('dict-info-modal');
+        if (modal) {
+          modal.style.opacity = '0';
+          setTimeout(() => { modal.style.display = 'none'; }, 200);
+        }
       });
     }
 
@@ -478,6 +682,7 @@ class SettingsManager {
     if (!document.getElementById('search-engine-select')) return; // safety
 
     const existingPermissions = this.currentSettings.sitePermissions || {};
+    const oldLanguage = this.currentSettings.language || 'en';
 
     this.currentSettings = {
       sitePermissions: existingPermissions,
@@ -495,6 +700,7 @@ class SettingsManager {
       allowNotifications: document.getElementById('allow-notifications').checked,
       askDownload: document.getElementById('ask-download').checked,
       blockAIOverview: document.getElementById('block-ai').checked,
+      nativeDictionary: document.getElementById('native-dictionary') ? document.getElementById('native-dictionary').checked : true,
       customUa: document.getElementById('custom-ua').value,
       dohToggle: document.getElementById('doh-toggle').checked,
       proxyUrl: document.getElementById('proxy-url').value,
@@ -503,10 +709,12 @@ class SettingsManager {
       newsManualRefresh: document.getElementById('news-manual-refresh').checked,
       efficiencyMode: document.getElementById('efficiency-mode').checked,
       cpuLimit: parseInt(document.getElementById('cpu-limit-slider').value),
-      ramLimit: parseInt(document.getElementById('ram-limit-slider').value)
+      ramLimit: parseInt(document.getElementById('ram-limit-slider').value),
+      customNewTab: document.getElementById('custom-new-tab')?.value || ''
     };
 
     this.applyVisualSettings();
+    this.applyLocalization();
 
     try {
       // Include Labs flags in the primary settings object
@@ -516,7 +724,17 @@ class SettingsManager {
       // Persist to localStorage AND send to main process
       localStorage.setItem('leef_settings', JSON.stringify(this.currentSettings));
       window.require('electron').ipcRenderer.send('apply-settings', settingsWithLabs);
-      if (window.toastManager) window.toastManager.show('⚙️ Settings Saved', 'Your preferences have been applied.', 3000);
+      
+      if (window.toastManager) {
+        if (oldLanguage !== this.currentSettings.language) {
+          window.toastManager.show('⚙️ Settings Saved', 'Your preferences have been applied. Please restart the browser to complete the language change.', 6000);
+        } else {
+          window.toastManager.show('⚙️ Settings Saved', 'Your preferences have been applied.', 3000);
+        }
+      }
+
+      // Perf fix: Refresh cached language so window.t() picks up the new language without a page reload
+      if (window.refreshLang) window.refreshLang();
 
       // Update adblock badge immediately based on current mode
       this.updateAdblockBadge(this.currentSettings.adBlockerMode);
@@ -562,6 +780,51 @@ class SettingsManager {
     }
   }
 }
+
+// --- DROPDOWN TRANSITION UTILS (v0.5.2) ---
+const DropdownUtils = {
+  show(el, displayType = 'block') {
+    if (!el) return;
+    el.style.pointerEvents = '';
+    el.style.display = displayType;
+    // Force browser reflow to register display change before adding class
+    el.offsetHeight;
+    el.classList.add('visible');
+  },
+  hide(el) {
+    if (!el) return;
+    // Immediately block pointer events so hidden/animating dropdowns
+    // never intercept clicks on inputs or other elements beneath them
+    el.style.pointerEvents = 'none';
+    if (!el.classList.contains('visible')) {
+      el.style.display = 'none';
+      return;
+    }
+    el.classList.remove('visible');
+    
+    let cleaned = false;
+    const onTransitionEnd = (e) => {
+      if (e.propertyName === 'opacity' || e.propertyName === 'transform') {
+        if (!cleaned) {
+          cleaned = true;
+          el.removeEventListener('transitionend', onTransitionEnd);
+          el.style.display = 'none';
+        }
+      }
+    };
+    el.addEventListener('transitionend', onTransitionEnd);
+    
+    // Fallback timeout to ensure display is set to none if transition doesn't fire
+    setTimeout(() => {
+      if (!cleaned) {
+        cleaned = true;
+        el.removeEventListener('transitionend', onTransitionEnd);
+        el.style.display = 'none';
+      }
+    }, 220);
+  }
+};
+
 
 class BookmarksManager {
   constructor() {
@@ -611,7 +874,7 @@ class BookmarksManager {
         if (e.target.classList.contains('bookmark-delete')) return;
         if (window.tabManager) {
           window.tabManager.navigateToUrl(bm.url);
-          this.dropdown.style.display = 'none';
+          DropdownUtils.hide(this.dropdown);
         }
       });
 
@@ -633,14 +896,19 @@ class BookmarksManager {
 
     this.btnBookmarks.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (this.dropdown.style.display === 'none') {
+      const isVisible = this.dropdown.classList.contains('visible');
+      if (!isVisible) {
         this.render();
-        this.dropdown.style.display = 'flex';
+        DropdownUtils.show(this.dropdown, 'flex');
         // Close other dropdowns
         const d = document.getElementById('downloads-dropdown');
-        if (d) d.style.display = 'none';
+        if (d) DropdownUtils.hide(d);
+        const q = document.getElementById('quick-settings-dropdown');
+        if (q) DropdownUtils.hide(q);
+        const s = document.getElementById('site-identity-dropdown');
+        if (s) DropdownUtils.hide(s);
       } else {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
       }
     });
 
@@ -662,8 +930,8 @@ class BookmarksManager {
     });
 
     document.addEventListener('click', (e) => {
-      if (this.dropdown.style.display !== 'none' && !this.dropdown.contains(e.target) && e.target !== this.btnBookmarks && !this.btnBookmarks.contains(e.target)) {
-        this.dropdown.style.display = 'none';
+      if (this.dropdown.classList.contains('visible') && !this.dropdown.contains(e.target) && e.target !== this.btnBookmarks && !this.btnBookmarks.contains(e.target)) {
+        DropdownUtils.hide(this.dropdown);
       }
     });
   }
@@ -704,7 +972,16 @@ class HubManager {
     this.urlInput = document.getElementById('hub-add-url');
     this.btnConfirm = document.getElementById('hub-add-confirm');
     this.btnCancel = document.getElementById('hub-add-cancel');
-    this.colorOpts = document.querySelectorAll('.color-opt');
+
+    // HSL slider elements
+    this.pickerHue = document.getElementById('picker-hue');
+    this.pickerHueVal = document.getElementById('picker-hue-val');
+    this.pickerSat = document.getElementById('picker-saturation');
+    this.pickerSatVal = document.getElementById('picker-sat-val');
+    this.pickerLight = document.getElementById('picker-lightness');
+    this.pickerLightVal = document.getElementById('picker-light-val');
+    this.tilePreview = document.getElementById('hub-tile-preview');
+    this.tilePreviewName = document.getElementById('hub-tile-preview-name');
 
     if (!this.modal) return;
 
@@ -713,7 +990,10 @@ class HubManager {
     this.btnConfirm.addEventListener('click', () => {
       const name = this.nameInput.value.trim();
       const url = this.urlInput.value.trim();
-      const activeColor = document.querySelector('.color-opt.active')?.dataset.color || '#92ff78';
+      
+      const activeColor = this.pickerHue && this.pickerSat && this.pickerLight 
+        ? `hsl(${this.pickerHue.value}, ${this.pickerSat.value}%, ${this.pickerLight.value}%)` 
+        : '#92ff78';
 
       if (!name || !url) {
         if (window.toastManager) window.toastManager.show('⚠️ Missing Info', 'Please enter both a name and URL.', 3000);
@@ -736,13 +1016,45 @@ class HubManager {
       if (e.target === this.modal) this.closeModal();
     });
 
-    // Color options
-    this.colorOpts.forEach(opt => {
-      opt.addEventListener('click', () => {
-        this.colorOpts.forEach(o => o.classList.remove('active'));
-        opt.classList.add('active');
-      });
+    // Real-time site name preview sync
+    this.nameInput.addEventListener('input', () => {
+      if (this.tilePreviewName) {
+        this.tilePreviewName.textContent = this.nameInput.value.trim() || 'Site Name';
+      }
     });
+
+    // Color slider listeners
+    const sliderHandler = () => this.updateTileColorPreview();
+    if (this.pickerHue) this.pickerHue.addEventListener('input', sliderHandler);
+    if (this.pickerSat) this.pickerSat.addEventListener('input', sliderHandler);
+    if (this.pickerLight) this.pickerLight.addEventListener('input', sliderHandler);
+
+    this.updateTileColorPreview();
+  }
+
+  updateTileColorPreview() {
+    if (!this.pickerHue || !this.pickerSat || !this.pickerLight || !this.tilePreview) return;
+    const h = this.pickerHue.value;
+    const s = this.pickerSat.value;
+    const l = this.pickerLight.value;
+
+    // Update text labels
+    if (this.pickerHueVal) this.pickerHueVal.textContent = h + '°';
+    if (this.pickerSatVal) this.pickerSatVal.textContent = s + '%';
+    if (this.pickerLightVal) this.pickerLightVal.textContent = l + '%';
+
+    // Dynamic slider backgrounds for premium feedback
+    this.pickerSat.style.background = `linear-gradient(to right, hsl(${h}, 0%, ${l}%), hsl(${h}, 100%, ${l}%))`;
+    this.pickerLight.style.background = `linear-gradient(to right, #000, hsl(${h}, ${s}%, 50%), #fff)`;
+
+    // Update preview tile color
+    const colorStr = `hsl(${h}, ${s}%, ${l}%)`;
+    this.tilePreview.style.backgroundColor = colorStr;
+    this.tilePreview.style.backgroundImage = 'none';
+
+    // Adjust text color dynamically based on lightness
+    const isDark = l < 60;
+    this.tilePreview.style.color = isDark ? '#fff' : '#111';
   }
 
   render() {
@@ -756,8 +1068,26 @@ class HubManager {
       if (tile.color) {
         el.style.backgroundColor = tile.color;
         el.style.backgroundImage = 'none';
-        // Adjust text color for visibility if needed
-        if (tile.color === '#555555' || tile.color === '#333333') el.style.color = '#fff';
+        
+        // Auto-calculate text color based on lightness
+        let isDark = false;
+        if (tile.color.startsWith('hsl')) {
+          const match = tile.color.match(/,\s*([\d.]+)%\s*\)/);
+          if (match) {
+            const lightness = parseFloat(match[1]);
+            isDark = lightness < 60;
+          }
+        } else if (tile.color.startsWith('#')) {
+          const hex = tile.color.replace('#', '');
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+          isDark = brightness < 150;
+        } else {
+          if (tile.color === '#555555' || tile.color === '#333333') isDark = true;
+        }
+        el.style.color = isDark ? '#fff' : '#111';
       }
 
       el.innerHTML = `
@@ -791,9 +1121,15 @@ class HubManager {
     if (!this.modal) return;
     this.nameInput.value = '';
     this.urlInput.value = '';
-    // Reset colors
-    this.colorOpts.forEach(o => o.classList.remove('active'));
-    document.querySelector('.color-opt[data-color="#92ff78"]')?.classList.add('active');
+    if (this.tilePreviewName) {
+      this.tilePreviewName.textContent = 'Site Name';
+    }
+    
+    // Reset colors to default brand green HSL (109, 100%, 74%)
+    if (this.pickerHue) this.pickerHue.value = 109;
+    if (this.pickerSat) this.pickerSat.value = 100;
+    if (this.pickerLight) this.pickerLight.value = 74;
+    this.updateTileColorPreview();
 
     this.modal.style.display = 'flex';
     document.body.classList.add('modal-open');
@@ -969,7 +1305,7 @@ class NewsService {
         <div class="news-content">
           <p>${BrowserUtils.sanitize(item.title)}</p>
           <div class="news-bottom">
-            <div class="news-source source-yahoo">Yahoo News <span class="external-icon">&#8599;</span></div>
+            <div class="news-source source-yahoo">Yahoo News <svg class="external-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 4px;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></div>
             <button class="news-dismiss-btn" data-slot="${slotIdx}" title="I don't care">✕ I don't care</button>
           </div>
         </div>
@@ -1018,6 +1354,361 @@ class NewsService {
   }
 }
 
+// --- NATIVE DICTIONARY HELPERS ---
+const LEEF_DICT_CSS = `
+  #leef-dict-card *{box-sizing:border-box;}
+  #leef-dict-card{
+    font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    border-radius:16px;
+    padding:20px 24px 18px;
+    margin-bottom:24px;
+    position:relative;
+    background:#f8fcf8;
+    border:2px solid #82efa2;
+    color:#111;
+    box-shadow:0 4px 15px rgba(23,179,64,0.08);
+  }
+  @media(prefers-color-scheme:dark){
+    #leef-dict-card{background:#111b13;color:#e2f5e4;border:2px solid #17b340;box-shadow:0 4px 18px rgba(0,0,0,0.4);}
+    #leef-dict-card .ld-phonetic span{color:#999;}
+  }
+  #leef-dict-badge{
+    position:absolute;top:14px;right:16px;
+    background:#17b340;
+    color:#fff;font-size:0.65rem;font-weight:700;letter-spacing:0.06em;
+    text-transform:uppercase;padding:3px 10px;border-radius:20px;
+  }
+  #leef-dict-word{font-size:2rem;font-weight:700;margin:0 0 6px;line-height:1.1;}
+  .ld-phonetic{font-size:1rem;color:#555;margin-bottom:16px;display:flex;align-items:center;gap:12px;}
+  #leef-audio-btn{background:none;border:none;cursor:pointer;
+    color:#17b340;padding:6px;border-radius:50%;display:flex;align-items:center;
+    transition:background 0.2s;margin-left:-6px;}
+  #leef-audio-btn:hover{background:rgba(23,179,64,0.12);}
+  #leef-audio-btn.playing{opacity:0.5;cursor:default;}
+  .ld-pos{font-style:italic;font-size:0.9rem;font-weight:600;color:#17b340;margin:14px 0 6px;text-transform:lowercase;}
+  .ld-def-ol{margin:0 0 0 24px;padding:0;list-style-type:decimal;}
+  .ld-def-li{margin-bottom:10px;font-size:0.95rem;line-height:1.5;}
+  .ld-example{font-style:italic;font-size:0.85rem;color:#777;margin-top:3px;}
+  .ld-footer{
+    position:absolute;bottom:14px;right:16px;
+    background:transparent;border:none;cursor:pointer;
+    color:#17b340;opacity:0.6;padding:4px;border-radius:50%;
+    transition:opacity 0.2s,background 0.2s;display:flex;
+  }
+  .ld-footer:hover{opacity:1;background:rgba(23,179,64,0.1);}
+
+  /* Skeleton animation styles */
+  @keyframes ld-pulse {
+    0%, 100% { opacity: 0.3; }
+    50%       { opacity: 0.65; }
+  }
+  .ld-skel {
+    border-radius: 7px;
+    background: rgba(23, 179, 64, 0.25);
+    animation: ld-pulse 1.4s ease-in-out infinite;
+    margin-bottom: 7px;
+  }
+  @media(prefers-color-scheme:light){
+    .ld-skel {
+      background: rgba(23, 179, 64, 0.15);
+    }
+  }
+  .ld-fetching {
+    margin-top: 14px;
+    font-size: 0.75rem;
+    color: #17b340;
+    opacity: 0.7;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ld-fetching::before {
+    content: '';
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #17b340;
+    animation: ld-pulse 1s ease-in-out infinite;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+`;
+
+function getInjectSkeletonJS() {
+  return `
+    (() => {
+      if (document.getElementById('leef-dict-card')) return;
+      window.__leefDictFetched = false;
+
+      if (!document.getElementById('leef-dict-styles')) {
+        const s = document.createElement('style');
+        s.id = 'leef-dict-styles';
+        s.textContent = ${JSON.stringify(LEEF_DICT_CSS)};
+        document.head.appendChild(s);
+      }
+
+      function getCol() {
+        return document.getElementById('center_col') ||
+               document.getElementById('rso') ||
+               document.getElementById('search');
+      }
+
+      function inject(colEl) {
+        if (document.getElementById('leef-dict-card')) return;
+        const card = document.createElement('div');
+        card.id = 'leef-dict-card';
+        card.innerHTML = \`
+          <div id="leef-dict-badge">Leef Dictionary <span style="font-size: 0.52rem; font-weight: 800; background: rgba(255,255,255,0.22); color: #fff; padding: 1px 4px; border-radius: 4px; margin-left: 4px; vertical-align: middle; display: inline-block;">BETA</span></div>
+          <div class="ld-skel" style="width:42%;height:28px;margin-bottom:8px;"></div>
+          <div class="ld-skel" style="width:22%;height:13px;margin-bottom:18px;"></div>
+          <div class="ld-skel" style="width:10%;height:11px;margin-bottom:6px;"></div>
+          <div class="ld-skel" style="width:82%;height:12px;"></div>
+          <div class="ld-skel" style="width:65%;height:12px;"></div>
+          <div class="ld-skel" style="width:10%;height:11px;margin-top:12px;margin-bottom:6px;"></div>
+          <div class="ld-skel" style="width:88%;height:12px;"></div>
+          <div class="ld-skel" style="width:52%;height:12px;"></div>
+          <div class="ld-fetching">Fetching definition\u2026</div>
+        \`;
+        colEl.insertBefore(card, colEl.firstChild);
+        console.log('LEEF_DICT_HIDE_LOADER');
+      }
+
+      function start() {
+        const col = getCol();
+        if (col) {
+          inject(col);
+          setupObserver(col);
+        } else {
+          const docObserver = new MutationObserver(() => {
+            const colEl = getCol();
+            if (colEl) {
+              docObserver.disconnect();
+              inject(colEl);
+              setupObserver(colEl);
+            }
+          });
+          docObserver.observe(document.documentElement, { childList: true, subtree: true });
+          window.__leefDictDocObserver = docObserver;
+        }
+      }
+
+      function setupObserver(colEl) {
+        if (window.__leefDictObserver) {
+          window.__leefDictObserver.disconnect();
+        }
+        if (window.__leefDictDocObserver) {
+          window.__leefDictDocObserver.disconnect();
+          delete window.__leefDictDocObserver;
+        }
+        const observer = new MutationObserver(() => {
+          if (!document.getElementById('leef-dict-card') && !window.__leefDictFetched) {
+            // colEl may have been replaced by Google; re-resolve
+            const freshCol = getCol();
+            inject(freshCol || colEl);
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        window.__leefDictObserver = observer;
+      }
+
+      start();
+    })();
+  `;
+}
+
+function getInjectSuccessJS(entry) {
+  const phoneticText = entry.phonetic ||
+    (entry.phonetics && entry.phonetics.find(p => p.text)?.text) || '';
+  const audioUrl = (entry.phonetics &&
+    entry.phonetics.find(p => p.audio && p.audio.startsWith('https'))?.audio) || '';
+
+  const meaningsData = entry.meanings.slice(0, 3).map(m => ({
+    pos: m.partOfSpeech,
+    defs: m.definitions.slice(0, 2).map(d => ({
+      def: d.definition || '',
+      example: d.example || ''
+    }))
+  }));
+
+  const payload = JSON.stringify({
+    word: entry.word,
+    phonetic: phoneticText,
+    audio: audioUrl,
+    meanings: meaningsData
+  });
+
+  return `
+    (() => {
+      window.__leefDictFetched = true;
+      if (window.__leefDictObserver) {
+        window.__leefDictObserver.disconnect();
+        delete window.__leefDictObserver;
+      }
+      if (window.__leefDictDocObserver) {
+        window.__leefDictDocObserver.disconnect();
+        delete window.__leefDictDocObserver;
+      }
+
+      function getCol() {
+        return document.getElementById('center_col') ||
+               document.getElementById('rso') ||
+               document.getElementById('search');
+      }
+
+      const d = ${payload};
+
+      function render(col) {
+        let card = document.getElementById('leef-dict-card');
+        if (!card) {
+          card = document.createElement('div');
+          card.id = 'leef-dict-card';
+          col.insertBefore(card, col.firstChild);
+        }
+
+        if (!document.getElementById('leef-dict-styles')) {
+          const s = document.createElement('style');
+          s.id = 'leef-dict-styles';
+          s.textContent = ${JSON.stringify(LEEF_DICT_CSS)};
+          document.head.appendChild(s);
+        }
+
+        let meanHtml = '<div style="margin-top:10px;border-top:1px solid rgba(23,179,64,0.2);padding-top:10px;">';
+        d.meanings.forEach(function(m) {
+          meanHtml += '<div class="ld-pos">' + m.pos + '</div><ol class="ld-def-ol">';
+          m.defs.forEach(function(def) {
+            meanHtml += '<li class="ld-def-li"><div>' + def.def + '</div>';
+            if (def.example) meanHtml += '<div class="ld-example">' + def.example + '</div>';
+            meanHtml += '</li>';
+          });
+          meanHtml += '</ol>';
+        });
+        meanHtml += '</div>';
+
+        const audioBtn = d.audio
+          ? '<button id="leef-audio-btn" title="Hear pronunciation"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg></button>'
+          : '';
+
+        card.innerHTML =
+          '<div id="leef-dict-badge">Leef Dictionary <span style="font-size: 0.52rem; font-weight: 800; background: rgba(255,255,255,0.22); color: #fff; padding: 1px 4px; border-radius: 4px; margin-left: 4px; vertical-align: middle; display: inline-block;">BETA</span></div>' +
+          '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">' +
+            '<h2 id="leef-dict-word">' + d.word + '</h2>' +
+            '<div class="ld-phonetic">' + (d.phonetic ? '<span>' + d.phonetic + '</span>' : '') + audioBtn + '</div>' +
+          '</div>' +
+          meanHtml +
+          '<button class="ld-footer" id="leef-dict-why" title="Why is this here?"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg></button>';
+
+        if (d.audio) {
+          const btn = card.querySelector('#leef-audio-btn');
+          if (btn) {
+            btn.addEventListener('click', function() {
+              if (btn.classList.contains('playing')) return;
+              const audio = new Audio(d.audio);
+              btn.classList.add('playing');
+              audio.play()
+                .then(function() { audio.onended = function() { btn.classList.remove('playing'); }; })
+                .catch(function() { btn.classList.remove('playing'); });
+            });
+          }
+        }
+
+        const why = card.querySelector('#leef-dict-why');
+        if (why) {
+          why.addEventListener('click', function() {
+            console.log('LEEF_DICT_MODAL');
+          });
+        }
+
+        console.log('LEEF_DICT_HIDE_LOADER');
+      }
+
+      const col = getCol();
+      if (col) {
+        render(col);
+      } else {
+        const successDocObserver = new MutationObserver(() => {
+          const colEl = getCol();
+          if (colEl) {
+            successDocObserver.disconnect();
+            render(colEl);
+          }
+        });
+        successDocObserver.observe(document.documentElement, { childList: true, subtree: true });
+      }
+    })();
+  `;
+}
+
+function getRemoveSkeletonJS() {
+  return `
+    (() => {
+      window.__leefDictFetched = true;
+      if (window.__leefDictObserver) {
+        window.__leefDictObserver.disconnect();
+        delete window.__leefDictObserver;
+      }
+      const card = document.getElementById('leef-dict-card');
+      if (card && card.querySelector('.ld-skel')) {
+        card.remove();
+      }
+      console.log('LEEF_DICT_HIDE_LOADER');
+    })();
+  `;
+}
+
+function handleAutocorrectFallback(tab) {
+  if (!tab._dictWord) return;
+
+  const currentTitle = tab.webviewEl.getTitle() || '';
+  let titleQuery = currentTitle
+    .replace(/\s+-\s+Google\s+Search$/i, '')
+    .replace(/\s+—\s+Google\s+Search$/i, '')
+    .trim();
+
+  if (!titleQuery) return;
+
+  const defineRegex = /^(?:define\s+|meaning\s+of\s+)(.+)$/i;
+  const meaningRegex = /^(.+?)(?:\s+meaning|\s+definition)$/i;
+  let correctedWord = '';
+
+  const m1 = titleQuery.match(defineRegex);
+  if (m1) {
+    correctedWord = m1[1].trim();
+  } else {
+    const m2 = titleQuery.match(meaningRegex);
+    if (m2) correctedWord = m2[1].trim();
+  }
+
+  if (correctedWord &&
+      correctedWord.toLowerCase() !== tab._dictWord.toLowerCase() &&
+      /^[a-zA-Z][a-zA-Z\s'-]*$/.test(correctedWord) &&
+      correctedWord.length < 40) {
+
+    console.log('[Dict Autocorrect] Correcting', tab._dictWord, '->', correctedWord);
+    tab._dictWord = correctedWord;
+    tab._dictLoading = true;
+    tab._dictResolvedJS = null;
+
+    if (window.toastManager) window.toastManager.show('📖 Leef Dictionary (Beta)', `Looking up "${correctedWord}"…`, 15000);
+    tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => {});
+
+    tab._dictFetch = fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(correctedWord.toLowerCase())}`)
+      .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
+      .then(data => {
+        tab._dictLoading = false;
+        if (!data || !data.length) throw new Error('empty');
+        const successJS = getInjectSuccessJS(data[0]);
+        tab._dictResolvedJS = successJS;
+        tab.webviewEl.executeJavaScript(successJS).catch(() => {});
+        return successJS;
+      })
+      .catch(() => {
+        tab._dictLoading = false;
+        tab._dictResolvedJS = getRemoveSkeletonJS();
+        tab.webviewEl.executeJavaScript(getRemoveSkeletonJS()).catch(() => {});
+        return null;
+      });
+  }
+}
+
 
 class TabManager {
   constructor(settingsInstance) {
@@ -1026,6 +1717,11 @@ class TabManager {
     this.activeTabId = null;
     this.tabCounter = 0;
     this.lastTabOpen = { url: '', time: 0 };
+
+    // Create the global loading bar
+    this.loadingBar = document.createElement('div');
+    this.loadingBar.className = 'loading-bar';
+    document.querySelector('.main-content').appendChild(this.loadingBar);
 
     this.bindGlobalEvents();
 
@@ -1060,6 +1756,14 @@ class TabManager {
   }
 
   createTab(route = 'home') {
+    // If opening a new tab ('home') and a custom homepage URL is configured, use it instead
+    if (route === 'home') {
+      const s = this.settings.currentSettings;
+      if (s.startup === 'homepage' && s.customNewTab) {
+        route = s.customNewTab;
+      }
+    }
+
     // URL Debounce: Prevent the exact same URL from opening twice within 500ms
     // Fixes "double tabs" caused by click interceptors fighting with native handlers.
     const now = Date.now();
@@ -1123,7 +1827,7 @@ class TabManager {
 
     const tabTitle = document.createElement('span');
     tabTitle.className = 'tab-title';
-    tabTitle.textContent = route === 'home' ? 'Leef Browser | Home' : (route === 'settings' ? 'Settings' : (route === 'changelog' ? "What's New" : (route === 'credits' ? 'Credits' : (route === 'flags' ? 'Leef Labs' : (route === 'privacy' ? 'Privacy Center' : 'Loading...')))));
+    tabTitle.textContent = route === 'home' ? window.t('Leef Browser | Home') : (route === 'settings' ? window.t('Settings') : (route === 'changelog' ? window.t("What's New") : (route === 'credits' ? window.t('Credits') : (route === 'flags' ? window.t('Leef Labs') : (route === 'privacy' ? window.t('Privacy Center') : window.t('Loading...'))))));
 
     const tabClose = document.createElement('button');
     tabClose.className = 'tab-close';
@@ -1149,7 +1853,10 @@ class TabManager {
       isAudioPlaying: false,
       faviconUrl: null,
       faviconEl: tabFavicon,
-      lastActiveTime: Date.now()
+      lastActiveTime: Date.now(),
+      isLoading: false,
+      loadingProgress: 0,
+      loadingInterval: null
     };
 
     this.tabs.push(tabObj);
@@ -1184,6 +1891,12 @@ class TabManager {
       if (e.target !== tabClose) this.switchTab(tabId);
     });
 
+    tabEl.addEventListener('mousedown', (e) => {
+      if (e.button === 1) {
+        e.preventDefault(); // Prevent native autoscroll on middle-click
+      }
+    });
+
     tabEl.addEventListener('auxclick', (e) => {
       if (e.button === 1) {
         e.preventDefault();
@@ -1210,6 +1923,7 @@ class TabManager {
     });
 
     this.switchTab(tabId);
+    this.updateTabScrollButtons();
 
     // Auto-focus search box for new tabs (v0.4.2)
     setTimeout(() => {
@@ -1273,16 +1987,82 @@ class TabManager {
     }
   }
 
+  startLoadingBar(tab) {
+    if (tab.hideLoadingTimeout) clearTimeout(tab.hideLoadingTimeout);
+    if (tab.resetWidthTimeout) clearTimeout(tab.resetWidthTimeout);
+
+    tab.isLoading = true;
+    tab.loadingProgress = 5;
+    if (tab.loadingInterval) clearInterval(tab.loadingInterval);
+
+    tab.loadingInterval = setInterval(() => {
+      // Asymptotic progress approach
+      tab.loadingProgress += (95 - tab.loadingProgress) * 0.05;
+      if (tab.loadingProgress > 95) tab.loadingProgress = 95;
+      this.updateLoadingBar();
+    }, 100);
+
+    this.updateLoadingBar();
+  }
+
+  completeLoadingBar(tab) {
+    tab.loadingProgress = 100;
+    if (tab.loadingInterval) {
+      clearInterval(tab.loadingInterval);
+      tab.loadingInterval = null;
+    }
+    this.updateLoadingBar();
+
+    if (tab.hideLoadingTimeout) clearTimeout(tab.hideLoadingTimeout);
+
+    tab.hideLoadingTimeout = setTimeout(() => {
+      if (tab.loadingProgress === 100) {
+        tab.isLoading = false;
+        tab.loadingProgress = 0;
+        this.updateLoadingBar();
+      }
+    }, 200); // Wait for the transition to finish before hiding
+  }
+
+  updateLoadingBar() {
+    if (!this.loadingBar) return;
+    const activeTab = this.getActiveTab();
+    if (!activeTab) return;
+
+    if (activeTab.isLoading) {
+      this.loadingBar.style.width = `${activeTab.loadingProgress}%`;
+      this.loadingBar.classList.add('active');
+    } else {
+      this.loadingBar.style.width = '100%';
+      this.loadingBar.classList.remove('active');
+      // Reset width to 0 without transition after fade out
+      if (activeTab.loadingProgress === 0) {
+        if (activeTab.resetWidthTimeout) clearTimeout(activeTab.resetWidthTimeout);
+        activeTab.resetWidthTimeout = setTimeout(() => {
+          if (!activeTab.isLoading) {
+            const oldTransition = this.loadingBar.style.transition;
+            this.loadingBar.style.transition = 'none';
+            this.loadingBar.style.width = '0%';
+            // Force reflow
+            void this.loadingBar.offsetWidth;
+            this.loadingBar.style.transition = oldTransition;
+          }
+        }, 750); // Must be slightly longer than the total transition timeline (700ms)
+      }
+    }
+  }
+
   mountWebview(tab) {
     if (tab.webviewEl) return; // this shit already exists
     tab.webviewEl = document.createElement('webview');
     tab.webviewEl.id = 'webview-' + tab.id;
     tab.webviewEl.setAttribute('allowpopups', '');
+    tab.webviewEl.setAttribute('allowfullscreen', '');
     tab.webviewEl.setAttribute('partition', 'persist:leef-session'); // CRITICAL: must match session in main.js
 
     // Background Tab Performance (v0.4.0)
     // Prevent throttling unless the user explicitly enabled the background limiter.
-    tab.webviewEl.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=no, nodeIntegration=no');
+    tab.webviewEl.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=no, nodeIntegration=no, backgroundThrottling=no');
 
     UI.views.webviewsContainer.appendChild(tab.webviewEl);
 
@@ -1290,10 +2070,12 @@ class TabManager {
     if (window.findManager) window.findManager.attachToWebview(tab.webviewEl);
 
     tab.webviewEl.addEventListener('did-start-loading', () => {
+      if (tab.isHibernated) return;
       tab.url = tab.webviewEl.src;
       tab.gpcStartTime = Date.now(); // START TIMER: from when navigation begins
       tab.volumeBoost = 1; // Reset volume on moving to a new tab
       tab.blockedAds = 0; // Reset adblock stats on moving to a new tab
+      tab.blockedTrackers = 0; // Reset trackers stats on moving to a new tab
       tab.hasDRM = false; // Reset DRM status
       if (this.activeTabId === tab.id) {
         const drmIndicator = document.getElementById('drm-indicator');
@@ -1308,16 +2090,81 @@ class TabManager {
     });
 
     tab.webviewEl.addEventListener('page-title-updated', (e) => {
+      if (tab.isHibernated) return;
       tab.title = e.title;
       this.updateTabUI(tab);
     });
 
     tab.webviewEl.addEventListener('page-favicon-updated', (e) => {
+      if (tab.isHibernated) return;
       if (e.favicons && e.favicons.length > 0) {
         tab.faviconUrl = e.favicons[0];
         this.updateTabUI(tab);
       }
     });
+
+    // Crash detection and Safe Mode recovery
+    const handleCrash = (e) => {
+      console.warn('Webview crashed or render process gone!', tab.url, e);
+      if (tab._isCrashRecovering) return; // Prevent infinite crash loops
+      tab._isCrashRecovering = true;
+
+      let redirectUrl = tab.url;
+      let usingFallback = false;
+      if (tab.url && (tab.url.includes('google.com/search') || (tab.url.includes('google.co.') && tab.url.includes('/search')))) {
+        try {
+          const urlObj = new URL(tab.url);
+          const q = urlObj.searchParams.get('q');
+          if (q) {
+            redirectUrl = `https://duckduckgo.com/?q=${encodeURIComponent(q)}`;
+            usingFallback = true;
+          }
+        } catch (err) {}
+      }
+
+      if (window.toastManager) {
+        if (usingFallback) {
+          window.toastManager.show('⚠️ Page Crashed', 'Recovering search page in Safe Mode using DuckDuckGo.', 10000);
+          const toastAction = document.getElementById('leef-toast-action');
+          const primaryBtn = document.getElementById('btn-toast-primary');
+          const secondaryBtn = document.getElementById('btn-toast-secondary');
+          if (toastAction && primaryBtn && secondaryBtn) {
+            toastAction.style.display = 'flex';
+            primaryBtn.textContent = 'Learn Why';
+            primaryBtn.onclick = () => {
+              // Display a professional explanation modal
+              const modal = document.getElementById('crash-explanation-modal');
+              const closeBtn = document.getElementById('crash-explanation-close');
+              if (modal && closeBtn) {
+                closeBtn.onclick = () => {
+                  modal.style.display = 'none';
+                };
+                modal.style.display = 'flex';
+              }
+              window.toastManager.hide();
+            };
+            secondaryBtn.textContent = 'Dismiss';
+            secondaryBtn.onclick = () => {
+              window.toastManager.hide();
+            };
+          }
+        } else {
+          window.toastManager.show('⚠️ Page Crashed', 'Recovering page without special features (Safe Mode).', 6000);
+        }
+      }
+      setTimeout(() => {
+        if (tab.webviewEl) {
+          try {
+            tab.webviewEl.loadURL(redirectUrl);
+          } catch (err) {
+            tab.webviewEl.src = redirectUrl;
+          }
+        }
+      }, 500);
+    };
+    tab.webviewEl.addEventListener('render-process-gone', handleCrash);
+    tab.webviewEl.addEventListener('plugin-crashed', handleCrash);
+    tab.webviewEl.addEventListener('crashed', handleCrash);
 
     // Catch the manual tab interceptor messages
     tab.webviewEl.addEventListener('console-message', (e) => {
@@ -1327,10 +2174,38 @@ class TabManager {
         const url = e.message.replace('LEEF_NEW_TAB:', '');
         this.createTab(url);
       }
+      
+      if (e.message.startsWith('LEEF_WEBAUTHN_PROMPT:')) {
+        try {
+          const data = JSON.parse(e.message.substring('LEEF_WEBAUTHN_PROMPT:'.length));
+          if (window.permissionManager) {
+            window.permissionManager.requestWebAuthnConsent(tab, data);
+          }
+        } catch (err) {
+          console.error('Failed to parse WebAuthn prompt data:', err);
+        }
+      }
+
+      if (e.message === 'LEEF_DICT_MODAL') {
+        const modal = document.getElementById('dict-info-modal');
+        if (modal) {
+          modal.style.display = 'flex';
+          modal.style.opacity = '1';
+        }
+      }
+
+      if (e.message === 'LEEF_DICT_HIDE_LOADER') {
+        if (window.toastManager) window.toastManager.hide();
+      }
     });
 
     tab.webviewEl.addEventListener('did-start-navigation', (e) => {
+      if (tab.isHibernated) return;
       if (e.isMainFrame) {
+        if (!e.isSameDocument && !e.isInPlace) {
+          tab.isMainFrameLoading = true;
+          this.startLoadingBar(tab);
+        }
         tab.title = 'Loading...';
         tab.url = e.url; // Update URL identity immediately to prevent state leaks
         tab.isInternal = e.url.startsWith('leef:') || (e.url.startsWith('file:') && !e.url.includes('offline.html')) || e.url.startsWith('chrome:');
@@ -1349,10 +2224,21 @@ class TabManager {
     });
 
     tab.webviewEl.addEventListener('did-navigate', (e) => {
+      if (tab.isHibernated) return;
+      tab.url = tab.webviewEl.getURL();
+      tab.canGoBack = tab.webviewEl.canGoBack();
+      tab.canGoForward = tab.webviewEl.canGoForward();
+      this.updateTabUI(tab);
+
+      // Force scroll reset to top of page on cross-page navigation
+      try {
+        tab.webviewEl.executeJavaScript('window.scrollTo(0, 0);').catch(() => {});
+      } catch (err) {}
+
       const s = this.settings.currentSettings;
       const tabUrl = e.url || '';
       const isGoogle = tabUrl.includes('google.com') || tabUrl.includes('google.co.');
-      if (s.blockAIOverview && isGoogle) {
+      if (s.blockAIOverview && isGoogle && !tab._isCrashRecovering) {
         const aiCSS = `
           [data-attnms],
           .Kevs9.SLPe5b:has([data-attnms]),
@@ -1372,16 +2258,49 @@ class TabManager {
       }
     });
 
+    tab.webviewEl.addEventListener('did-navigate-in-page', (e) => {
+      if (tab.isHibernated) return;
+      tab.url = tab.webviewEl.getURL();
+      tab.canGoBack = tab.webviewEl.canGoBack();
+      tab.canGoForward = tab.webviewEl.canGoForward();
+      this.updateTabUI(tab);
+    });
+
     tab.webviewEl.addEventListener('did-stop-loading', () => {
+      if (tab.isHibernated) return;
+      if (tab.isMainFrameLoading) {
+        tab.isMainFrameLoading = false;
+        this.completeLoadingBar(tab);
+      }
       // Final title sync once everything is done
       const currentTitle = tab.webviewEl.getTitle();
       if (currentTitle && currentTitle !== 'Loading...') {
         tab.title = currentTitle;
         this.updateTabUI(tab);
       }
+
+      tab._didStopLoadingFired = true;
+
+      // ── Native Dictionary (injected after page is fully hydrated) ────
+      if (this.settings.currentSettings.nativeDictionary !== false && !tab._isCrashRecovering) {
+        const stopUrl = tab.webviewEl.getURL ? tab.webviewEl.getURL() : tab.url;
+        const isGoogleSearch = stopUrl.includes('google.com/search') ||
+          (stopUrl.includes('google.co.') && stopUrl.includes('/search'));
+
+        if (isGoogleSearch) {
+          if (tab._dictResolvedJS) {
+            tab.webviewEl.executeJavaScript(tab._dictResolvedJS).catch(() => {});
+          } else if (tab._dictLoading) {
+            tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => {});
+          } else {
+            handleAutocorrectFallback(tab);
+          }
+        }
+      }
     });
 
     tab.webviewEl.addEventListener('dom-ready', () => {
+      if (tab.isHibernated) return;
       tab.title = tab.webviewEl.getTitle() || tab.url;
       tab.url = tab.webviewEl.getURL();
       tab.isInternal = tab.url.startsWith('leef:') || (tab.url.startsWith('file:') && !tab.url.includes('offline.html')) || tab.url.startsWith('chrome:');
@@ -1392,9 +2311,97 @@ class TabManager {
       }
       this.updateTabUI(tab);
 
+      // Inject custom premium scrollbar styles to match the brand's green theme inside the guest webview page
+      const scrollbarCSS = `
+        ::-webkit-scrollbar {
+          width: 8px !important;
+          height: 8px !important;
+        }
+        ::-webkit-scrollbar-track {
+          background: transparent !important;
+        }
+        ::-webkit-scrollbar-thumb {
+          background: rgba(23, 179, 64, 0.3) !important;
+          border-radius: 10px !important;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: rgba(23, 179, 64, 0.55) !important;
+        }
+      `;
+      tab.webviewEl.insertCSS(scrollbarCSS).catch(() => {});
+      const currentTabUrl = tab.url || '';
+      const isGoogleSearch = currentTabUrl.includes('google.com/search') ||
+        (currentTabUrl.includes('google.co.') && currentTabUrl.includes('/search'));
+
+      // ── Native Dictionary: kick off fetch early during dom-ready ──
+      tab._dictFetch = null;
+      tab._dictLoading = false;
+      tab._dictResolvedJS = null;
+      tab._dictWord = '';
+      tab._didStopLoadingFired = false;
+
+      if (this.settings.currentSettings.nativeDictionary !== false && isGoogleSearch && !tab._isCrashRecovering) {
+        let searchQuery = '';
+        try {
+          const urlObj = new URL(currentTabUrl);
+          searchQuery = urlObj.searchParams.get('q') || '';
+        } catch (e) {}
+
+        const rawQuery = searchQuery.trim();
+        if (rawQuery) {
+          const defineRegex = /^(?:define\s+|meaning\s+of\s+)(.+)$/i;
+          const meaningRegex = /^(.+?)(?:\s+meaning|\s+definition)$/i;
+          let searchWord = '';
+          const m1 = rawQuery.match(defineRegex);
+          if (m1) {
+            searchWord = m1[1].trim();
+          } else {
+            const m2 = rawQuery.match(meaningRegex);
+            if (m2) searchWord = m2[1].trim();
+          }
+
+          if (searchWord && /^[a-zA-Z][a-zA-Z\s'-]*$/.test(searchWord) && searchWord.length < 40) {
+            tab._dictWord = searchWord;
+            tab._dictLoading = true;
+
+            // Show a toast spinner immediately — runs in Leef's own UI, no webview injection needed.
+            if (window.toastManager) window.toastManager.show('📖 Leef Dictionary (Beta)', `Looking up "${searchWord}"…`, 15000);
+
+            // Also try skeleton in the webview (best-effort).
+            tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => {});
+
+            tab._dictFetch = fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(searchWord.toLowerCase())}`)
+              .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
+              .then(data => {
+                tab._dictLoading = false;
+                if (!data || !data.length) throw new Error('empty');
+                const successJS = getInjectSuccessJS(data[0]);
+                tab._dictResolvedJS = successJS;
+                if (tab._didStopLoadingFired) {
+                  tab.webviewEl.executeJavaScript(successJS).catch(() => {});
+                }
+                return successJS;
+              })
+              .catch(() => {
+                tab._dictLoading = false;
+                tab._dictResolvedJS = getRemoveSkeletonJS();
+                if (tab._didStopLoadingFired) {
+                  handleAutocorrectFallback(tab);
+                }
+                return null;
+              });
+          }
+        }
+      }
+
+
       // BATCHED JS INJECTION (Performance: single IPC round-trip per page load)
       // All per-page scripts are assembled here and fired in ONE executeJavaScript call.
-      const s = this.settings.currentSettings;
+      const s = { ...this.settings.currentSettings };
+      if (tab._isCrashRecovering) {
+        s.blockAIOverview = false;
+        s.adBlockerMode = 'none';
+      }
       const labs = window.labsManager;
       const tabUrl = tab.url || '';
       const isGoogle = tabUrl.includes('google.com') || tabUrl.includes('google.co.');
@@ -1423,6 +2430,73 @@ class TabManager {
 
       // Build the injection payload conditionally
       const chunks = [];
+
+      // WebAuthn / Windows Hello interceptor
+      chunks.push(`
+        (function() {
+          if (!navigator.credentials) return;
+          if (window.__leefWebAuthnHooked) return;
+          window.__leefWebAuthnHooked = true;
+
+          const originalCreate = navigator.credentials.create;
+          const originalGet = navigator.credentials.get;
+
+          let requestCounter = 0;
+          window.__leefWebAuthnRequests = new Map();
+
+          function promptUser(type, options) {
+            return new Promise((resolve, reject) => {
+              const id = ++requestCounter;
+              window.__leefWebAuthnRequests.set(id, { resolve, reject, type, options });
+              console.log('LEEF_WEBAUTHN_PROMPT:' + JSON.stringify({
+                id: id,
+                type: type,
+                origin: window.location.origin,
+                host: window.location.host
+              }));
+            });
+          }
+
+          window.__resolveLeefWebAuthn = function(id, allowed) {
+            const request = window.__leefWebAuthnRequests.get(id);
+            if (!request) return;
+            window.__leefWebAuthnRequests.delete(id);
+
+            if (!allowed) {
+              request.reject(new DOMException("User denied permission to use Windows Hello / Platform Authenticator.", "NotAllowedError"));
+              return;
+            }
+
+            const origFn = request.type === 'create' ? originalCreate : originalGet;
+            origFn.call(navigator.credentials, request.options)
+              .then(res => request.resolve(res))
+              .catch(err => request.reject(err));
+          };
+
+          navigator.credentials.create = function(options) {
+            if (options && options.publicKey) {
+              return promptUser('create', options);
+            }
+            return originalCreate.call(navigator.credentials, options);
+          };
+
+          navigator.credentials.get = function(options) {
+            if (options && options.publicKey) {
+              return promptUser('get', options);
+            }
+            return originalGet.call(navigator.credentials, options);
+          };
+        })();
+      `);
+
+      // Scroll-reset (always on DOM ready to fix scrolling carryover bug)
+      chunks.push(`
+        (function() {
+          window.scrollTo(0, 0);
+          if (document.documentElement) document.documentElement.scrollTop = 0;
+          if (document.body) document.body.scrollTop = 0;
+        })();
+      `);
 
       // 1. New-tab interceptor (always)
       chunks.push(`
@@ -1642,7 +2716,7 @@ class TabManager {
       }
 
       // 9. YouTube Ad-Protection (YouTube only)
-      if (isYouTube) {
+      if (isYouTube && s.adBlockerMode !== 'none') {
         chunks.push(`
           (function() {
             if (window.__leefYTAdBlock) return;
@@ -1673,7 +2747,9 @@ class TabManager {
                 document.head.appendChild(s);
               }
             }
-            (function loop() { skipAd(); setTimeout(loop, document.hidden ? 2000 : 1000); })();
+            // Perf fix: Store handle so each re-injection clears the previous loop (prevents orphaned timers)
+            if (window.__leefYTTimer) clearTimeout(window.__leefYTTimer);
+            (function loop() { skipAd(); window.__leefYTTimer = setTimeout(loop, document.hidden ? 2000 : 1000); })();
           })();
         `);
       }
@@ -1684,15 +2760,16 @@ class TabManager {
       }
 
       // YouTube SPA re-injection hook (event listener, not a JS injection)
-      if (isYouTube && !tab._ytNavHooked) {
+      if (isYouTube && s.adBlockerMode !== 'none' && !tab._ytNavHooked) {
         tab._ytNavHooked = true;
-        let ytNavTimer;
+        tab._ytNavTimer = null; // Stored on tab so closeTab() can clear it
         tab.webviewEl.addEventListener('did-navigate-in-page', (e) => {
           if (!e.isMainFrame) return; // Prevent iframe navigation IPC floods!
           if (tab.webviewEl.getURL().includes('youtube.com')) {
-            clearTimeout(ytNavTimer);
-            ytNavTimer = setTimeout(() => {
+            clearTimeout(tab._ytNavTimer);
+            tab._ytNavTimer = setTimeout(() => {
               const s2 = this.settings.currentSettings;
+              if (s2.adBlockerMode === 'none' || tab._isCrashRecovering) return;
               const labs2 = window.labsManager;
               const isWarp2 = !!(labs2 && labs2.isFlagEnabled('yt_warp_speed'));
               tab.webviewEl.executeJavaScript(`
@@ -1710,7 +2787,8 @@ class TabManager {
                       else if (video.duration > 0 && isFinite(video.duration) && video.currentTime < video.duration - 0.2) { video.muted = true; video.currentTime = video.duration; }
                     } else if (video && video.playbackRate === 16) { video.playbackRate = 1; video.muted = false; }
                   }
-                  (function loop() { skipAd(); setTimeout(loop, document.hidden ? 2000 : 1000); })();
+                  if (window.__leefYTTimer) clearTimeout(window.__leefYTTimer);
+                  (function loop() { skipAd(); window.__leefYTTimer = setTimeout(loop, document.hidden ? 2000 : 1000); })();
                 })();
               `).catch(() => { });
             }, 500);
@@ -1724,6 +2802,7 @@ class TabManager {
         tab.webviewEl.addEventListener('did-navigate-in-page', (e) => {
           if (!e.isMainFrame) return;
           if (tab.webviewEl.getURL().includes('google.')) {
+            if (tab._isCrashRecovering) return;
             // 1. Re-apply elevated CSS injection
             const aiCSS = `
               [data-attnms],
@@ -1831,12 +2910,25 @@ class TabManager {
 
     // Fullscreen: hide/show browser chrome when a page requests fullscreen.
     // The main process handles OS-level fullscreen via webContents events directly.
-    tab.webviewEl.addEventListener('enter-full-screen', () => {
+    tab.webviewEl.addEventListener('enter-html-full-screen', () => {
       document.body.classList.add('video-fullscreen');
     });
 
-    tab.webviewEl.addEventListener('leave-full-screen', () => {
+    tab.webviewEl.addEventListener('leave-html-full-screen', () => {
       document.body.classList.remove('video-fullscreen');
+    });
+
+    // Close dropdowns when clicking on the webview (registers as focus)
+    tab.webviewEl.addEventListener('focus', () => {
+      const dropdowns = ['bookmarks-dropdown', 'downloads-dropdown', 'quick-settings-dropdown', 'site-identity-dropdown'];
+      dropdowns.forEach(id => {
+        const d = document.getElementById(id);
+        if (d) DropdownUtils.hide(d);
+      });
+      if (window.siteIdentityManager && window.siteIdentityManager._updateInterval) {
+        clearInterval(window.siteIdentityManager._updateInterval);
+        window.siteIdentityManager._updateInterval = null;
+      }
     });
   }
 
@@ -1848,13 +2940,16 @@ class TabManager {
     if (!rawInput || !rawInput.trim()) return; // guard empty input
 
     // Hide address bar suggestions and remove focus when navigating
-    if (window.addressBarManager && window.addressBarManager.suggestionsEl) {
-      window.addressBarManager.suggestionsEl.style.display = 'none';
+    if (window.addressBarManager) {
+      window.addressBarManager._hideSuggestions();
     }
     if (UI.inputs.address) UI.inputs.address.blur();
 
     const tab = this.getActiveTab();
     if (!tab) return;
+
+    tab._isCrashRecovering = false; // Reset crash recovery mode on manual navigation
+
     const fullUrl = BrowserUtils.parseAddress(rawInput.trim(), this.settings.currentSettings.searchEngine, this.settings.currentSettings.blockAIOverview);
 
     if (!tab.webviewEl) {
@@ -1877,13 +2972,13 @@ class TabManager {
   }
 
   updateTabUI(tab) {
-    if (tab.url === 'home') tab.tabTitle.textContent = 'Leef Browser | Home';
-    else if (tab.url === 'settings') tab.tabTitle.textContent = 'Settings';
-    else if (tab.url === 'changelog') tab.tabTitle.textContent = "What's New";
-    else if (tab.url === 'flags') tab.tabTitle.textContent = "Leef Labs";
-    else if (tab.url === 'privacy') tab.tabTitle.textContent = "Privacy Center";
+    if (tab.url === 'home') tab.tabTitle.textContent = window.t('Leef Browser | Home');
+    else if (tab.url === 'settings') tab.tabTitle.textContent = window.t('Settings');
+    else if (tab.url === 'changelog') tab.tabTitle.textContent = window.t("What's New");
+    else if (tab.url === 'flags') tab.tabTitle.textContent = window.t("Leef Labs");
+    else if (tab.url === 'privacy') tab.tabTitle.textContent = window.t("Privacy Center");
     else {
-      let displayTitle = tab.title || 'Loading...';
+      let displayTitle = window.t(tab.title || 'Loading...');
       if (this.settings.currentSettings.blockAIOverview) {
         displayTitle = displayTitle.replace(/ -noai/gi, '');
       }
@@ -1894,31 +2989,50 @@ class TabManager {
     tab.tabEl.title = tab.tabTitle.textContent;
 
     if (this.activeTabId === tab.id) {
-      if (!tab.isInternal) {
-        // Strip -noai from the address bar for a seamless display
-        let displayUrl = tab.url;
+      if (document.activeElement !== UI.inputs.address) {
+        if (!tab.isInternal) {
+          // Strip -noai from the address bar for a seamless display
+          let displayUrl = tab.url;
 
-        // Handle Offline Page URL Spoofing (v0.2.1)
-        if (displayUrl.startsWith('file://') && displayUrl.includes('offline.html')) {
-          try {
-            const urlObj = new URL(displayUrl);
-            const params = new URLSearchParams(urlObj.search);
-            const spoofUrl = params.get('url');
-            if (spoofUrl) displayUrl = spoofUrl;
-          } catch (e) { }
-        }
+          // Handle Offline Page URL Spoofing (v0.2.1)
+          if (displayUrl.startsWith('file://') && displayUrl.includes('offline.html')) {
+            try {
+              const urlObj = new URL(displayUrl);
+              const params = new URLSearchParams(urlObj.search);
+              const spoofUrl = params.get('url');
+              if (spoofUrl) displayUrl = spoofUrl;
+            } catch (e) { }
+          }
 
-        if (this.settings.currentSettings.blockAIOverview && displayUrl.includes('google.com/search')) {
-          displayUrl = displayUrl.replace(/(\+|\%20)-noai/g, '');
-          displayUrl = displayUrl.replace(/([?&])udm=14(&?)/g, (match, p1, p2) => p2 ? p1 : '');
-          displayUrl = displayUrl.replace(/[?&]$/, '');
+          if (this.settings.currentSettings.blockAIOverview && displayUrl.includes('google.com/search')) {
+            displayUrl = displayUrl.replace(/(\+|\%20)-noai/g, '');
+            displayUrl = displayUrl.replace(/([?&])udm=14(&?)/g, (match, p1, p2) => p2 ? p1 : '');
+            displayUrl = displayUrl.replace(/[?&]$/, '');
+          }
+          UI.inputs.address.value = displayUrl;
         }
-        UI.inputs.address.value = displayUrl;
+        else UI.inputs.address.value = '';
       }
-      else UI.inputs.address.value = '';
 
       if (window.siteIdentityManager) {
         window.siteIdentityManager.updateUI();
+      }
+
+      // Update back/forward buttons disabled states
+      if (tab.isInternal) {
+        UI.buttons.back.disabled = true;
+        UI.buttons.forward.disabled = true;
+      } else if (tab.webviewEl) {
+        try {
+          UI.buttons.back.disabled = !tab.webviewEl.canGoBack();
+          UI.buttons.forward.disabled = !tab.webviewEl.canGoForward();
+        } catch (e) {
+          UI.buttons.back.disabled = true;
+          UI.buttons.forward.disabled = true;
+        }
+      } else {
+        UI.buttons.back.disabled = true;
+        UI.buttons.forward.disabled = true;
       }
     }
 
@@ -1969,6 +3083,10 @@ class TabManager {
   }
 
   switchTab(tabId) {
+    if (window.addressBarManager) {
+      window.addressBarManager._hideSuggestions();
+    }
+
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab) return;
 
@@ -2057,6 +3175,10 @@ class TabManager {
     });
     tab.tabEl.classList.add('active');
 
+    // Scroll the newly activated tab into view smoothly
+    tab.tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    this.updateTabScrollButtons();
+
     // Sync UI to tab state (Volume, etc)
     if (window.quickSettingsManager) {
       window.quickSettingsManager.updateUI();
@@ -2098,6 +3220,7 @@ class TabManager {
     if (drmIndicator) drmIndicator.style.display = tab.hasDRM ? 'flex' : 'none';
 
     this.updateTabUI(tab);
+    this.updateLoadingBar();
   }
 
   closeTab(tabId) {
@@ -2105,34 +3228,121 @@ class TabManager {
     if (index === -1) return;
 
     const tab = this.tabs[index];
-    // Clean up webview to prevent memory leaks
-    if (tab.webviewEl) {
-      tab.webviewEl.removeAttribute('src');  // Stop any loading
-      tab.webviewEl.remove();                // Detach from DOM
+
+    if (tab.loadingInterval) {
+      clearInterval(tab.loadingInterval);
+      tab.loadingInterval = null;
     }
-    tab.tabEl.remove();
-    // Null out references so GC can collect
-    tab.webviewEl = null;
-    tab.tabEl = null;
-    tab.tabTitle = null;
+
+    // Determine target tab to switch to first if we are closing the active tab
+    let targetTabId = null;
+    if (this.activeTabId === tabId && this.tabs.length > 1) {
+      const nextIndex = index === this.tabs.length - 1 ? index - 1 : index + 1;
+      targetTabId = this.tabs[nextIndex].id;
+    }
+
+    // Stop and redirect webview immediately to cut off resource/network usage
+    if (tab.webviewEl) {
+      try { tab.webviewEl.stop(); } catch (e) { }
+      try { tab.webviewEl.src = 'about:blank'; } catch (e) { }
+
+      // Hide the webview immediately so it doesn't linger visually
+      try {
+        const wrapper = tab.webviewEl.closest('.webview-wrapper') || tab.webviewEl;
+        if (wrapper) {
+          wrapper.style.display = 'none';
+        }
+      } catch (e) { }
+    }
+
+    // Capture tab details for recently closed history before mutating
+    const tabUrl = tab.url;
+    const tabTitle = tab.title;
+    const tabIsInternal = tab.isInternal;
+
+    // Splice tab out of our logical list immediately so logical queries don't find it
     this.tabs.splice(index, 1);
 
+    // Switch or create tabs immediately to maintain snappy user interface response
     if (this.tabs.length === 0) {
       this.createTab('home');
-    } else if (this.activeTabId === tabId) {
-      this.switchTab(this.tabs[Math.max(0, index - 1)].id);
+    } else if (targetTabId) {
+      this.switchTab(targetTabId);
     }
 
-    // Recently Closed Tabs (v0.3.2)
-    if (!tab.isInternal && tab.url && !tab.url.startsWith('file://')) {
+    // Recently Closed Tabs stack (v0.3.2)
+    if (!tabIsInternal && tabUrl && !tabUrl.startsWith('file://')) {
       if (!this.closedTabsStack) this.closedTabsStack = [];
-      this.closedTabsStack.push({ url: tab.url, title: tab.title });
+      this.closedTabsStack.push({ url: tabUrl, title: tabTitle });
       if (this.closedTabsStack.length > 20) this.closedTabsStack.shift(); // Limit size
 
       // Tell main process that we have closed tabs now
       try {
         window.require('electron').ipcRenderer.send('update-closed-tabs-count', this.closedTabsStack.length);
       } catch (e) { }
+    }
+
+    // Trigger visual close transition
+    const tabEl = tab.tabEl;
+    if (tabEl) {
+      tabEl.classList.add('closing');
+
+      const cleanup = () => {
+        try {
+          if (tabEl.parentNode) {
+            tabEl.remove();
+          }
+        } catch (e) { }
+
+        // Final cleanup of the webview element to prevent memory leaks and break closures
+        if (tab.webviewEl) {
+          try {
+            const clone = tab.webviewEl.cloneNode(false);
+            if (tab.webviewEl.parentNode) {
+              tab.webviewEl.parentNode.replaceChild(clone, tab.webviewEl);
+            }
+            clone.remove();
+          } catch (e) {
+            try { tab.webviewEl.remove(); } catch (err) { }
+          }
+        }
+
+        // Null out references to allow garbage collection
+        // Perf fix: clear any pending ytNavTimer to prevent post-close callbacks on destroyed webview
+        if (tab._ytNavTimer) { clearTimeout(tab._ytNavTimer); tab._ytNavTimer = null; }
+        tab.webviewEl = null;
+        tab.tabEl = null;
+        tab.tabTitle = null;
+        this.updateTabScrollButtons();
+      };
+
+      // Listen for transitionend or use a timeout fallback to perform cleanup
+      let cleaned = false;
+      const onTransitionEnd = (e) => {
+        if (e.propertyName === 'max-width' || e.propertyName === 'width' || e.propertyName === 'opacity') {
+          if (!cleaned) {
+            cleaned = true;
+            tabEl.removeEventListener('transitionend', onTransitionEnd);
+            cleanup();
+          }
+        }
+      };
+      tabEl.addEventListener('transitionend', onTransitionEnd);
+
+      // Fallback timer slightly longer than 0.22s CSS transition
+      setTimeout(() => {
+        if (!cleaned) {
+          cleaned = true;
+          tabEl.removeEventListener('transitionend', onTransitionEnd);
+          cleanup();
+        }
+      }, 250);
+    } else {
+      // If there's no tabEl, perform final webview cleanup immediately
+      if (tab.webviewEl) {
+        try { tab.webviewEl.remove(); } catch (e) { }
+        tab.webviewEl = null;
+      }
     }
   }
 
@@ -2146,11 +3356,69 @@ class TabManager {
     } catch (e) { }
   }
 
+  updateTabScrollButtons() {
+    const container = UI.tabsContainer;
+    const btnLeft = document.getElementById('btn-tab-scroll-left');
+    const btnRight = document.getElementById('btn-tab-scroll-right');
+    if (!container || !btnLeft || !btnRight) return;
+
+    const hasOverflow = container.scrollWidth > container.clientWidth;
+    if (hasOverflow) {
+      btnLeft.style.display = 'flex';
+      btnRight.style.display = 'flex';
+      
+      const scrollLeft = container.scrollLeft;
+      const maxScrollLeft = container.scrollWidth - container.clientWidth;
+      
+      btnLeft.style.opacity = scrollLeft <= 1 ? '0.3' : '0.7';
+      btnLeft.style.pointerEvents = scrollLeft <= 1 ? 'none' : 'auto';
+      
+      btnRight.style.opacity = scrollLeft >= maxScrollLeft - 1 ? '0.3' : '0.7';
+      btnRight.style.pointerEvents = scrollLeft >= maxScrollLeft - 1 ? 'none' : 'auto';
+    } else {
+      btnLeft.style.display = 'none';
+      btnRight.style.display = 'none';
+    }
+  }
+
   bindGlobalEvents() {
-    UI.tabsContainer.addEventListener('contextmenu', (e) => {
-      if (e.target === UI.tabsContainer) {
+    // Tab scroll button click event listeners
+    const btnLeft = document.getElementById('btn-tab-scroll-left');
+    const btnRight = document.getElementById('btn-tab-scroll-right');
+    if (btnLeft) {
+      btnLeft.addEventListener('click', () => {
+        UI.tabsContainer.scrollBy({ left: -200, behavior: 'smooth' });
+      });
+    }
+    if (btnRight) {
+      btnRight.addEventListener('click', () => {
+        UI.tabsContainer.scrollBy({ left: 200, behavior: 'smooth' });
+      });
+    }
+
+    // Scroll buttons state update on tab container scroll or window resize
+    UI.tabsContainer.addEventListener('scroll', () => {
+      this.updateTabScrollButtons();
+    });
+    window.addEventListener('resize', () => {
+      this.updateTabScrollButtons();
+    });
+
+    // Translate vertical mouse wheel scrolling to horizontal scrolling for the tab row
+    UI.tabsContainer.addEventListener('wheel', (e) => {
+      if (e.deltaY !== 0) {
+        e.preventDefault();
+        UI.tabsContainer.scrollLeft += e.deltaY;
+      }
+    }, { passive: false });
+
+    UI.tabsContainer.parentElement.addEventListener('contextmenu', (e) => {
+      if (!e.target.closest('.tab') && !e.target.closest('.new-tab-btn')) {
         e.preventDefault();
         e.stopPropagation();
+        try {
+          window.require('electron').ipcRenderer.send('show-tab-context-menu', { tabId: null });
+        } catch (err) { }
       }
     });
 
@@ -2264,7 +3532,7 @@ class TabManager {
       if (e.target.tagName === 'WEBVIEW') return;
 
       // Tab Bar Background Context Menu (v0.3.2)
-      if (e.target.id === 'tabs-container' || e.target.classList.contains('tabs-row')) {
+      if (e.target.closest('.tabs-bar-container')) {
         e.preventDefault();
         window.require('electron').ipcRenderer.send('show-tab-context-menu', { tabId: null });
         return;
@@ -2314,7 +3582,10 @@ class TabManager {
       window.require('electron').ipcRenderer.on('adblock-items-blocked-batch', (event, data) => {
         const tab = this.tabs.find(t => t.webviewEl && t.webviewEl.getWebContentsId() === data.tabId);
         if (tab) {
-          tab.blockedAds = (tab.blockedAds || 0) + data.count;
+          const ads = data.ads || 0;
+          const trackers = data.trackers || 0;
+          tab.blockedAds = (tab.blockedAds || 0) + ads;
+          tab.blockedTrackers = (tab.blockedTrackers || 0) + trackers;
           if (this.activeTabId === tab.id && window.siteIdentityManager) {
             window.siteIdentityManager.updateUI();
           }
@@ -2322,7 +3593,7 @@ class TabManager {
             try {
               // Record one event per batch to save CPU, but increment the total counter
               const domain = new URL(data.url).hostname;
-              window.privacyManager.totalBlocked += data.count;
+              window.privacyManager.totalBlocked += (ads + trackers);
               window.privacyManager.recordBlock(domain); // Record last domain for recent list
             } catch (e) { }
           }
@@ -2476,8 +3747,81 @@ class ToastManager {
 
   show(title, msg, durationMs = 8000) {
     if (!this.el) return;
-    this.el.querySelector('.leef-toast-title').textContent = title;
-    this.el.querySelector('.leef-toast-msg').textContent = msg;
+
+    // Translate title
+    const translatedTitle = window.t ? window.t(title) : title;
+
+    // Translate message with dynamic parameters fallback
+    let translatedMsg = msg;
+    if (window.t) {
+      translatedMsg = window.t(msg);
+      if (translatedMsg === msg) {
+        // Apply regex mappings for dynamic values
+        const patterns = [
+          {
+            regex: /Could not create the log file: (.*)/,
+            key: "Could not create the log file: {error}",
+            replace: (match, p1) => window.t("Could not create the log file: {error}").replace("{error}", p1)
+          },
+          {
+            regex: /(.*) is available\. Do you want to download and install it\?/,
+            key: "{version} is available. Do you want to download and install it?",
+            replace: (match, p1) => window.t("{version} is available. Do you want to download and install it?").replace("{version}", p1)
+          },
+          {
+            regex: /"(.*)" was removed from your bookmarks\./,
+            key: "\"{title}\" was removed from your bookmarks.",
+            replace: (match, p1) => window.t("\"{title}\" was removed from your bookmarks.").replace("{title}", p1)
+          },
+          {
+            regex: /"(.*)" has been saved to your bookmarks\./,
+            key: "\"{title}\" has been saved to your bookmarks.",
+            replace: (match, p1) => window.t("\"{title}\" has been saved to your bookmarks.").replace("{title}", p1)
+          },
+          {
+            regex: /"(.*)" has been added to your Hub\./,
+            key: "\"{title}\" has been added to your Hub.",
+            replace: (match, p1) => window.t("\"{title}\" has been added to your Hub.").replace("{title}", p1)
+          },
+          {
+            regex: /"(.*)" has been removed from your Hub\./,
+            key: "\"{title}\" has been removed from your Hub.",
+            replace: (match, p1) => window.t("\"{title}\" has been removed from your Hub.").replace("{title}", p1)
+          },
+          {
+            regex: /Looking up "(.*)"…/,
+            key: "Looking up \"{query}\"…",
+            replace: (match, p1) => window.t("Looking up \"{query}\"…").replace("{query}", p1)
+          },
+          {
+            regex: /"(.*)" was frozen to save system resources\./,
+            key: "\"{title}\" was frozen to save system resources.",
+            replace: (match, p1) => window.t("\"{title}\" was frozen to save system resources.").replace("{title}", p1)
+          },
+          {
+            regex: /Cleared cookies for (.*)\./,
+            key: "Cleared cookies for {host}.",
+            replace: (match, p1) => window.t("Cleared cookies for {host}.").replace("{host}", p1)
+          },
+          {
+            regex: /Error: (.*)/,
+            key: "Error: {error}",
+            replace: (match, p1) => window.t("Error: {error}").replace("{error}", p1)
+          }
+        ];
+
+        for (const p of patterns) {
+          const m = msg.match(p.regex);
+          if (m) {
+            translatedMsg = p.replace(m, m[1]);
+            break;
+          }
+        }
+      }
+    }
+
+    this.el.querySelector('.leef-toast-title').textContent = translatedTitle;
+    this.el.querySelector('.leef-toast-msg').textContent = translatedMsg;
 
     // Reset action div visibility so buttons don't leak between toasts
     const actionDiv = document.getElementById('leef-toast-action');
@@ -2510,6 +3854,23 @@ class DownloadManager {
     this.downloads = new Map();
     this.ipc = window.require('electron').ipcRenderer;
     this.bindEvents();
+    this.updateEmptyState();
+  }
+
+  updateEmptyState() {
+    if (!this.list) return;
+    if (this.list.children.length === 0 || (this.list.children.length === 1 && this.list.querySelector('.downloads-empty-placeholder'))) {
+      if (!this.list.querySelector('.downloads-empty-placeholder')) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'downloads-empty-placeholder';
+        placeholder.style.cssText = 'padding: 24px; text-align: center; color: var(--text-dark); opacity: 0.6; font-size: 0.85rem; font-style: italic;';
+        placeholder.textContent = 'No downloads yet';
+        this.list.appendChild(placeholder);
+      }
+    } else {
+      const placeholder = this.list.querySelector('.downloads-empty-placeholder');
+      if (placeholder) placeholder.remove();
+    }
   }
 
 
@@ -2517,17 +3878,26 @@ class DownloadManager {
     if (this.el) {
       this.el.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.dropdown.style.display = this.dropdown.style.display === 'none' ? 'block' : 'none';
-        // Close other dropdowns
-        const b = document.getElementById('bookmarks-dropdown');
-        if (b) b.style.display = 'none';
+        const isVisible = this.dropdown.classList.contains('visible');
+        if (isVisible) {
+          DropdownUtils.hide(this.dropdown);
+        } else {
+          DropdownUtils.show(this.dropdown, 'block');
+          // Close other dropdowns
+          const b = document.getElementById('bookmarks-dropdown');
+          if (b) DropdownUtils.hide(b);
+          const q = document.getElementById('quick-settings-dropdown');
+          if (q) DropdownUtils.hide(q);
+          const s = document.getElementById('site-identity-dropdown');
+          if (s) DropdownUtils.hide(s);
+        }
       });
     }
 
     // Global close
     document.addEventListener('click', (e) => {
       if (this.dropdown && !this.dropdown.contains(e.target) && e.target !== this.el) {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
       }
     });
 
@@ -2546,7 +3916,7 @@ class DownloadManager {
         this.downloads.set(id, { ...data, id, received: 0, startTime: Date.now() });
         this.renderItem(id);
         // Show dropdown when download starts
-        this.dropdown.style.display = 'block';
+        DropdownUtils.show(this.dropdown, 'block');
       } else if (data.status === 'progressing') {
         const dl = this.downloads.get(id);
         if (dl) {
@@ -2678,6 +4048,8 @@ class DownloadManager {
         }
       }
     }
+
+    this.updateEmptyState();
   }
 
   updateItemProgress(id) {
@@ -2755,6 +4127,7 @@ class QuickSettingsManager {
     this.btnChangelog = document.getElementById('btn-qs-changelog');
     this.btnScreenshot = document.getElementById('btn-qs-screenshot');
     this.btnBug = document.getElementById('btn-qs-bug');
+    this.btnTroubleshooter = document.getElementById('btn-qs-troubleshooter');
     this.sliderVolume = document.getElementById('qs-volume-slider');
     this.btnSettings = document.getElementById('btn-qs-settings');
     this.volumeTile = document.getElementById('qs-tile-volume');
@@ -2804,37 +4177,42 @@ class QuickSettingsManager {
     if (this.el) {
       this.el.addEventListener('click', (e) => {
         e.stopPropagation();
-        const isVisible = this.dropdown.style.display === 'grid';
-        this.dropdown.style.display = isVisible ? 'none' : 'grid';
+        const isVisible = this.dropdown.classList.contains('visible');
+        if (isVisible) {
+          DropdownUtils.hide(this.dropdown);
+        } else {
+          DropdownUtils.show(this.dropdown, 'grid');
+          this.updateUI();
 
-        if (!isVisible) this.updateUI();
-
-        // Close other dropdowns
-        const b = document.getElementById('bookmarks-dropdown');
-        if (b) b.style.display = 'none';
-        const d = document.getElementById('downloads-dropdown');
-        if (d) d.style.display = 'none';
+          // Close other dropdowns
+          const b = document.getElementById('bookmarks-dropdown');
+          if (b) DropdownUtils.hide(b);
+          const d = document.getElementById('downloads-dropdown');
+          if (d) DropdownUtils.hide(d);
+          const s = document.getElementById('site-identity-dropdown');
+          if (s) DropdownUtils.hide(s);
+        }
       });
     }
 
     // Global close
     document.addEventListener('click', (e) => {
       if (this.dropdown && !this.dropdown.contains(e.target) && e.target !== this.el) {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
       }
     });
 
     if (this.btnChangelog) {
       this.btnChangelog.addEventListener('click', () => {
         if (window.tabManager) window.tabManager.createTab('changelog');
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
       });
     }
 
     if (this.btnSettings) {
       this.btnSettings.addEventListener('click', () => {
         if (window.tabManager) window.tabManager.createTab('settings');
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
       });
     }
 
@@ -2898,7 +4276,7 @@ class QuickSettingsManager {
     if (this.btnScreenshot) {
       this.btnScreenshot.addEventListener('click', () => {
         // Close menu first and wait for browser to repaint before capturing
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
         setTimeout(() => {
           if (window.toastManager) window.toastManager.show('📸 Screenshot', 'Capturing and copying to clipboard...', 2000);
           window.require('electron').ipcRenderer.send('capture-page');
@@ -2916,7 +4294,7 @@ class QuickSettingsManager {
 
     if (this.btnBug) {
       this.btnBug.addEventListener('click', () => {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
         const confirmed = window.confirm(
           "Generating a bug report will save a diagnostics file to your PC.\n\n" +
           "This file contains system specs and configurations to help with bug reports. " +
@@ -2933,6 +4311,15 @@ class QuickSettingsManager {
         }
       });
     }
+
+    if (this.btnTroubleshooter) {
+      this.btnTroubleshooter.addEventListener('click', () => {
+        DropdownUtils.hide(this.dropdown);
+        if (window.tabManager) {
+          window.tabManager.createTab('https://leefbrowser.site/troubleshooter');
+        }
+      });
+    }
   }
 }
 
@@ -2943,11 +4330,13 @@ class SiteIdentityManager {
     this.domainEl = document.getElementById('si-domain');
     this.statusEl = document.getElementById('si-status');
     this.adblockCountEl = document.getElementById('si-adblock-count');
+    this.trackerCountEl = document.getElementById('si-tracker-count');
     this.gpcStatusEl = document.getElementById('si-gpc-status');
     this.gpcTimerEl = document.getElementById('si-gpc-timer');
     this.gpcRowEl = document.getElementById('si-gpc-row');
     this.btnClearCookies = document.getElementById('btn-clear-site-cookies');
     this.gpcAlertEl = document.getElementById('gpc-alert-indicator');
+    this.gpcBadgeDot = document.getElementById('gpc-badge-dot');
     this._gpcCache = new Map(); // domain -> { verified: bool, fetchedAt: ts }
 
     // Remote GPC Non-Compliant Gist Configuration (v0.6.1)
@@ -3085,23 +4474,28 @@ class SiteIdentityManager {
     if (this.btnGlobe) {
       this.btnGlobe.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.dropdown.style.display = this.dropdown.style.display === 'none' ? 'block' : 'none';
-        // Close others
-        const d1 = document.getElementById('bookmarks-dropdown');
-        const d2 = document.getElementById('downloads-dropdown');
-        const d3 = document.getElementById('quick-settings-dropdown');
-        if (d1) d1.style.display = 'none';
-        if (d2) d2.style.display = 'none';
-        if (d3) d3.style.display = 'none';
+        const isVisible = this.dropdown.classList.contains('visible');
+        if (isVisible) {
+          DropdownUtils.hide(this.dropdown);
+        } else {
+          DropdownUtils.show(this.dropdown, 'block');
+          // Close others
+          const d1 = document.getElementById('bookmarks-dropdown');
+          const d2 = document.getElementById('downloads-dropdown');
+          const d3 = document.getElementById('quick-settings-dropdown');
+          if (d1) DropdownUtils.hide(d1);
+          if (d2) DropdownUtils.hide(d2);
+          if (d3) DropdownUtils.hide(d3);
 
-        this.updateUI();
+          this.updateUI();
+        }
 
         // Real-time updates while open, but only while the answer is still pending
-        if (this.dropdown.style.display === 'block') {
+        if (this.dropdown.classList.contains('visible')) {
           if (this._updateInterval) clearInterval(this._updateInterval);
           this._updateInterval = setInterval(() => {
             // Stop if closed
-            if (this.dropdown.style.display === 'none') {
+            if (!this.dropdown.classList.contains('visible')) {
               clearInterval(this._updateInterval);
               this._updateInterval = null;
               return;
@@ -3122,7 +4516,7 @@ class SiteIdentityManager {
 
     document.addEventListener('click', (e) => {
       if (this.dropdown && !this.dropdown.contains(e.target) && e.target !== this.btnGlobe && !this.btnGlobe.contains(e.target)) {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
         if (this._updateInterval) { clearInterval(this._updateInterval); this._updateInterval = null; }
       }
     });
@@ -3137,7 +4531,7 @@ class SiteIdentityManager {
           const url = new URL(tab.url);
           window.require('electron').ipcRenderer.send('clear-site-data', url.hostname);
           if (window.toastManager) window.toastManager.show('🍪 Cookies Cleared', `Cleared cookies for ${url.hostname}.`, 3000);
-          this.dropdown.style.display = 'none';
+          DropdownUtils.hide(this.dropdown);
         } catch (e) { }
       });
     }
@@ -3145,7 +4539,7 @@ class SiteIdentityManager {
     const btnDashboard = document.getElementById('btn-si-dashboard');
     if (btnDashboard) {
       btnDashboard.addEventListener('click', () => {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
         if (window.tabManager) {
           window.tabManager.createTab('privacy');
         }
@@ -3155,7 +4549,7 @@ class SiteIdentityManager {
     const btnWhois = document.getElementById('btn-si-whois');
     if (btnWhois) {
       btnWhois.addEventListener('click', () => {
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
         const tab = window.tabManager.getActiveTab();
         if (tab && !tab.isInternal) {
           try {
@@ -3166,15 +4560,15 @@ class SiteIdentityManager {
       });
     }
 
-    // Bind Click to GPC Badge for info modal (v0.6.2)
-    if (this.gpcStatusEl) {
-      this.gpcStatusEl.addEventListener('click', (e) => {
+    // Bind Click to GPC Row/Card for info modal (v0.6.2)
+    if (this.gpcRowEl) {
+      this.gpcRowEl.addEventListener('click', (e) => {
         e.stopPropagation();
         const tab = window.tabManager?.getActiveTab();
         if (!tab) return;
 
         // Close the Site Identity dropdown first
-        this.dropdown.style.display = 'none';
+        DropdownUtils.hide(this.dropdown);
         if (this._updateInterval) {
           clearInterval(this._updateInterval);
           this._updateInterval = null;
@@ -3213,38 +4607,43 @@ class SiteIdentityManager {
     if (!tab) return;
 
     const isInternal = tab.isInternal || tab.url.startsWith('leef:') || tab.url.startsWith('file:') || tab.url.startsWith('chrome:');
+    const headerIcon = document.getElementById('si-header-icon');
+
+    // Helper to set status pill state
+    const setStatus = (text, state) => {
+      if (this.statusEl) {
+        this.statusEl.textContent = text;
+        this.statusEl.className = 'si-status-pill' + (state ? ` ${state}` : '');
+        this.statusEl.style.color = '';
+      }
+      if (headerIcon) {
+        headerIcon.className = 'si-header-icon' + (state ? ` ${state}` : '');
+      }
+    };
 
     if (isInternal) {
       if (this.domainEl) this.domainEl.textContent = 'Leef Browser';
-      if (this.statusEl) {
-        this.statusEl.textContent = 'Local Application Page';
-        this.statusEl.style.color = '#777';
-      }
+      setStatus('Local Application Page', 'info');
       if (this.adblockCountEl) this.adblockCountEl.textContent = '0';
-      this._updateGPCStatus(tab); // This will handle the 'Disabled' state
+      if (this.trackerCountEl) this.trackerCountEl.textContent = '0';
+      this._updateGPCStatus(tab);
     } else {
       try {
         const urlObj = new URL(tab.url);
         if (this.domainEl) this.domainEl.textContent = urlObj.hostname;
 
         if (urlObj.protocol === 'https:') {
-          if (this.statusEl) {
-            if (tab.gpcVerified) {
-              this.statusEl.textContent = 'Your connection is secure & Leef privacy measures are in place';
-            } else {
-              this.statusEl.textContent = 'Connection is secure';
-            }
-            this.statusEl.style.color = '#4caf50';
-          }
+          const statusText = tab.gpcVerified
+            ? 'Secure & privacy-protected'
+            : 'Connection is secure';
+          setStatus(statusText, null); // default = green pill
         } else {
-          if (this.statusEl) {
-            this.statusEl.textContent = 'Connection is NOT secure';
-            this.statusEl.style.color = '#f44336';
-          }
+          setStatus('Connection is NOT secure', 'insecure');
         }
 
         // Adblock stats
         if (this.adblockCountEl) this.adblockCountEl.textContent = tab.blockedAds || '0';
+        if (this.trackerCountEl) this.trackerCountEl.textContent = tab.blockedTrackers || '0';
 
         // GPC indicator
         this._updateGPCStatus(tab);
@@ -3265,8 +4664,22 @@ class SiteIdentityManager {
       tab.gpcManuallyVerified = false;
     }
 
-    // Hide the alert indicator by default
-    if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
+    // Always reset the absolute-positioned GPC badge dot
+    if (this.gpcBadgeDot) {
+      this.gpcBadgeDot.className = 'gpc-badge-dot';
+      this.gpcBadgeDot.innerHTML = '';
+    }
+
+    // Hide the alert indicator and reset its collapsed class on actual tab switches
+    const tabChanged = tab && tab.id !== this.lastActiveTabId;
+    if (tabChanged) {
+      this.lastActiveTabId = tab.id;
+      if (this.gpcAlertEl) {
+        this.gpcAlertEl.style.display = 'none';
+        this.gpcAlertEl.className = 'gpc-alert-indicator';
+        void this.gpcAlertEl.offsetWidth; // Force reflow
+      }
+    }
 
     const gpcEnabled = window.settingsManager?.currentSettings?.gpc !== false;
     if (!gpcEnabled || !tab || tab.isInternal) {
@@ -3274,6 +4687,7 @@ class SiteIdentityManager {
       el.className = 'gpc-badge gpc-disabled';
       if (timer) timer.textContent = '';
       if (row) row.style.opacity = '0.5';
+      if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
       return;
     }
 
@@ -3321,6 +4735,9 @@ class SiteIdentityManager {
       tab.gpcManualReason = manualReason;
       tab.gpcManualCaveat = manualCaveat;
       tab.gpcVerified = true;
+      if (this.gpcBadgeDot) {
+        this.gpcBadgeDot.className = 'gpc-badge-dot manual show';
+      }
       if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
       return;
     }
@@ -3342,17 +4759,30 @@ class SiteIdentityManager {
       tab.gpcVerified = false;
       if (this.gpcAlertEl) {
         this.gpcAlertEl.style.display = 'flex';
+        // Ensure default class structure is kept
+        this.gpcAlertEl.className = 'gpc-alert-indicator';
+        this.gpcAlertEl.innerHTML = `
+          <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span>No GPC Support</span>
+        `;
         if (!tab.gpcAlertCollapsed) {
           this.gpcAlertEl.classList.remove('collapsed');
+          if (this.gpcBadgeDot) this.gpcBadgeDot.className = 'gpc-badge-dot';
           if (this._gpcCollapseTimeout) clearTimeout(this._gpcCollapseTimeout);
           this._gpcCollapseTimeout = setTimeout(() => {
             tab.gpcAlertCollapsed = true;
             if (window.tabManager && window.tabManager.getActiveTab() === tab) {
               if (this.gpcAlertEl) this.gpcAlertEl.classList.add('collapsed');
+              if (this.gpcBadgeDot) this.gpcBadgeDot.className = 'gpc-badge-dot unsupported show';
             }
           }, 3500);
         } else {
           this.gpcAlertEl.classList.add('collapsed');
+          if (this.gpcBadgeDot) this.gpcBadgeDot.className = 'gpc-badge-dot unsupported show';
         }
       }
       return;
@@ -3369,11 +4799,21 @@ class SiteIdentityManager {
             : null;
           timer.textContent = diff === null ? '' : diff > 10 ? '(>10s)' : '(' + Math.max(0.1, diff).toFixed(1) + 's)';
         }
+        if (this.gpcBadgeDot) {
+          this.gpcBadgeDot.className = 'gpc-badge-dot verified show';
+          this.gpcBadgeDot.innerHTML = `
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="#000000" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          `;
+        }
+        if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
         return;
       } else {
         el.textContent = 'Unverified';
         el.className = 'gpc-badge gpc-unverified';
         if (timer) timer.textContent = '(no response)';
+        if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
         return;
       }
     }
@@ -3382,6 +4822,7 @@ class SiteIdentityManager {
     el.textContent = 'Sent';
     el.className = 'gpc-badge gpc-sent';
     if (timer) timer.textContent = '(checking...)';
+    if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
 
     // Check /.well-known/gpc.json — the GPC spec's official compliance declaration
 
@@ -3446,7 +4887,8 @@ class SiteIdentityManager {
 
     // Check if GPC is disabled globally
     if (!gpcEnabled) {
-      iconEl.textContent = '⚪';
+      iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#999999" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>`;
+      iconEl.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
       subtitleEl.textContent = 'GPC Signal Disabled';
       subtitleEl.style.background = 'rgba(0, 0, 0, 0.05)';
       subtitleEl.style.color = '#999';
@@ -3466,7 +4908,8 @@ class SiteIdentityManager {
     }
 
     if (!tab || tab.isInternal) {
-      iconEl.textContent = 'ℹ️';
+      iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#666666" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
+      iconEl.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
       subtitleEl.textContent = 'Local Application Page';
       subtitleEl.style.background = 'rgba(0, 0, 0, 0.05)';
       subtitleEl.style.color = '#666';
@@ -3514,7 +4957,8 @@ class SiteIdentityManager {
     });
 
     if (isManuallyApproved || tab.gpcManuallyVerified) {
-      iconEl.textContent = '🛡️';
+      iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#2196f3" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 11 2 2 4-4"></path></svg>`;
+      iconEl.style.backgroundColor = 'rgba(33, 150, 243, 0.1)';
       subtitleEl.textContent = 'Manually Verified';
       subtitleEl.style.background = 'rgba(33, 150, 243, 0.1)';
       subtitleEl.style.color = '#2196f3';
@@ -3598,7 +5042,8 @@ class SiteIdentityManager {
     });
 
     if (isNonCompliant) {
-      iconEl.textContent = '🚨';
+      iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#f44336" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
+      iconEl.style.backgroundColor = 'rgba(244, 67, 54, 0.1)';
       subtitleEl.textContent = 'No GPC Support';
       subtitleEl.style.background = 'rgba(244, 67, 54, 0.1)';
       subtitleEl.style.color = '#f44336';
@@ -3625,7 +5070,8 @@ class SiteIdentityManager {
 
     if (tab.gpcVerified !== undefined) {
       if (tab.gpcVerified) {
-        iconEl.textContent = '✅';
+        iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#17b340" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 11 11 13 15 9"></polyline></svg>`;
+        iconEl.style.backgroundColor = 'rgba(23, 179, 64, 0.1)';
         subtitleEl.textContent = 'Verified Compliant ✓';
         subtitleEl.style.background = 'rgba(23, 179, 64, 0.1)';
         subtitleEl.style.color = '#17b340';
@@ -3646,7 +5092,8 @@ class SiteIdentityManager {
           </p>
         `;
       } else {
-        iconEl.textContent = '⚠️';
+        iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#ff9800" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
+        iconEl.style.backgroundColor = 'rgba(255, 152, 0, 0.1)';
         subtitleEl.textContent = 'Unverified Response';
         subtitleEl.style.background = 'rgba(255, 152, 0, 0.1)';
         subtitleEl.style.color = '#ff9800';
@@ -3822,7 +5269,8 @@ class HeroManager {
 
   start() {
     this.update();
-    setInterval(() => this.update(), 1000);
+    // Perf fix: Store handle to allow future cancellation and prevent double-registration
+    this._interval = setInterval(() => this.update(), 1000);
   }
 
   update() {
@@ -3845,7 +5293,13 @@ class HeroManager {
       if (hours < 12) greet = 'Good Morning';
       else if (hours < 17) greet = 'Good Afternoon';
       else if (hours > 21) greet = 'Good Night';
-      this.greetingEl.textContent = greet;
+      
+      const lang = window.settingsManager?.currentSettings?.language || 'en';
+      if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][greet]) {
+        this.greetingEl.textContent = TRANSLATIONS[lang][greet];
+      } else {
+        this.greetingEl.textContent = greet;
+      }
     }
   }
 }
@@ -4064,6 +5518,7 @@ class AddressBarManager {
 
     this.selectedIndex = -1;
     this.currentFetchId = 0; // Track requests to ignore stale results
+    this.lastWebSuggestions = []; // Cache to prevent layout jumping/flashing
     this.bindEvents();
 
     // Re-position on resize
@@ -4084,96 +5539,156 @@ class AddressBarManager {
   bindEvents() {
     if (!this.input) return;
 
-    this.input.addEventListener('input', () => this.showSuggestions());
+    // Debounce input to limit suggestion updates and avoid flicker
+    this.input.addEventListener('input', () => {
+      if (this._suggestTimer) clearTimeout(this._suggestTimer);
+      this._suggestTimer = setTimeout(() => this.showSuggestions(), 100);
+    });
     this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
     this.input.addEventListener('blur', () => {
-      setTimeout(() => { this.suggestionsEl.style.display = 'none'; }, 200);
+      // Delay hide to allow click on a suggestion
+      setTimeout(() => { this._hideSuggestions(); }, 100);
     });
     this.input.addEventListener('focus', () => this.showSuggestions());
+  }
+
+  _hideSuggestions() {
+    this.suggestionsEl.classList.remove('visible');
+    this.lastWebSuggestions = []; // Clear cached suggestions on hide
+    setTimeout(() => {
+      if (!this.suggestionsEl.classList.contains('visible')) {
+        this.suggestionsEl.style.display = 'none';
+      }
+    }, 260);
   }
 
   async showSuggestions() {
     const val = this.input.value.trim();
     if (!val) {
-      this.suggestionsEl.style.display = 'none';
+      this._hideSuggestions();
       return;
     }
 
-    this.updatePosition();
+    // If not yet visible, position and show the dropdown
+    if (!this.suggestionsEl.classList.contains('visible')) {
+      this.updatePosition();
+      this.suggestionsEl.style.display = 'block';
+      requestAnimationFrame(() => this.suggestionsEl.classList.add('visible'));
+    }
+
+    // When already visible, we skip repositioning – the dropdown stays where it is
 
     // 1. Local Bookmarks (Fast)
     const lowerVal = val.toLowerCase();
     const bookmarkMatches = this.bookmarksManager.saved.filter(b =>
       b.title.toLowerCase().includes(lowerVal) || b.url.toLowerCase().includes(lowerVal)
-    ).slice(0, 3); // Max 3 bookmarks
+    ).slice(0, 3);
 
-    // If autocomplete is disabled, render immediately and stop
     const settings = window.tabManager ? window.tabManager.settings : null;
     const isLiveEnabled = settings ? settings.currentSettings.liveAutocomplete : false;
-
     if (!isLiveEnabled) {
+      this.lastWebSuggestions = [];
       this.renderSuggestions(val, bookmarkMatches, []);
-      this.suggestionsEl.style.display = 'block';
       return;
     }
 
-    this.renderSuggestions(val, bookmarkMatches, []);
-    this.suggestionsEl.style.display = 'block';
+    // Keep the previous web suggestions temporarily to prevent layout jumping/flashing
+    this.renderSuggestions(val, bookmarkMatches, this.lastWebSuggestions || []);
 
     // 2. Fetch Live Autocomplete from Main Process (Bypass CORS)
     const requestId = ++this.currentFetchId;
     try {
       const webSuggestions = await window.require('electron').ipcRenderer.invoke('fetch-autocomplete', val);
-
-      // Re-render only if this is still the most recent request
       if (this.currentFetchId === requestId && this.input.value.trim() === val) {
-        this.renderSuggestions(val, bookmarkMatches, webSuggestions.slice(0, 6));
+        const sliced = webSuggestions.slice(0, 6);
+        this.lastWebSuggestions = sliced;
+        this.renderSuggestions(val, bookmarkMatches, sliced);
       }
-    } catch (err) {
-      // Ignore abort errors or offline
-    }
+    } catch (e) {}
   }
 
   renderSuggestions(val, bookmarkMatches, webSuggestions) {
-    this.suggestionsEl.innerHTML = '';
     this.selectedIndex = -1;
 
-    // Helper to add items
-    const addItem = (title, url, iconHtml, isWeb) => {
-      const item = document.createElement('div');
-      item.className = 'suggestion-item';
-      item.innerHTML = iconHtml + '<div class="suggestion-info"><div class="suggestion-title">' + BrowserUtils.sanitize(title) + '</div><div class="suggestion-url" style="' + (isWeb ? 'display:none;' : '') + '">' + BrowserUtils.sanitize(url) + '</div></div>';
+    const searchForText = window.t ? window.t('Search for "{query}"').replace('{query}', val) : 'Search for "' + val + '"';
+    const searchIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:10px;opacity:0.6;flex-shrink:0"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>';
 
-      item.addEventListener('click', () => {
-        if (window.tabManager) window.tabManager.navigateToUrl(url || title); // URL for bookmarks, title for queries
-        this.suggestionsEl.style.display = 'none';
-      });
+    const itemData = [];
+    itemData.push({ title: searchForText, url: val, iconHtml: searchIcon, isWeb: true, queryVal: val });
 
-      this.suggestionsEl.appendChild(item);
-    };
-
-    // 1. Fallback / Current Input (Search for...)
-    addItem('Search for "' + val + '"', val, '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 10px; opacity: 0.6; flex-shrink: 0;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>', true);
-
-    // 2. Bookmarks
     bookmarkMatches.forEach(match => {
       let faviconUrl = '';
       try { faviconUrl = 'https://www.google.com/s2/favicons?domain=' + new URL(match.url).hostname + '&sz=32'; } catch (e) { }
       const icon = '<img class="suggestion-favicon" src="' + faviconUrl + '" onerror="this.style.display=\'none\'">';
-      addItem(match.title, match.url, icon, false);
+      itemData.push({ title: match.title, url: match.url, iconHtml: icon, isWeb: false, queryVal: null });
     });
 
-    // 3. Web Autocomplete
     webSuggestions.forEach(suggestion => {
-      if (suggestion.toLowerCase() === val.toLowerCase()) return; // Skip if it's identical to the fallback
-      const icon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 10px; opacity: 0.6; flex-shrink: 0;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>';
-      addItem(suggestion, suggestion, icon, true);
+      if (suggestion.toLowerCase() === val.toLowerCase()) return;
+      itemData.push({ title: suggestion, url: suggestion, iconHtml: searchIcon, isWeb: true, queryVal: null });
     });
+
+    const existing = Array.from(this.suggestionsEl.querySelectorAll('.suggestion-item'));
+
+    itemData.forEach((data, i) => {
+      let item = existing[i];
+
+      if (!item) {
+        // Build item DOM structure once — never replace it later
+        item = document.createElement('div');
+        item.className = 'suggestion-item';
+        const iconSlot = document.createElement('span');
+        iconSlot.className = 'item-icon-slot';
+        const info = document.createElement('div');
+        info.className = 'suggestion-info';
+        const titleEl = document.createElement('div');
+        titleEl.className = 'suggestion-title';
+        const urlEl = document.createElement('div');
+        urlEl.className = 'suggestion-url';
+        info.appendChild(titleEl);
+        info.appendChild(urlEl);
+        item.appendChild(iconSlot);
+        item.appendChild(info);
+        item.onclick = () => {
+          if (window.tabManager) window.tabManager.navigateToUrl(item._navUrl);
+          this._hideSuggestions();
+        };
+        this.suggestionsEl.appendChild(item);
+      }
+
+      // Update only what changed — no full innerHTML replacement
+      const iconSlot = item.querySelector('.item-icon-slot');
+      const titleEl = item.querySelector('.suggestion-title');
+      const urlEl = item.querySelector('.suggestion-url');
+
+      if (iconSlot && item._iconHtml !== data.iconHtml) {
+        iconSlot.innerHTML = data.iconHtml;
+        item._iconHtml = data.iconHtml;
+      }
+      if (titleEl && titleEl.textContent !== data.title) titleEl.textContent = data.title;
+      if (urlEl) {
+        if (urlEl.textContent !== data.url) urlEl.textContent = data.url;
+        urlEl.style.display = data.isWeb ? 'none' : '';
+      }
+
+      item._navUrl = data.url || data.title;
+
+      if (data.queryVal !== null && data.queryVal !== undefined) {
+        item.setAttribute('data-query', data.queryVal);
+      } else {
+        item.removeAttribute('data-query');
+      }
+    });
+
+    // Remove surplus nodes
+    for (let i = itemData.length; i < existing.length; i++) {
+      existing[i].remove();
+    }
   }
 
   handleKeydown(e) {
     const items = this.suggestionsEl.querySelectorAll('.suggestion-item');
-    if (this.suggestionsEl.style.display === 'none' || items.length === 0) return;
+    if (!this.suggestionsEl.classList.contains('visible') || items.length === 0) return;
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -4196,8 +5711,13 @@ class AddressBarManager {
     if (this.selectedIndex !== -1) {
       const urlEl = items[this.selectedIndex].querySelector('.suggestion-url');
       const titleEl = items[this.selectedIndex].querySelector('.suggestion-title');
-      // If it's a web suggestion, fill input with the title (query). If bookmark, fill with URL.
-      this.input.value = urlEl.style.display === 'none' ? titleEl.textContent.replace(/^Search for "/, '').replace(/"$/, '') : urlEl.textContent;
+      const queryVal = items[this.selectedIndex].getAttribute('data-query');
+      if (queryVal !== null) {
+        this.input.value = queryVal;
+      } else {
+        // If it's a web suggestion, fill input with the title (query). If bookmark, fill with URL.
+        this.input.value = urlEl.style.display === 'none' ? titleEl.textContent : urlEl.textContent;
+      }
     }
   }
 }
@@ -4221,6 +5741,8 @@ class PermissionManager {
     this.currentReqId = null;
     this.currentOrigin = null;
     this.currentPermission = null;
+    this.currentWebAuthnReq = null;
+    this.currentWebAuthnTab = null;
 
     this.bindEvents();
   }
@@ -4238,8 +5760,8 @@ class PermissionManager {
       document.body.classList.add('modal-open');
 
       // Hide dynamic address bar suggestions so they don't overlap the modal
-      if (window.addressBarManager && window.addressBarManager.suggestionsEl) {
-        window.addressBarManager.suggestionsEl.style.display = 'none';
+      if (window.addressBarManager) {
+        window.addressBarManager._hideSuggestions();
       }
     });
 
@@ -4279,6 +5801,18 @@ class PermissionManager {
   handleResponse(granted) {
     this.promptOverlay.style.display = 'none';
     document.body.classList.remove('modal-open');
+
+    if (this.currentWebAuthnReq !== null) {
+      const tab = this.currentWebAuthnTab;
+      const reqId = this.currentWebAuthnReq.id;
+      if (tab && tab.webviewEl) {
+        tab.webviewEl.executeJavaScript(`if (typeof window.__resolveLeefWebAuthn === 'function') window.__resolveLeefWebAuthn(${reqId}, ${granted});`).catch(() => {});
+      }
+      this.currentWebAuthnReq = null;
+      this.currentWebAuthnTab = null;
+      return;
+    }
+
     if (this.currentReqId !== null) {
       window.require('electron').ipcRenderer.send('permission-response', {
         id: this.currentReqId,
@@ -4287,6 +5821,22 @@ class PermissionManager {
       this.updateSetting(this.currentOrigin, this.currentPermission, granted);
       this.currentReqId = null;
     }
+  }
+
+  requestWebAuthnConsent(tab, req) {
+    if (window.addressBarManager) {
+      window.addressBarManager._hideSuggestions();
+    }
+
+    this.currentWebAuthnReq = req;
+    this.currentWebAuthnTab = tab;
+    this.currentOrigin = req.origin;
+    this.currentPermission = "Windows Hello / Security Key";
+
+    this.originEl.textContent = req.host;
+    this.typeEl.textContent = "Windows Hello / Security Key";
+    this.promptOverlay.style.display = 'flex';
+    document.body.classList.add('modal-open');
   }
 
   updateSetting(origin, permission, granted) {
@@ -4301,8 +5851,8 @@ class PermissionManager {
     this.renderManagerList();
     this.managerModal.style.display = 'flex';
     document.body.classList.add('modal-open');
-    if (window.addressBarManager && window.addressBarManager.suggestionsEl) {
-      window.addressBarManager.suggestionsEl.style.display = 'none';
+    if (window.addressBarManager) {
+      window.addressBarManager._hideSuggestions();
     }
   }
 
@@ -4394,18 +5944,27 @@ class PrivacyManager {
     this.recentBlocks.unshift({ domain, time: Date.now() });
     if (this.recentBlocks.length > 30) this.recentBlocks.pop();
 
-    localStorage.setItem('leef_privacy_total_blocked', this.totalBlocked);
-    this.updateUI();
+    // Perf fix: Only flush to localStorage every 10 blocks instead of every block.
+    // On pages with 50+ blocked requests this prevents 50 synchronous disk writes.
+    if (this.totalBlocked % 10 === 0) {
+      localStorage.setItem('leef_privacy_total_blocked', this.totalBlocked);
+    }
+
+    // Debounce the UI re-render so rapid-fire blocks don't thrash the DOM
+    clearTimeout(this._blockUITimer);
+    this._blockUITimer = setTimeout(() => this.updateUI(), 150);
   }
 
   recordRequest(isSecure) {
     this.totalRequests++;
     if (isSecure) this.secureRequests++;
 
-    localStorage.setItem('leef_privacy_total_requests', this.totalRequests);
-    localStorage.setItem('leef_privacy_secure_requests', this.secureRequests);
-
-    if (this.totalRequests % 5 === 0) this.updateUI(); // Throttled UI update
+    // Perf fix: Write every 50 requests instead of every 5 — cuts localStorage calls by 90%
+    if (this.totalRequests % 50 === 0) {
+      localStorage.setItem('leef_privacy_total_requests', this.totalRequests);
+      localStorage.setItem('leef_privacy_secure_requests', this.secureRequests);
+      this.updateUI();
+    }
   }
 
   updateUI() {
@@ -4452,7 +6011,7 @@ class FindManager {
 
   bindEvents() {
     window.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && e.key.toLowerCase() === 'f') {
+      if ((e.ctrlKey && e.key.toLowerCase() === 'f') || e.key.toLowerCase() === 'f3') {
         e.preventDefault();
         this.show();
       }
@@ -4549,7 +6108,10 @@ class FindManager {
 }
 
 // --- BOOTSTRAP ---
-window.onload = () => {
+window.onload = async () => {
+  // Load translations first so SettingsManager has access to them
+  await loadTranslations();
+
   // ToastManager must be first so all other managers can use it
   window.toastManager = new ToastManager();
 
@@ -4568,11 +6130,89 @@ window.onload = () => {
       overlay.style.display = 'flex';
       if (bg) bg.style.display = 'block';
 
+      const steps = document.querySelectorAll('.onboarding-step');
+      const dots = document.querySelectorAll('.onboarding-dot');
+      const nextBtn = document.getElementById('btn-onboarding-next');
+      const backBtn = document.getElementById('btn-onboarding-back');
+      const finishBtn = document.getElementById('btn-onboarding-finish');
+      let currentStep = 0;
+
+      function showStep(index, direction = 'forward') {
+        steps.forEach((step, i) => {
+          step.classList.remove('active', 'slide-forward', 'slide-backward');
+          if (i === index) {
+            step.classList.add('active');
+            if (direction === 'forward') {
+              step.classList.add('slide-forward');
+            } else {
+              step.classList.add('slide-backward');
+            }
+          }
+        });
+
+        dots.forEach((dot, i) => {
+          dot.classList.toggle('active', i === index);
+        });
+
+        if (backBtn) {
+          backBtn.style.visibility = (index === 0) ? 'hidden' : 'visible';
+        }
+
+        if (nextBtn && finishBtn) {
+          if (index === steps.length - 1) {
+            nextBtn.style.display = 'none';
+            finishBtn.style.display = 'flex';
+          } else {
+            nextBtn.style.display = 'flex';
+            finishBtn.style.display = 'none';
+          }
+        }
+      }
+
+      showStep(0);
+
+      if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+          if (currentStep < steps.length - 1) {
+            currentStep++;
+            showStep(currentStep, 'forward');
+          }
+        });
+      }
+
+      if (backBtn) {
+        backBtn.addEventListener('click', () => {
+          if (currentStep > 0) {
+            currentStep--;
+            showStep(currentStep, 'backward');
+          }
+        });
+      }
+
+      dots.forEach((dot, idx) => {
+        dot.addEventListener('click', () => {
+          const direction = idx > currentStep ? 'forward' : 'backward';
+          currentStep = idx;
+          showStep(currentStep, direction);
+        });
+      });
+
+      const onboardLangSelect = document.getElementById('onboard-language');
+      if (onboardLangSelect) {
+        onboardLangSelect.addEventListener('change', () => {
+          settingsMgr.currentSettings.language = onboardLangSelect.value;
+          settingsMgr.applyLocalization();
+        });
+      }
+
       document.getElementById('btn-onboarding-finish').addEventListener('click', () => {
         const aiChecked = document.getElementById('onboard-ai').checked;
         const autoChecked = document.getElementById('onboard-autocomplete').checked;
+        const dictChecked = document.getElementById('onboard-dictionary').checked;
         const adblockVal = document.querySelector('input[name="onboard-adblock-tier"]:checked')?.value || 'none';
         const langVal = document.getElementById('onboard-language').value;
+        const volumeChecked = document.getElementById('onboard-volumeboost').checked;
+        const updatesChecked = document.getElementById('onboard-updates').checked;
 
         // Sync to actual settings DOM
         const blockAiEl = document.getElementById('block-ai');
@@ -4580,6 +6220,9 @@ window.onload = () => {
 
         const autoEl = document.getElementById('live-autocomplete');
         if (autoEl) autoEl.checked = autoChecked;
+        
+        const dictEl = document.getElementById('native-dictionary');
+        if (dictEl) dictEl.checked = dictChecked;
 
         const langEl = document.getElementById('language-select');
         if (langEl) langEl.value = langVal;
@@ -4587,6 +6230,12 @@ window.onload = () => {
         const newsChecked = document.getElementById('onboard-news').checked;
         const newsEl = document.getElementById('news-manual-refresh');
         if (newsEl) newsEl.checked = !newsChecked;
+
+        const volumeEl = document.getElementById('enable-volume-boost');
+        if (volumeEl) volumeEl.checked = volumeChecked;
+
+        const updatesEl = document.getElementById('auto-check-updates');
+        if (updatesEl) updatesEl.checked = updatesChecked;
 
         // Adblock is radio buttons ('none', 'basic', 'comprehensive')
         document.querySelectorAll('input[name="adblock-tier"]').forEach(r => {
@@ -4666,26 +6315,96 @@ window.onload = () => {
   // Startup behavior
   const startup = settingsMgr.currentSettings.startup || 'newtab';
 
-  if (startup === 'continue') {
-    let lastTabs = [];
-    try { lastTabs = JSON.parse(localStorage.getItem('leef_last_tabs') || '[]'); } catch (e) { }
-    if (lastTabs.length > 0) {
-      lastTabs.forEach(url => window.tabManager.createTab(url));
-    } else {
-      window.tabManager.createTab('home');
-    }
-  } else if (startup === 'homepage') {
+  if (startup === 'homepage') {
     const homepage = settingsMgr.currentSettings.customNewTab || 'home';
     window.tabManager.createTab(homepage);
   } else {
     window.tabManager.createTab('home');
   }
 
-  // Persist tabs on close for 'continue' mode
-  window.addEventListener('beforeunload', () => {
-    const urls = window.tabManager.tabs
-      .filter(t => !t.isInternal)
-      .map(t => t.url);
-    localStorage.setItem('leef_last_tabs', JSON.stringify(urls));
-  });
+  // Handle Linux window controls and state changes
+  if (process.platform === 'linux') {
+    try {
+      const ipc = window.require('electron').ipcRenderer;
+      
+      const btnMin = document.getElementById('btn-linux-minimize');
+      const btnMax = document.getElementById('btn-linux-maximize');
+      const btnClose = document.getElementById('btn-linux-close');
+      
+      if (btnMin) btnMin.addEventListener('click', () => ipc.send('window-minimize'));
+      if (btnMax) btnMax.addEventListener('click', () => ipc.send('window-maximize'));
+      if (btnClose) btnClose.addEventListener('click', () => ipc.send('window-close'));
+
+      ipc.on('window-state-changed', (e, state) => {
+        if (state === 'maximized') {
+          document.body.classList.add('maximized');
+          document.body.classList.remove('fullscreen');
+        } else if (state === 'fullscreen') {
+          document.body.classList.add('fullscreen');
+          document.body.classList.remove('maximized');
+        } else {
+          document.body.classList.remove('maximized');
+          document.body.classList.remove('fullscreen');
+        }
+      });
+    } catch (e) {
+      console.warn('IPC / Electron not available for window controls', e);
+    }
+  }
+
+  // Set up MutationObserver to shift webviews down when dropdown menus are open (Linux only)
+  if (process.platform === 'linux') {
+    try {
+      const observer = new MutationObserver(() => {
+        const qs = document.getElementById('quick-settings-dropdown');
+        const bm = document.getElementById('bookmarks-dropdown');
+        const dl = document.getElementById('downloads-dropdown');
+        const si = document.getElementById('site-identity-dropdown');
+        const webviewsContainer = document.getElementById('webviews-container');
+        
+        let activeDropdown = null;
+        if (qs && qs.style.display !== 'none') activeDropdown = qs;
+        else if (bm && bm.style.display !== 'none') activeDropdown = bm;
+        else if (dl && dl.style.display !== 'none') activeDropdown = dl;
+        else if (si && si.style.display !== 'none') activeDropdown = si;
+        
+        if (webviewsContainer) {
+          if (activeDropdown) {
+            const rect = activeDropdown.getBoundingClientRect();
+            const mainContent = document.querySelector('.main-content');
+            if (mainContent) {
+              const mainRect = mainContent.getBoundingClientRect();
+              const L = Math.max(0, rect.left - mainRect.left + 2); // overlap under dropdown border
+              const R = Math.min(mainRect.width, rect.right - mainRect.left - 2); // overlap under dropdown border
+              const H = Math.max(0, rect.bottom - mainRect.top - 2); // overlap under dropdown border
+              webviewsContainer.style.clipPath = `polygon(0 0, ${L}px 0, ${L}px ${H}px, ${R}px ${H}px, ${R}px 0, 100% 0, 100% 100%, 0 100%)`;
+            }
+            webviewsContainer.style.marginTop = '0px';
+          } else {
+            webviewsContainer.style.clipPath = 'none';
+            webviewsContainer.style.marginTop = '0px';
+          }
+        }
+      });
+      const config = { attributes: true, attributeFilter: ['style'] };
+      const qsEl = document.getElementById('quick-settings-dropdown');
+      const bmEl = document.getElementById('bookmarks-dropdown');
+      const dlEl = document.getElementById('downloads-dropdown');
+      const siEl = document.getElementById('site-identity-dropdown');
+      if (qsEl) observer.observe(qsEl, config);
+      if (bmEl) observer.observe(bmEl, config);
+      if (dlEl) observer.observe(dlEl, config);
+      if (siEl) observer.observe(siEl, config);
+    } catch (e) {
+      console.error('Failed to initialize dropdown mutation observer:', e);
+    }
+  }
+
+  // Plugin Store Placeholder
+  const btnPlugins = document.getElementById('btn-plugin-store');
+  if (btnPlugins) {
+    btnPlugins.addEventListener('click', () => {
+      if (window.toastManager) window.toastManager.show('🧩 Plugin Store', 'The Plugin Store is a work in progress and will be coming soon!', 3000);
+    });
+  }
 };
