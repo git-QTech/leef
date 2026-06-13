@@ -669,8 +669,8 @@ function createWindow() {
     });
 
     contents.on('before-input-event', (e, input) => {
-      // Find in Page: Ctrl + F
-      if (input.control && !input.shift && input.key.toLowerCase() === 'f' && input.type === 'keyDown') {
+      // Find in Page: Ctrl + F or F3
+      if (((input.control && !input.shift && input.key.toLowerCase() === 'f') || input.key.toLowerCase() === 'f3') && input.type === 'keyDown') {
         if (isCriticalMode) { e.preventDefault(); return; }
         safeSend('trigger-find-in-page');
         e.preventDefault();

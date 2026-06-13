@@ -57,7 +57,8 @@
             <svg class="globe-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"></circle>
               <line x1="2" y1="12" x2="22" y2="12"></line>
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
+              </path>
             </svg>
             <div id="gpc-badge-dot" class="gpc-badge-dot"></div>
           </button>
@@ -89,7 +90,8 @@
           <div class="si-header">
             <div class="si-header-icon" id="si-header-icon">
               <!-- Icon swapped by JS based on security state -->
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
               </svg>
             </div>
@@ -240,7 +242,8 @@
           <!-- Row 1: Leef Beta + Screenshot -->
           <button class="qs-tile qs-tile-version" id="btn-qs-changelog">
             <img src="./images/icon-mark.svg" alt="Leef">
-            <span data-i18n="Leef <span class=&quot;leef-version-val&quot;></span><br>Stable">Leef <span class="leef-version-val"></span><br>Stable</span>
+            <span data-i18n="Leef <span class=&quot;leef-version-val&quot;></span><br>Stable">Leef <span
+                class="leef-version-val"></span><br>Stable</span>
           </button>
           <button class="qs-tile qs-tile-screenshot" id="btn-qs-screenshot">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -268,7 +271,8 @@
             <span data-i18n="Bug Report">Bug Report</span>
           </button>
           <button class="qs-tile qs-tile-troubleshooter" id="btn-qs-troubleshooter">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"></circle>
               <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
               <line x1="12" y1="17" x2="12.01" y2="17" stroke-width="3"></line>
@@ -447,12 +451,191 @@
         <h1 data-i18n="What's New">What's New in Leef</h1>
         <p class="changelog-subtitle">Discover the latest updates and improvements</p>
         <div class="update-card">
-          <div class="update-date">June 1, 2026</div>
-          <h2>v1.0.0 — The Cross-Platform Update</h2>
-          <ul>
-            <li><strong>macOS and Linux Support:</strong> Leef is now fully cross-platform with native auto-updater support for Windows, macOS (.zip/Squirrel.Mac), and Linux (AppImage).</li>
-            <li><strong>macOS Native UI:</strong> Seamlessly adapted the top navigation bar to accommodate macOS native traffic light window controls, pushing the brand logo elegantly to the right.</li>
-          </ul>
+          <div class="update-header-meta">
+            <span class="changelog-badge milestone">Milestone release</span>
+            <span class="changelog-badge date">June 12, 2026</span>
+          </div>
+          <h2 class="changelog-title">v1.0.0</h2>
+          <p class="changelog-desc">Stable</p>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category cross-platform">Cross-platform</span>
+              <span class="changelog-section-title">macOS & Linux support</span>
+            </div>
+            <ul>
+              <li>
+                <strong>Leef is now on macOS</strong>
+                <p>Mac users can now download Leef as a native .dmg installer. The browser automatically detects that
+                  it's running on a Mac and adjusts its layout so nothing overlaps with the system window controls in
+                  the top corner.</p>
+              </li>
+              <li>
+                <strong>Leef is now on Linux</strong>
+                <p>Linux users can install Leef via AppImage — no package manager needed, just download and run. The
+                  browser uses a clean custom title bar with its own minimize, maximize, and close buttons, and has
+                  smooth rounded window corners on supported setups.</p>
+              </li>
+              <li>
+                <strong>Smarter Linux system info</strong>
+                <p>When something goes wrong on Linux, Leef now correctly identifies your specific distribution in logs
+                  and bug reports — so instead of a generic "linux," you'll see something like "Ubuntu 24.04 LTS."</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category languages">Languages</span>
+              <span class="changelog-section-title">Multi-language support</span>
+            </div>
+            <ul>
+              <li>
+                <strong>French, Spanish & Dutch</strong>
+                <p>Leef is now available in three new languages. The entire interface — settings, onboarding, and
+                  everything in between — switches automatically based on your system language. No setup needed.</p>
+              </li>
+              <li>
+                <strong>Better regional language detection</strong>
+                <p>Leef now correctly recognises regional language variants when browsing, including British English,
+                  Canadian English, Dutch, French, Spanish, and Italian — so websites respond in the right language more
+                  often.</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category interface">Interface</span>
+              <span class="changelog-section-title">Complete redesign</span>
+            </div>
+            <ul>
+              <li>
+                <strong>Redesigned settings</strong>
+                <p>The settings menu is now completely reorganized with proper tabs, so finding what you're looking for
+                  is actually straightforward instead of buried in a massive wall of options.</p>
+              </li>
+              <li>
+                <strong>Redesigned site info popup</strong>
+                <p>The site information panel now matches the rest of the redesigned interface, giving you connection
+                  and security details in a clearer, more consistent layout.</p>
+              </li>
+              <li>
+                <strong>Better hub tile creator</strong>
+                <p>The home hub tile creation popup is completely redesigned and now lets you pick a custom color for
+                  your tiles. We also fixed a bunch of bugs — like red being displayed as blue — that were hanging
+                  around.</p>
+              </li>
+              <li>
+                <strong>Redesigned scrollbar</strong>
+                <p>The scrollbar now looks like it belongs to Leef instead of using Chromium's generic default, matching
+                  the rest of the app's visual design.</p>
+              </li>
+              <li>
+                <strong>Better loading states</strong>
+                <p>Loading indicators are now more obvious and easier to spot, so you always know when a page is still
+                  loading.</p>
+              </li>
+              <li>
+                <strong>Improved autofill animations</strong>
+                <p>Search autofilling now has some more smooth animations and shouldnt blink every time you put in a new
+                  letter</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category features">Features</span>
+              <span class="changelog-section-title">New & improved</span>
+            </div>
+            <ul>
+              <li>
+                <strong>Built-in dictionary</strong>
+                <p>Google removed their dictionary from search results, so Leef built one in. Now when you search for a
+                  word, you'll see a definition right at the top without having to open another tab.</p>
+              </li>
+              <li>
+                <strong>Quick access to help</strong>
+                <p>A new button in the quick menu takes you straight to the FAQ and troubleshooter on the website, so
+                  you can solve problems faster.</p>
+              </li>
+              <li>
+                <strong>Much better Google search results</strong>
+                <p>Our AI removal and Google page improvements are working way better now. You'll see proper info boxes
+                  again, and the "People Also Ask" section won't show up empty. This is the one most users will notice
+                  right away.</p>
+              </li>
+              <li>
+                <strong>Google search crash workaround</strong>
+                <p>We found and fixed a bug that would crash Leef when you searched certain terms on Google. For now,
+                  those searches fall back to DuckDuckGo automatically while we work on a permanent fix.</p>
+              </li>
+              <li>
+                <strong>Windows security popup blocker</strong>
+                <p>Some sites try to open Windows security popups (like Windows Hello) without asking. Leef now
+                  intercepts these and asks for your permission first before letting the popup through.</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category performance">Performance</span>
+              <span class="changelog-section-title">Speed & stability</span>
+            </div>
+            <ul>
+              <li>
+                <strong>Fixed video CPU spike</strong>
+                <p>Leef was using a lot of CPU if you left video pages paused for too long. That's fixed now — your
+                  computer will stay cool even if you leave YouTube open for hours.</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category security">Security</span>
+              <span class="changelog-section-title">Under the hood</span>
+            </div>
+            <ul>
+              <li>
+                <strong>Stricter internal boundaries</strong>
+                <p>We've tightened up the wall between what the browser's interface can and can't do. Only a specific,
+                  hand-checked list of actions are allowed through — everything else is blocked by default.</p>
+              </li>
+              <li>
+                <strong>Closed a potential security gap</strong>
+                <p>Fixed an edge case where a compromised web page could theoretically have tricked Leef into running
+                  unintended code. It was never exploited, but we closed it anyway.</p>
+              </li>
+              <li>
+                <strong>Safer file handling</strong>
+                <p>Leef now double-checks all file paths for downloads, logs, and screenshots to make sure they always
+                  end up exactly where they should — no funny business with path trickery.</p>
+              </li>
+              <li>
+                <strong>Dependency security fixes</strong>
+                <p>Updated two internal packages that had known vulnerabilities. Neither affected normal browsing, but
+                  we don't like leaving things unpatched.</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category build">Build</span>
+              <span class="changelog-section-title">Packaging & distribution</span>
+            </div>
+            <ul>
+              <li>
+                <strong>Automated platform builds</strong>
+                <p>We've set up dedicated build pipelines for Windows, macOS, and Linux so that each platform gets a
+                  properly packaged installer every release — no manual steps, no missed platforms.</p>
+              </li>
+            </ul>
+          </div>
+
         </div>
 
         <div class="update-card">
@@ -1023,44 +1206,106 @@
     <div class="settings-layout" id="settings-view" style="display: none;">
       <div class="settings-sidebar">
         <div class="settings-sidebar-header">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
+            </path>
+          </svg>
           <span data-i18n="Settings">Settings</span>
         </div>
         <div class="settings-search-wrap">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input type="text" id="settings-search" placeholder="Search settings..." autocomplete="off" spellcheck="false">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="settings-search" placeholder="Search settings..." autocomplete="off"
+            spellcheck="false">
         </div>
         <ul class="settings-nav">
           <li class="active" data-section="sec-general">
-            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg></span>
+            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+                stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="4" y1="21" x2="4" y2="14"></line>
+                <line x1="4" y1="10" x2="4" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12" y2="3"></line>
+                <line x1="20" y1="21" x2="20" y2="16"></line>
+                <line x1="20" y1="12" x2="20" y2="3"></line>
+                <line x1="1" y1="14" x2="7" y2="14"></line>
+                <line x1="9" y1="8" x2="15" y2="8"></line>
+                <line x1="17" y1="16" x2="23" y2="16"></line>
+              </svg></span>
             <span data-i18n="General">General</span>
           </li>
           <li data-section="sec-browsing">
-            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg></span>
+            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+                stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path
+                  d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
+                </path>
+              </svg></span>
             <span data-i18n="Browsing">Browsing</span>
           </li>
           <li data-section="sec-appearance">
-            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22C17.52 22 22 17.52 22 12S17.52 2 12 2 2 6.48 2 12c0 2.76 2.24 5 5 5h1c.55 0 1 .45 1 1v4z"></path><circle cx="7.5" cy="10.5" r="1"></circle><circle cx="11.5" cy="7.5" r="1"></circle><circle cx="16.5" cy="9.5" r="1"></circle><circle cx="15.5" cy="14.5" r="1"></circle></svg></span>
+            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+                stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path
+                  d="M12 22C17.52 22 22 17.52 22 12S17.52 2 12 2 2 6.48 2 12c0 2.76 2.24 5 5 5h1c.55 0 1 .45 1 1v4z">
+                </path>
+                <circle cx="7.5" cy="10.5" r="1"></circle>
+                <circle cx="11.5" cy="7.5" r="1"></circle>
+                <circle cx="16.5" cy="9.5" r="1"></circle>
+                <circle cx="15.5" cy="14.5" r="1"></circle>
+              </svg></span>
             <span data-i18n="Appearance">Appearance</span>
           </li>
           <li data-section="sec-privacy">
-            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></span>
+            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+                stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              </svg></span>
             <span data-i18n="Privacy &amp; Security">Privacy &amp; Security</span>
           </li>
           <li data-section="sec-performance">
-            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg></span>
+            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+                stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg></span>
             <span data-i18n="Performance">Performance</span>
           </li>
           <li data-section="sec-notifications">
-            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg></span>
+            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+                stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg></span>
             <span data-i18n="Notifications">Notifications</span>
           </li>
           <li data-section="sec-downloads">
-            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></span>
+            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+                stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg></span>
             <span data-i18n="Downloads">Downloads</span>
           </li>
           <li data-section="sec-advanced">
-            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="15" x2="23" y2="15"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="15" x2="4" y2="15"></line></svg></span>
+            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+                stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+                <rect x="9" y="9" width="6" height="6"></rect>
+                <line x1="9" y1="1" x2="9" y2="4"></line>
+                <line x1="15" y1="1" x2="15" y2="4"></line>
+                <line x1="9" y1="20" x2="9" y2="23"></line>
+                <line x1="15" y1="20" x2="15" y2="23"></line>
+                <line x1="20" y1="9" x2="23" y2="9"></line>
+                <line x1="20" y1="15" x2="23" y2="15"></line>
+                <line x1="1" y1="9" x2="4" y2="9"></line>
+                <line x1="1" y1="15" x2="4" y2="15"></line>
+              </svg></span>
             <span data-i18n="Advanced">Advanced</span>
           </li>
         </ul>
@@ -1072,15 +1317,20 @@
         <div class="settings-section active" id="sec-general">
           <div class="settings-section-header">
             <h1 data-i18n="General">General</h1>
-            <p class="settings-section-desc" data-i18n="Browser basics and startup configuration.">Browser basics and startup configuration.</p>
+            <p class="settings-section-desc" data-i18n="Browser basics and startup configuration.">Browser basics and
+              startup configuration.</p>
           </div>
 
           <div class="setting-group">
             <div class="setting-group-header">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
               <h3 data-i18n="Search Engine">Search Engine</h3>
             </div>
-            <label for="search-engine-select" data-i18n="Search engine used in the address bar:">Search engine used in the address bar:</label>
+            <label for="search-engine-select" data-i18n="Search engine used in the address bar:">Search engine used in
+              the address bar:</label>
             <select id="search-engine-select">
               <option value="https://www.google.com/search?q=">Google</option>
               <option value="https://duckduckgo.com/?q=">DuckDuckGo</option>
@@ -1090,16 +1340,25 @@
 
           <div class="setting-group">
             <div class="setting-group-header">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="9 11 12 14 22 4"></polyline>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+              </svg>
               <h3 data-i18n="Default browser">Default browser</h3>
             </div>
-            <p data-i18n="Make Leef your default browser (probably wont work)">Make Leef your default browser (probably won't work)</p>
+            <p data-i18n="Make Leef your default browser (probably wont work)">Make Leef your default browser (probably
+              won't work)</p>
             <button class="settings-btn" id="btn-default-browser" data-i18n="Make default">Make default</button>
           </div>
 
           <div class="setting-group">
             <div class="setting-group-header">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
+                </path>
+              </svg>
               <h3 data-i18n="Language">Language</h3>
             </div>
             <select id="language-select">
@@ -1114,36 +1373,52 @@
 
           <div class="setting-group">
             <div class="setting-group-header">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="5 12 2 12 12 2 22 12 19 12"></polyline><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"></path><rect x="9" y="12" width="6" height="9"></rect></svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="5 12 2 12 12 2 22 12 19 12"></polyline>
+                <path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"></path>
+                <rect x="9" y="12" width="6" height="9"></rect>
+              </svg>
               <h3 data-i18n="Startup behavior">Startup behavior</h3>
             </div>
             <div class="radio-card-group">
-              <label class="radio-card"><input type="radio" name="startup" value="newtab" checked><span class="radio-card-inner"><strong data-i18n="New Tab">New Tab</strong><small data-i18n="Open the Leef home page">Open the Leef home page</small></span></label>
-              <label class="radio-card"><input type="radio" name="startup" value="homepage"><span class="radio-card-inner"><strong data-i18n="Homepage">Homepage</strong><small data-i18n="Open a custom URL">Open a custom URL</small></span></label>
+              <label class="radio-card"><input type="radio" name="startup" value="newtab" checked><span
+                  class="radio-card-inner"><strong data-i18n="New Tab">New Tab</strong><small
+                    data-i18n="Open the Leef home page">Open the Leef home page</small></span></label>
+              <label class="radio-card"><input type="radio" name="startup" value="homepage"><span
+                  class="radio-card-inner"><strong data-i18n="Homepage">Homepage</strong><small
+                    data-i18n="Open a custom URL">Open a custom URL</small></span></label>
             </div>
             <div id="startup-homepage-container" style="margin-top: 15px; display: none;">
-              <label for="custom-new-tab" style="font-size: 0.85rem; font-weight: 600; color: #11782c; margin-bottom: 6px;" data-i18n="Custom Homepage URL">Custom Homepage URL</label>
+              <label for="custom-new-tab"
+                style="font-size: 0.85rem; font-weight: 600; color: #11782c; margin-bottom: 6px;"
+                data-i18n="Custom Homepage URL">Custom Homepage URL</label>
               <input type="text" id="custom-new-tab" placeholder="e.g. https://google.com">
             </div>
           </div>
 
           <div class="setting-group">
             <div class="setting-group-header">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+              </svg>
               <div style="flex:1; display:flex; align-items:center; justify-content:space-between;">
                 <h3 data-i18n="Leef Software Updates">Leef Software Updates</h3>
                 <span id="update-status-badge" class="status-badge">[UP TO DATE]</span>
               </div>
             </div>
-            <p style="margin-bottom: 15px;" data-i18n="Stay up to date with the latest security fixes and features.">Stay up to date with the latest security fixes and features.</p>
+            <p style="margin-bottom: 15px;" data-i18n="Stay up to date with the latest security fixes and features.">
+              Stay up to date with the latest security fixes and features.</p>
             <div class="toggle-group" style="padding: 0; margin-bottom: 15px;">
               <div>
                 <strong data-i18n="Auto-check for updates">Auto-check for updates</strong>
                 <p data-i18n="Check GitHub on startup (External Call)">Check GitHub on startup (External Call)</p>
               </div>
-              <label class="switch"><input type="checkbox" id="auto-check-updates" checked><span class="slider"></span></label>
+              <label class="switch"><input type="checkbox" id="auto-check-updates" checked><span
+                  class="slider"></span></label>
             </div>
-            <button class="settings-btn settings-btn-primary" id="btn-check-updates" style="width: 100%;" data-i18n="Check for Updates Now">Check for Updates Now</button>
+            <button class="settings-btn settings-btn-primary" id="btn-check-updates" style="width: 100%;"
+              data-i18n="Check for Updates Now">Check for Updates Now</button>
           </div>
 
 
@@ -1155,15 +1430,20 @@
         <div class="settings-section" id="sec-browsing">
           <div class="settings-section-header">
             <h1 data-i18n="Browsing">Browsing</h1>
-            <p class="settings-section-desc" data-i18n="Search engines and web navigation settings.">Search engines and web navigation settings.</p>
+            <p class="settings-section-desc" data-i18n="Search engines and web navigation settings.">Search engines and
+              web navigation settings.</p>
           </div>
 
           <div class="setting-group">
             <div class="setting-group-header">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
               <h3 data-i18n="Search Engine">Search Engine</h3>
             </div>
-            <label for="search-engine-select-browsing" data-i18n="Search engine used in the address bar:">Search engine used in the address bar:</label>
+            <label for="search-engine-select-browsing" data-i18n="Search engine used in the address bar:">Search engine
+              used in the address bar:</label>
             <select id="search-engine-select-browsing">
               <option value="https://www.google.com/search?q=">Google</option>
               <option value="https://duckduckgo.com/?q=">DuckDuckGo</option>
@@ -1173,26 +1453,35 @@
 
           <div class="setting-group toggle-group">
             <div>
-              <h3><span data-i18n="Live Autocomplete Suggestions">Live Autocomplete Suggestions</span> <span class="beta-tag">EXTERNAL API</span></h3>
-              <p data-i18n="Fetch real-time search suggestions from Google as you type in the address bar">Fetch real-time search suggestions from Google as you type in the address bar</p>
+              <h3><span data-i18n="Live Autocomplete Suggestions">Live Autocomplete Suggestions</span> <span
+                  class="beta-tag">EXTERNAL API</span></h3>
+              <p data-i18n="Fetch real-time search suggestions from Google as you type in the address bar">Fetch
+                real-time search suggestions from Google as you type in the address bar</p>
             </div>
-            <label class="switch"><input type="checkbox" id="live-autocomplete-browsing"><span class="slider"></span></label>
+            <label class="switch"><input type="checkbox" id="live-autocomplete-browsing"><span
+                class="slider"></span></label>
           </div>
 
           <div class="setting-group toggle-group">
             <div>
-              <h3><span data-i18n="Block AI Overviews">Block AI Overviews</span> <span class="beta-tag">GOOGLE ONLY</span></h3>
-              <p data-i18n="Force Google Search to show the 'Web' tab by default">Force Google Search to show the 'Web' tab by default</p>
+              <h3><span data-i18n="Block AI Overviews">Block AI Overviews</span> <span class="beta-tag">GOOGLE
+                  ONLY</span></h3>
+              <p data-i18n="Force Google Search to show the 'Web' tab by default">Force Google Search to show the 'Web'
+                tab by default</p>
             </div>
-            <label class="switch"><input type="checkbox" id="block-ai-browsing" checked><span class="slider"></span></label>
+            <label class="switch"><input type="checkbox" id="block-ai-browsing" checked><span
+                class="slider"></span></label>
           </div>
 
           <div class="setting-group toggle-group">
             <div>
-              <h3><span data-i18n="Native Dictionary Card">Native Dictionary Card</span> <span class="beta-tag">BETA</span></h3>
-              <p data-i18n="Restore dictionary definitions in Google Search">Restore dictionary definitions in Google Search</p>
+              <h3><span data-i18n="Native Dictionary Card">Native Dictionary Card</span> <span
+                  class="beta-tag">BETA</span></h3>
+              <p data-i18n="Restore dictionary definitions in Google Search">Restore dictionary definitions in Google
+                Search</p>
             </div>
-            <label class="switch"><input type="checkbox" id="native-dictionary-browsing" checked><span class="slider"></span></label>
+            <label class="switch"><input type="checkbox" id="native-dictionary-browsing" checked><span
+                class="slider"></span></label>
           </div>
         </div>
 
@@ -1223,7 +1512,8 @@
           <div class="setting-group toggle-group">
             <div>
               <h3 data-i18n="Per-Tab Volume Booster">Per-Tab Volume Booster</h3>
-              <p data-i18n="Enable the volume booster in Quick Settings. Uses 0% CPU when set to 100%.">Enable the volume booster in Quick Settings. Uses 0% CPU when set to 100%.</p>
+              <p data-i18n="Enable the volume booster in Quick Settings. Uses 0% CPU when set to 100%.">Enable the
+                volume booster in Quick Settings. Uses 0% CPU when set to 100%.</p>
             </div>
             <label class="switch"><input type="checkbox" id="enable-volume-boost"><span class="slider"></span></label>
           </div>
@@ -1235,20 +1525,24 @@
           <div class="setting-group">
             <h3 data-i18n="Clear browsing data">Clear browsing data</h3>
             <p data-i18n="Clear history, cookies, cache, and more">Clear history, cookies, cache, and more</p>
-            <button class="settings-btn btn-danger" id="btn-clear-data" style="margin-bottom: 8px;" data-i18n="Clear Data Now">Clear Data Now
+            <button class="settings-btn btn-danger" id="btn-clear-data" style="margin-bottom: 8px;"
+              data-i18n="Clear Data Now">Clear Data Now
               Now</button>
-            <button class="settings-btn" id="btn-redo-setup" style="background: rgba(0,0,0,0.05); color: #333;" data-i18n="Redo First-Time Setup">Redo
+            <button class="settings-btn" id="btn-redo-setup" style="background: rgba(0,0,0,0.05); color: #333;"
+              data-i18n="Redo First-Time Setup">Redo
               First-Time Setup</button>
           </div>
           <div class="setting-group">
             <h3 data-i18n="Tracking Protection">Tracking Protection</h3>
-            <label><input type="radio" name="tracking" value="standard" checked> <span data-i18n="Standard">Standard</span></label>
+            <label><input type="radio" name="tracking" value="standard" checked> <span
+                data-i18n="Standard">Standard</span></label>
             <label><input type="radio" name="tracking" value="strict"> <span data-i18n="Strict">Strict</span></label>
           </div>
           <div class="setting-group toggle-group">
             <div>
               <h3 data-i18n="HTTPS-only mode">HTTPS-only mode</h3>
-              <p data-i18n="Automatically upgrade all connections to secure HTTPS">Automatically upgrade all connections to secure HTTPS</p>
+              <p data-i18n="Automatically upgrade all connections to secure HTTPS">Automatically upgrade all connections
+                to secure HTTPS</p>
             </div>
             <label class="switch"><input type="checkbox" id="https-only" checked><span class="slider"></span></label>
           </div>
@@ -1261,56 +1555,70 @@
             <div class="radio-group">
               <label class="radio-row">
                 <input type="radio" name="adblock-tier" value="none" checked>
-                <span data-i18n="None — No active blocking enabled."><strong data-i18n="None">None</strong> — No active blocking enabled.</span>
+                <span data-i18n="None — No active blocking enabled."><strong data-i18n="None">None</strong> — No active
+                  blocking enabled.</span>
               </label>
               <label class="radio-row">
                 <input type="radio" name="adblock-tier" value="basic">
-                <span data-i18n="Basic — Lightweight domain filtering (100% Offline)."><strong data-i18n="Basic">Basic</strong> — Lightweight domain filtering (100% Offline).</span>
+                <span data-i18n="Basic — Lightweight domain filtering (100% Offline)."><strong
+                    data-i18n="Basic">Basic</strong> — Lightweight domain filtering (100% Offline).</span>
               </label>
               <label class="radio-row">
                 <input type="radio" name="adblock-tier" value="comprehensive">
-                <span data-i18n="Comprehensive — Full engine protection. (External Call)"><strong data-i18n="Comprehensive">Comprehensive</strong> — Full engine protection. <span
+                <span data-i18n="Comprehensive — Full engine protection. (External Call)"><strong
+                    data-i18n="Comprehensive">Comprehensive</strong> — Full engine protection. <span
                     style="color: var(--primary-color); font-weight: 600;">(External Call)</span></span>
               </label>
             </div>
 
             <button class="settings-btn" id="btn-refresh-adblock"
-              style="display: none; margin-top: 15px; background: rgba(0,0,0,0.05); color: #333; width: auto; font-size: 0.85rem;" data-i18n="Refresh Engine & Lists">Refresh
+              style="display: none; margin-top: 15px; background: rgba(0,0,0,0.05); color: #333; width: auto; font-size: 0.85rem;"
+              data-i18n="Refresh Engine & Lists">Refresh
               Engine & Lists</button>
           </div>
 
           <div class="setting-group">
             <h3 data-i18n="Privacy Dashboard">Privacy Dashboard</h3>
-            <p style="margin-bottom: 12px;" data-i18n="View detailed analytics and recent protection activity.">View detailed analytics and recent protection activity.</p>
+            <p style="margin-bottom: 12px;" data-i18n="View detailed analytics and recent protection activity.">View
+              detailed analytics and recent protection activity.</p>
             <button class="settings-btn" id="btn-open-privacy-settings"
-              style="width: auto; background: var(--primary-color); color: white; border: none;" data-i18n="Open Privacy Dashboard">Open Privacy
+              style="width: auto; background: var(--primary-color); color: white; border: none;"
+              data-i18n="Open Privacy Dashboard">Open Privacy
               Dashboard</button>
           </div>
           <div class="setting-group toggle-group">
             <div>
               <h3 data-i18n="Global Privacy Control (GPC)">Global Privacy Control (GPC)</h3>
-              <p data-i18n="Automatically signal your privacy preference to websites">Automatically signal your privacy preference to websites</p>
+              <p data-i18n="Automatically signal your privacy preference to websites">Automatically signal your privacy
+                preference to websites</p>
             </div>
             <label class="switch"><input type="checkbox" id="flag-gpc" checked><span class="slider"></span></label>
           </div>
           <div class="setting-group toggle-group">
             <div>
-              <h3><span data-i18n="Block Google AI Overview">Block Google AI Overview</span> <span class="beta-tag">BETA</span></h3>
-              <p data-i18n="Seamlessly prevent AI Overviews from appearing in Google searches">Seamlessly prevent AI Overviews from appearing in Google searches</p>
+              <h3><span data-i18n="Block Google AI Overview">Block Google AI Overview</span> <span
+                  class="beta-tag">BETA</span></h3>
+              <p data-i18n="Seamlessly prevent AI Overviews from appearing in Google searches">Seamlessly prevent AI
+                Overviews from appearing in Google searches</p>
             </div>
             <label class="switch"><input type="checkbox" id="block-ai" checked><span class="slider"></span></label>
           </div>
           <div class="setting-group toggle-group">
             <div>
-              <h3><span data-i18n="Native Dictionary Card">Native Dictionary Card</span> <span class="beta-tag">BETA</span></h3>
-              <p data-i18n="Restore dictionary definitions in Google Search">Restore dictionary definitions in Google Search</p>
+              <h3><span data-i18n="Native Dictionary Card">Native Dictionary Card</span> <span
+                  class="beta-tag">BETA</span></h3>
+              <p data-i18n="Restore dictionary definitions in Google Search">Restore dictionary definitions in Google
+                Search</p>
             </div>
-            <label class="switch"><input type="checkbox" id="native-dictionary" checked><span class="slider"></span></label>
+            <label class="switch"><input type="checkbox" id="native-dictionary" checked><span
+                class="slider"></span></label>
           </div>
           <div class="setting-group toggle-group">
             <div>
-              <h3><span data-i18n="Live Autocomplete Suggestions">Live Autocomplete Suggestions</span> <span class="beta-tag">EXTERNAL API</span></h3>
-              <p data-i18n="Fetch real-time search suggestions from Google as you type in the address bar">Fetch real-time search suggestions from Google as you type in the address bar</p>
+              <h3><span data-i18n="Live Autocomplete Suggestions">Live Autocomplete Suggestions</span> <span
+                  class="beta-tag">EXTERNAL API</span></h3>
+              <p data-i18n="Fetch real-time search suggestions from Google as you type in the address bar">Fetch
+                real-time search suggestions from Google as you type in the address bar</p>
             </div>
             <label class="switch"><input type="checkbox" id="live-autocomplete"><span class="slider"></span></label>
           </div>
@@ -1325,13 +1633,16 @@
           <div class="setting-group toggle-group">
             <div>
               <h3 data-i18n="Manual News Refresh">Manual News Refresh</h3>
-              <p data-i18n="Stop news from loading automatically. News only fetches when you click &quot;Refresh&quot;.">Stop news from loading automatically. News only fetches when you click "Refresh".</p>
+              <p
+                data-i18n="Stop news from loading automatically. News only fetches when you click &quot;Refresh&quot;.">
+                Stop news from loading automatically. News only fetches when you click "Refresh".</p>
             </div>
             <label class="switch"><input type="checkbox" id="news-manual-refresh"><span class="slider"></span></label>
           </div>
           <div class="setting-group">
             <h3 data-i18n="Site Permissions">Site Permissions</h3>
-            <button class="settings-btn" id="btn-camera-mic" data-i18n="Manage Camera & Microphone">Manage Camera & Microphone</button>
+            <button class="settings-btn" id="btn-camera-mic" data-i18n="Manage Camera & Microphone">Manage Camera &
+              Microphone</button>
             <button class="settings-btn" id="btn-location" data-i18n="Location Settings">Location Settings</button>
           </div>
         </div>
@@ -1343,7 +1654,8 @@
           <div class="setting-group toggle-group">
             <div>
               <h3 style="color: var(--primary-color);" data-i18n="Efficiency Mode">Efficiency Mode</h3>
-              <p data-i18n="Reduces UI effects and throttles background tasks to save CPU.">Reduces UI effects and throttles background tasks to save CPU.</p>
+              <p data-i18n="Reduces UI effects and throttles background tasks to save CPU.">Reduces UI effects and
+                throttles background tasks to save CPU.</p>
             </div>
             <label class="switch"><input type="checkbox" id="efficiency-mode"><span class="slider"></span></label>
           </div>
@@ -1353,7 +1665,9 @@
               <h3 data-i18n="CPU Limiter">CPU Limiter</h3>
               <span id="cpu-limit-value" style="font-weight: 600; color: var(--primary-color);">100%</span>
             </div>
-            <p style="margin-bottom: 12px; font-size: 0.85rem; opacity: 0.7;" data-i18n="Limit the total CPU usage per tab. Lower values increase battery life.">Limit the total CPU usage per tab. Lower
+            <p style="margin-bottom: 12px; font-size: 0.85rem; opacity: 0.7;"
+              data-i18n="Limit the total CPU usage per tab. Lower values increase battery life.">Limit the total CPU
+              usage per tab. Lower
               values increase battery life.</p>
             <input type="range" id="cpu-limit-slider" min="10" max="100" value="100" step="5"
               style="width: 100%; accent-color: var(--primary-color);">
@@ -1364,17 +1678,21 @@
               <h3 data-i18n="RAM Limiter">RAM Limiter</h3>
               <span id="ram-limit-value" style="font-weight: 600; color: var(--primary-color);">Off</span>
             </div>
-            <p style="margin-bottom: 12px; font-size: 0.85rem; opacity: 0.7;" data-i18n="Aggressively hibernate tabs to stay under a specific memory footprint.">Aggressively hibernate tabs to stay under
+            <p style="margin-bottom: 12px; font-size: 0.85rem; opacity: 0.7;"
+              data-i18n="Aggressively hibernate tabs to stay under a specific memory footprint.">Aggressively hibernate
+              tabs to stay under
               a specific memory footprint.</p>
             <input type="range" id="ram-limit-slider" min="0" max="4000" value="0" step="256"
               style="width: 100%; accent-color: var(--primary-color);">
-            <p style="font-size: 0.7rem; opacity: 0.5; margin-top: 4px;" data-i18n="Limit in MB. Set to 0 to disable.">Limit in MB. Set to 0 to disable.</p>
+            <p style="font-size: 0.7rem; opacity: 0.5; margin-top: 4px;" data-i18n="Limit in MB. Set to 0 to disable.">
+              Limit in MB. Set to 0 to disable.</p>
           </div>
 
           <div class="setting-group toggle-group">
             <div>
               <h3 data-i18n="Background activity limits">Background activity limits</h3>
-              <p data-i18n="Suspend inactive tabs to save memory after 5 minutes.">Suspend inactive tabs to save memory after 5 minutes.</p>
+              <p data-i18n="Suspend inactive tabs to save memory after 5 minutes.">Suspend inactive tabs to save memory
+                after 5 minutes.</p>
             </div>
             <label class="switch"><input type="checkbox" id="background-limit" checked><span
                 class="slider"></span></label>
@@ -1387,14 +1705,16 @@
           <div class="setting-group toggle-group">
             <div>
               <h3 data-i18n="Master Notification Toggle">Master Notification Toggle</h3>
-              <p data-i18n="Allow websites to ask for notification permissions">Allow websites to ask for notification permissions</p>
+              <p data-i18n="Allow websites to ask for notification permissions">Allow websites to ask for notification
+                permissions</p>
             </div>
             <label class="switch"><input type="checkbox" id="allow-notifications" checked><span
                 class="slider"></span></label>
           </div>
           <div class="setting-group">
             <h3 data-i18n="Per-site Control">Per-site Control</h3>
-            <button class="settings-btn" id="btn-allowed-sites" data-i18n="Manage Allowed Sites">Manage Allowed Sites</button>
+            <button class="settings-btn" id="btn-allowed-sites" data-i18n="Manage Allowed Sites">Manage Allowed
+              Sites</button>
           </div>
         </div>
 
@@ -1411,7 +1731,8 @@
           <div class="setting-group toggle-group">
             <div>
               <h3 data-i18n="Ask where to save">Ask where to save</h3>
-              <p data-i18n="Prompt for location before downloading each file">Prompt for location before downloading each file</p>
+              <p data-i18n="Prompt for location before downloading each file">Prompt for location before downloading
+                each file</p>
             </div>
             <label class="switch"><input type="checkbox" id="ask-download"><span class="slider"></span></label>
           </div>
@@ -1427,7 +1748,8 @@
           <div class="setting-group toggle-group">
             <div>
               <h3 data-i18n="DNS over HTTPS">DNS over HTTPS</h3>
-              <p data-i18n="Use secure DNS for privacy (Cloudflare 1.1.1.1)">Use secure DNS for privacy (Cloudflare 1.1.1.1)</p>
+              <p data-i18n="Use secure DNS for privacy (Cloudflare 1.1.1.1)">Use secure DNS for privacy (Cloudflare
+                1.1.1.1)</p>
             </div>
             <label class="switch"><input type="checkbox" id="doh-toggle" checked><span class="slider"></span></label>
           </div>
@@ -1437,15 +1759,20 @@
           </div>
           <div class="setting-group">
             <h3 data-i18n="Developer Tools">Developer Tools</h3>
-            <button class="settings-btn" id="btn-open-flags-advanced" style="width: auto;" data-i18n="Labs">Labs</button>
+            <button class="settings-btn" id="btn-open-flags-advanced" style="width: auto;"
+              data-i18n="Labs">Labs</button>
           </div>
           <div class="setting-group">
             <h3 data-i18n="Bug Report Diagnostics">Bug Report Diagnostics</h3>
-            <p style="margin-bottom: 8px;" data-i18n="Generate a local log file with system info to help us debug issues.">Generate a local log file with system info to help us debug issues.</p>
+            <p style="margin-bottom: 8px;"
+              data-i18n="Generate a local log file with system info to help us debug issues.">Generate a local log file
+              with system info to help us debug issues.</p>
             <button class="settings-btn" id="btn-generate-log"
-              style="background: rgba(0,0,0,0.05); color: #333; margin-bottom: 8px;" data-i18n="Generate Diagnostics Log">Generate Diagnostics Log</button>
+              style="background: rgba(0,0,0,0.05); color: #333; margin-bottom: 8px;"
+              data-i18n="Generate Diagnostics Log">Generate Diagnostics Log</button>
             <div
-              style="font-size: 0.8rem; color: #666; line-height: 1.4; background: rgba(0,0,0,0.02); padding: 8px; border-radius: 6px;" data-i18n="<strong>Privacy Note:</strong> This file is saved locally to your Downloads folder. We do not collect telemetry. Unless you manually upload this file to the <a href=&quot;https://forms.gle/upGc1dvPYaoBw4o96&quot; target=&quot;_blank&quot; style=&quot;color: var(--primary-color); text-decoration: none;&quot;>bug report form</a> or email it to <strong>contact.qtech@proton.me</strong>, no data leaves your device.">
+              style="font-size: 0.8rem; color: #666; line-height: 1.4; background: rgba(0,0,0,0.02); padding: 8px; border-radius: 6px;"
+              data-i18n="<strong>Privacy Note:</strong> This file is saved locally to your Downloads folder. We do not collect telemetry. Unless you manually upload this file to the <a href=&quot;https://forms.gle/upGc1dvPYaoBw4o96&quot; target=&quot;_blank&quot; style=&quot;color: var(--primary-color); text-decoration: none;&quot;>bug report form</a> or email it to <strong>contact.qtech@proton.me</strong>, no data leaves your device.">
               <strong>Privacy Note:</strong> This file is saved locally to your Downloads folder. We do not collect
               telemetry. Unless you manually upload this file to the <a href="https://forms.gle/upGc1dvPYaoBw4o96"
                 target="_blank" style="color: var(--primary-color); text-decoration: none;">bug report form</a> or email
@@ -1455,7 +1782,11 @@
 
           <div class="setting-group build-info-card">
             <div class="setting-group-header">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+              </svg>
               <h3 data-i18n="About Leef">About Leef</h3>
             </div>
             <div class="build-info-grid">
@@ -1488,9 +1819,11 @@
       <div class="privacy-content">
         <div class="privacy-header">
           <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
-            <h1 style="font-family: var(--font-display); font-size: 2.5rem; color: var(--primary-color);" data-i18n="Privacy Analytics">Privacy Analytics</h1>
+            <h1 style="font-family: var(--font-display); font-size: 2.5rem; color: var(--primary-color);"
+              data-i18n="Privacy Analytics">Privacy Analytics</h1>
           </div>
-          <p class="flags-subtitle" data-i18n="A live look at how Leef is protecting your privacy.">A live look at how Leef is protecting your privacy.</p>
+          <p class="flags-subtitle" data-i18n="A live look at how Leef is protecting your privacy.">A live look at how
+            Leef is protecting your privacy.</p>
         </div>
 
         <!-- State: Blocker Disabled -->
@@ -1498,9 +1831,13 @@
           style="display: none; text-align: center; padding: 40px 20px; background: white; border-radius: 20px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 20px rgba(0,0,0,0.02);">
           <div style="font-size: 4rem; margin-bottom: 20px;">🛡️</div>
           <h2 style="margin-bottom: 10px;" data-i18n="Ad Blocking is Disabled">Ad Blocking is Disabled</h2>
-          <p style="color: #666; margin-bottom: 25px; max-width: 400px; margin-inline: auto;" data-i18n="To see how well Leef protects you from ads and trackers, you first need to enable the blocker in your settings.">To see how well Leef protects you from ads and trackers, you first need to enable the blocker in your settings.</p>
+          <p style="color: #666; margin-bottom: 25px; max-width: 400px; margin-inline: auto;"
+            data-i18n="To see how well Leef protects you from ads and trackers, you first need to enable the blocker in your settings.">
+            To see how well Leef protects you from ads and trackers, you first need to enable the blocker in your
+            settings.</p>
           <button id="btn-privacy-enable-blocker" class="settings-btn"
-            style="background: var(--primary-color); color: white; border: none; padding: 12px 24px; font-weight: 600;" data-i18n="Open Protection Settings">Open Protection Settings</button>
+            style="background: var(--primary-color); color: white; border: none; padding: 12px 24px; font-weight: 600;"
+            data-i18n="Open Protection Settings">Open Protection Settings</button>
         </div>
 
         <!-- State: Blocker Enabled -->
@@ -1519,9 +1856,11 @@
           </div>
 
           <div class="privacy-section" style="margin-top: 30px;">
-            <h3 style="margin-bottom: 15px; font-weight: 600;" data-i18n="Protection activity from this session">Protection activity from this session</h3>
+            <h3 style="margin-bottom: 15px; font-weight: 600;" data-i18n="Protection activity from this session">
+              Protection activity from this session</h3>
             <div id="privacy-recent-list" class="privacy-recent-list">
-              <p style="opacity:0.5; font-size:0.9rem; padding: 15px; text-align: center;" data-i18n="Start browsing to see protection in action.">Start browsing to see protection in action.</p>
+              <p style="opacity:0.5; font-size:0.9rem; padding: 15px; text-align: center;"
+                data-i18n="Start browsing to see protection in action.">Start browsing to see protection in action.</p>
             </div>
           </div>
 
@@ -1532,7 +1871,10 @@
             </svg>
             <div>
               <h4 data-i18n="Your data is your business.">Your data is your business.</h4>
-              <p data-i18n="Leef Labs Privacy Analytics is built to give you transparency. Everything shown here is stored 100% locally on your machine.">Leef Labs Privacy Analytics is built to give you transparency. Everything shown here is stored 100% locally on your machine.</p>
+              <p
+                data-i18n="Leef Labs Privacy Analytics is built to give you transparency. Everything shown here is stored 100% locally on your machine.">
+                Leef Labs Privacy Analytics is built to give you transparency. Everything shown here is stored 100%
+                locally on your machine.</p>
             </div>
           </div>
         </div>
@@ -1566,9 +1908,12 @@
     <div class="hub-modal">
       <div class="hub-modal-content">
         <h3 style="margin: 0; color: var(--primary-color);">Leef Dictionary</h3>
-        <p style="margin-top: 8px;">Google recently removed its built-in dictionary card and replaced it with AI answers. Because Leef blocks AI-generated content by default, you would have no way to look up word definitions.</p>
+        <p style="margin-top: 8px;">Google recently removed its built-in dictionary card and replaced it with AI
+          answers. Because Leef blocks AI-generated content by default, you would have no way to look up word
+          definitions.</p>
         <p>Leef restores this feature using an open dictionary API so you always get clean, reliable definitions.</p>
-        <p style="margin-bottom: 0; opacity: 0.8; font-size: 0.9em;">You can turn this off any time in <strong>Leef &rarr; Settings &rarr; Browsing</strong>.</p>
+        <p style="margin-bottom: 0; opacity: 0.8; font-size: 0.9em;">You can turn this off any time in <strong>Leef
+            &rarr; Settings &rarr; Browsing</strong>.</p>
       </div>
       <div class="hub-modal-actions" style="margin-top: 10px; display: flex;">
         <button id="dict-info-close" class="hub-modal-btn hub-modal-confirm" style="flex: 1;">Close</button>
@@ -1585,7 +1930,8 @@
       <input type="text" id="hub-add-url" placeholder="e.g. https://github.com" autocomplete="off" spellcheck="false" />
       <label>Tile Preview</label>
       <div class="hub-tile-preview-container">
-        <div id="hub-tile-preview" class="hub-tile hub-tile-custom" style="background-color: hsl(109, 100%, 74%); background-image: none; color: #111;">
+        <div id="hub-tile-preview" class="hub-tile hub-tile-custom"
+          style="background-color: hsl(109, 100%, 74%); background-image: none; color: #111;">
           <span id="hub-tile-preview-name">Site Name</span>
         </div>
       </div>
@@ -1738,6 +2084,34 @@
 
       <div class="hub-modal-actions">
         <button id="gpc-info-close" class="hub-modal-btn hub-modal-confirm" style="flex: 1;">Got It</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Crash Explanation Modal -->
+  <div id="crash-explanation-modal" class="hub-modal-overlay" style="display:none; z-index: 10001;">
+    <div class="hub-modal" style="max-width: 500px; width: 90%;">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 18px;">
+        <span style="font-size: 2.2rem; line-height: 1;">🛡️</span>
+        <div>
+          <h3 style="margin: 0; font-family: var(--font-display); font-size: 1.25rem; color: var(--primary-color);">
+            Search Engine Safe Mode</h3>
+          <p style="margin: 2px 0 0 0; font-size: 0.8rem; opacity: 0.7;">Preventing search engine crashes</p>
+        </div>
+      </div>
+      <div style="font-size: 0.9rem; color: #444; line-height: 1.6; margin-bottom: 20px;">
+        <p style="margin-bottom: 15px;">
+          Google recently changed its search engine backend to prioritize its "AI Overview" features. Because Leef
+          injects specialized filters to strip out these AI components, the complex scripts served by Google can
+          conflict with our blocker, causing the underlying Chromium layout engine to crash.
+        </p>
+        <p style="margin-bottom: 0;">
+          To keep your browsing seamless and avoid infinite crash loops, Leef automatically loads your query in
+          <strong>Safe Mode</strong> using DuckDuckGo.
+        </p>
+      </div>
+      <div class="hub-modal-actions">
+        <button id="crash-explanation-close" class="hub-modal-btn hub-modal-confirm" style="flex: 1;">Got It</button>
       </div>
     </div>
   </div>
@@ -1910,7 +2284,8 @@
         <div class="onboarding-header-section">
           <img class="brand-icon" src="./images/icon-mark.svg">
           <h1 data-i18n="Welcome to Leef">Welcome to Leef</h1>
-          <p data-i18n="Let's set up your personal, secure browsing experience in just a few quick steps.">Let's set up your personal, secure browsing experience in just a few quick steps.</p>
+          <p data-i18n="Let's set up your personal, secure browsing experience in just a few quick steps.">Let's set up
+            your personal, secure browsing experience in just a few quick steps.</p>
         </div>
       </div>
 
@@ -1918,13 +2293,15 @@
       <div class="onboarding-step" data-step="1">
         <div class="onboarding-header-section">
           <h1 data-i18n="Language Preference">Language Preference</h1>
-          <p data-i18n="Select your regional spelling for the browser interface.">Select your regional spelling for the browser interface.</p>
+          <p data-i18n="Select your regional spelling for the browser interface.">Select your regional spelling for the
+            browser interface.</p>
         </div>
         <div class="onboarding-options">
           <div class="onboarding-card">
             <div style="flex: 1; padding-right: 16px;">
               <h3 data-i18n="Regional Language">Regional Language</h3>
-              <p data-i18n="Interface text and browser options will use this spelling.">Interface text and browser options will use this spelling.</p>
+              <p data-i18n="Interface text and browser options will use this spelling.">Interface text and browser
+                options will use this spelling.</p>
             </div>
             <select id="onboard-language"
               style="padding: 10px 16px; border-radius: 8px; border: 1.5px solid rgba(0,0,0,0.1); background: #f9f9f9; font-weight: 600; cursor: pointer;">
@@ -1943,7 +2320,8 @@
       <div class="onboarding-step" data-step="2">
         <div class="onboarding-header-section">
           <h1 data-i18n="Ad & Tracker Protection">Ad & Tracker Protection</h1>
-          <p data-i18n="Choose your level of protection. You can adjust this later in settings.">Choose your level of protection. You can adjust this later in settings.</p>
+          <p data-i18n="Choose your level of protection. You can adjust this later in settings.">Choose your level of
+            protection. You can adjust this later in settings.</p>
         </div>
         <div class="onboarding-options">
           <div class="onboarding-card"
@@ -1952,17 +2330,23 @@
               <label class="radio-row"
                 style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px 0;">
                 <input type="radio" name="onboard-adblock-tier" value="none" style="transform: scale(1.2);" checked>
-                <span style="font-size: 0.95rem; color: rgba(0,0,0,0.8);"><strong data-i18n="None">None</strong> — <span data-i18n="No active blocking.">No active blocking.</span></span>
+                <span style="font-size: 0.95rem; color: rgba(0,0,0,0.8);"><strong data-i18n="None">None</strong> — <span
+                    data-i18n="No active blocking.">No active blocking.</span></span>
               </label>
               <label class="radio-row"
                 style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px 0;">
                 <input type="radio" name="onboard-adblock-tier" value="basic" style="transform: scale(1.2);">
-                <span style="font-size: 0.95rem; color: rgba(0,0,0,0.8);"><strong data-i18n="Basic">Basic</strong> — <span data-i18n="Lightweight domain filtering (100% Offline).">Lightweight domain filtering (100% Offline).</span></span>
+                <span style="font-size: 0.95rem; color: rgba(0,0,0,0.8);"><strong data-i18n="Basic">Basic</strong> —
+                  <span data-i18n="Lightweight domain filtering (100% Offline).">Lightweight domain filtering (100%
+                    Offline).</span></span>
               </label>
               <label class="radio-row"
                 style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px 0;">
                 <input type="radio" name="onboard-adblock-tier" value="comprehensive" style="transform: scale(1.2);">
-                <span style="font-size: 0.95rem; color: rgba(0,0,0,0.8);"><strong data-i18n="Comprehensive">Comprehensive</strong> — <span data-i18n="Full engine protection">Full engine protection</span> <span style="color: var(--primary-color); font-weight: 600;">(uses external source)</span></span>
+                <span style="font-size: 0.95rem; color: rgba(0,0,0,0.8);"><strong
+                    data-i18n="Comprehensive">Comprehensive</strong> — <span data-i18n="Full engine protection">Full
+                    engine protection</span> <span style="color: var(--primary-color); font-weight: 600;">(uses external
+                    source)</span></span>
               </label>
             </div>
           </div>
@@ -1973,13 +2357,15 @@
       <div class="onboarding-step" data-step="3">
         <div class="onboarding-header-section">
           <h1 data-i18n="Custom Features">Custom Features</h1>
-          <p data-i18n="Toggle advanced features to tailor your experience.">Toggle advanced features to tailor your experience.</p>
+          <p data-i18n="Toggle advanced features to tailor your experience.">Toggle advanced features to tailor your
+            experience.</p>
         </div>
         <div class="onboarding-options">
           <div class="onboarding-card">
             <div style="flex: 1; padding-right: 16px;">
               <h3 data-i18n="AI Overview Blocker">AI Overview Blocker</h3>
-              <p data-i18n="Automatically remove AI-generated summaries from Google search results.">Automatically remove AI-generated summaries from Google search results.</p>
+              <p data-i18n="Automatically remove AI-generated summaries from Google search results.">Automatically
+                remove AI-generated summaries from Google search results.</p>
             </div>
             <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-ai" checked><span
                 class="slider"></span></label>
@@ -1988,7 +2374,8 @@
           <div class="onboarding-card">
             <div style="flex: 1; padding-right: 16px;">
               <h3 data-i18n="Live Search Autocomplete">Live Search Autocomplete</h3>
-              <p data-i18n="Send keystrokes to a search engine for live address bar suggestions.">Send keystrokes to a search engine for live address bar suggestions.</p>
+              <p data-i18n="Send keystrokes to a search engine for live address bar suggestions.">Send keystrokes to a
+                search engine for live address bar suggestions.</p>
             </div>
             <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-autocomplete"><span
                 class="slider"></span></label>
@@ -1997,15 +2384,20 @@
           <div class="onboarding-card">
             <div class="onboard-card-info">
               <h3 data-i18n="News Feed Autofetching">News Feed Autofetching</h3>
-              <p data-i18n="Automatically fetch the latest headlines from Yahoo News RSS on startup.">Automatically fetch the latest headlines from Yahoo News RSS on startup.</p>
+              <p data-i18n="Automatically fetch the latest headlines from Yahoo News RSS on startup.">Automatically
+                fetch the latest headlines from Yahoo News RSS on startup.</p>
             </div>
             <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-news" checked><span
                 class="slider"></span></label>
           </div>
           <div class="onboarding-card">
             <div class="onboard-card-info">
-              <h3><span data-i18n="Native Dictionary Card">Native Dictionary Card</span> <span class="beta-tag" style="font-size: 0.65rem; background: var(--primary-color); color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-left: 6px; vertical-align: middle;">BETA</span></h3>
-              <p data-i18n="Restore dictionary definitions in Google Search after Google removed them in favor of AI answers.">Restore dictionary definitions in Google Search after Google removed them in favor of AI answers.</p>
+              <h3><span data-i18n="Native Dictionary Card">Native Dictionary Card</span> <span class="beta-tag"
+                  style="font-size: 0.65rem; background: var(--primary-color); color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-left: 6px; vertical-align: middle;">BETA</span>
+              </h3>
+              <p
+                data-i18n="Restore dictionary definitions in Google Search after Google removed them in favor of AI answers.">
+                Restore dictionary definitions in Google Search after Google removed them in favor of AI answers.</p>
             </div>
             <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-dictionary" checked><span
                 class="slider"></span></label>
@@ -2017,13 +2409,15 @@
       <div class="onboarding-step" data-step="4">
         <div class="onboarding-header-section">
           <h1 data-i18n="System & Audio">System & Audio</h1>
-          <p data-i18n="Configure background tools and multimedia options.">Configure background tools and multimedia options.</p>
+          <p data-i18n="Configure background tools and multimedia options.">Configure background tools and multimedia
+            options.</p>
         </div>
         <div class="onboarding-options">
           <div class="onboarding-card">
             <div style="flex: 1; padding-right: 16px;">
               <h3 data-i18n="Auto Update Checking">Auto Update Checking</h3>
-              <p data-i18n="Keep Leef secure and up to date by checking for updates on startup.">Keep Leef secure and up to date by checking for updates on startup.</p>
+              <p data-i18n="Keep Leef secure and up to date by checking for updates on startup.">Keep Leef secure and up
+                to date by checking for updates on startup.</p>
             </div>
             <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-updates" checked><span
                 class="slider"></span></label>
@@ -2032,7 +2426,8 @@
           <div class="onboarding-card">
             <div style="flex: 1; padding-right: 16px;">
               <h3 data-i18n="Tab Volume Booster">Tab Volume Booster</h3>
-              <p data-i18n="Enable an audio amplifier slider in Quick Settings to boost video/audio up to 200%.">Enable an audio amplifier slider in Quick Settings to boost video/audio up to 200%.</p>
+              <p data-i18n="Enable an audio amplifier slider in Quick Settings to boost video/audio up to 200%.">Enable
+                an audio amplifier slider in Quick Settings to boost video/audio up to 200%.</p>
             </div>
             <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-volumeboost"><span
                 class="slider"></span></label>
@@ -2048,9 +2443,13 @@
           <p data-i18n="Thank you for choosing Leef.">Thank you for choosing Leef.</p>
         </div>
         <div class="onboarding-transparency" style="opacity: 1; transform: none; margin-bottom: 20px;">
-          <p><strong data-i18n="Transparency Note:">Transparency Note:</strong> <span data-i18n="Leef is built for you. We don't collect telemetry, make money, or take donations. All statistics and browsing data are kept locally on your machine.">Leef is built for you. We don't collect telemetry, make money, or take
-            donations. All statistics and browsing data are kept locally on your machine.</span></p>
-          <p style="opacity: 0.7; font-size: 0.8rem; margin-top: 10px;" data-i18n="You can change any of these options at any time in Settings.">You can change any of these options at any time
+          <p><strong data-i18n="Transparency Note:">Transparency Note:</strong> <span
+              data-i18n="Leef is built for you. We don't collect telemetry, make money, or take donations. All statistics and browsing data are kept locally on your machine.">Leef
+              is built for you. We don't collect telemetry, make money, or take
+              donations. All statistics and browsing data are kept locally on your machine.</span></p>
+          <p style="opacity: 0.7; font-size: 0.8rem; margin-top: 10px;"
+            data-i18n="You can change any of these options at any time in Settings.">You can change any of these options
+            at any time
             in Settings.</p>
         </div>
       </div>
@@ -2157,11 +2556,12 @@
     <div class="update-card">
       <h1 id="update-title">Leef is installing as fast as it can!</h1>
       <p id="update-subtitle">This should only take a moment...</p>
-      
+
       <div class="update-progress-container">
         <svg class="update-progress-ring" width="200" height="200">
           <circle class="update-progress-ring-bg" cx="100" cy="100" r="90"></circle>
-          <circle class="update-progress-ring-bar" cx="100" cy="100" r="90" stroke-dasharray="565.48" stroke-dashoffset="565.48"></circle>
+          <circle class="update-progress-ring-bar" cx="100" cy="100" r="90" stroke-dasharray="565.48"
+            stroke-dashoffset="565.48"></circle>
         </svg>
         <img class="update-leaf-icon" src="./images/icon-mark.svg" alt="Leef">
         <div class="update-progress-text" style="display: none;">
@@ -2169,7 +2569,7 @@
           <div id="update-status-label">DOWNLOADING</div>
         </div>
       </div>
-      
+
       <button id="btn-update-restart" class="update-btn" style="display: none;">Restart to Apply</button>
       <button id="btn-update-background" class="update-bg-btn">Update in Background</button>
     </div>

@@ -1718,6 +1718,11 @@ class TabManager {
     this.tabCounter = 0;
     this.lastTabOpen = { url: '', time: 0 };
 
+    // Create the global loading bar
+    this.loadingBar = document.createElement('div');
+    this.loadingBar.className = 'loading-bar';
+    document.querySelector('.main-content').appendChild(this.loadingBar);
+
     this.bindGlobalEvents();
 
     // DRM Detection Listener
@@ -1848,7 +1853,10 @@ class TabManager {
       isAudioPlaying: false,
       faviconUrl: null,
       faviconEl: tabFavicon,
-      lastActiveTime: Date.now()
+      lastActiveTime: Date.now(),
+      isLoading: false,
+      loadingProgress: 0,
+      loadingInterval: null
     };
 
     this.tabs.push(tabObj);
@@ -1883,6 +1891,12 @@ class TabManager {
       if (e.target !== tabClose) this.switchTab(tabId);
     });
 
+    tabEl.addEventListener('mousedown', (e) => {
+      if (e.button === 1) {
+        e.preventDefault(); // Prevent native autoscroll on middle-click
+      }
+    });
+
     tabEl.addEventListener('auxclick', (e) => {
       if (e.button === 1) {
         e.preventDefault();
@@ -1909,6 +1923,7 @@ class TabManager {
     });
 
     this.switchTab(tabId);
+    this.updateTabScrollButtons();
 
     // Auto-focus search box for new tabs (v0.4.2)
     setTimeout(() => {
@@ -1972,6 +1987,71 @@ class TabManager {
     }
   }
 
+  startLoadingBar(tab) {
+    if (tab.hideLoadingTimeout) clearTimeout(tab.hideLoadingTimeout);
+    if (tab.resetWidthTimeout) clearTimeout(tab.resetWidthTimeout);
+
+    tab.isLoading = true;
+    tab.loadingProgress = 5;
+    if (tab.loadingInterval) clearInterval(tab.loadingInterval);
+
+    tab.loadingInterval = setInterval(() => {
+      // Asymptotic progress approach
+      tab.loadingProgress += (95 - tab.loadingProgress) * 0.05;
+      if (tab.loadingProgress > 95) tab.loadingProgress = 95;
+      this.updateLoadingBar();
+    }, 100);
+
+    this.updateLoadingBar();
+  }
+
+  completeLoadingBar(tab) {
+    tab.loadingProgress = 100;
+    if (tab.loadingInterval) {
+      clearInterval(tab.loadingInterval);
+      tab.loadingInterval = null;
+    }
+    this.updateLoadingBar();
+
+    if (tab.hideLoadingTimeout) clearTimeout(tab.hideLoadingTimeout);
+
+    tab.hideLoadingTimeout = setTimeout(() => {
+      if (tab.loadingProgress === 100) {
+        tab.isLoading = false;
+        tab.loadingProgress = 0;
+        this.updateLoadingBar();
+      }
+    }, 200); // Wait for the transition to finish before hiding
+  }
+
+  updateLoadingBar() {
+    if (!this.loadingBar) return;
+    const activeTab = this.getActiveTab();
+    if (!activeTab) return;
+
+    if (activeTab.isLoading) {
+      this.loadingBar.style.width = `${activeTab.loadingProgress}%`;
+      this.loadingBar.classList.add('active');
+    } else {
+      this.loadingBar.style.width = '100%';
+      this.loadingBar.classList.remove('active');
+      // Reset width to 0 without transition after fade out
+      if (activeTab.loadingProgress === 0) {
+        if (activeTab.resetWidthTimeout) clearTimeout(activeTab.resetWidthTimeout);
+        activeTab.resetWidthTimeout = setTimeout(() => {
+          if (!activeTab.isLoading) {
+            const oldTransition = this.loadingBar.style.transition;
+            this.loadingBar.style.transition = 'none';
+            this.loadingBar.style.width = '0%';
+            // Force reflow
+            void this.loadingBar.offsetWidth;
+            this.loadingBar.style.transition = oldTransition;
+          }
+        }, 250); // Must be slightly longer than the opacity transition time (0.2s)
+      }
+    }
+  }
+
   mountWebview(tab) {
     if (tab.webviewEl) return; // this shit already exists
     tab.webviewEl = document.createElement('webview');
@@ -2023,6 +2103,69 @@ class TabManager {
       }
     });
 
+    // Crash detection and Safe Mode recovery
+    const handleCrash = (e) => {
+      console.warn('Webview crashed or render process gone!', tab.url, e);
+      if (tab._isCrashRecovering) return; // Prevent infinite crash loops
+      tab._isCrashRecovering = true;
+
+      let redirectUrl = tab.url;
+      let usingFallback = false;
+      if (tab.url && (tab.url.includes('google.com/search') || (tab.url.includes('google.co.') && tab.url.includes('/search')))) {
+        try {
+          const urlObj = new URL(tab.url);
+          const q = urlObj.searchParams.get('q');
+          if (q) {
+            redirectUrl = `https://duckduckgo.com/?q=${encodeURIComponent(q)}`;
+            usingFallback = true;
+          }
+        } catch (err) {}
+      }
+
+      if (window.toastManager) {
+        if (usingFallback) {
+          window.toastManager.show('⚠️ Page Crashed', 'Recovering search page in Safe Mode using DuckDuckGo.', 10000);
+          const toastAction = document.getElementById('leef-toast-action');
+          const primaryBtn = document.getElementById('btn-toast-primary');
+          const secondaryBtn = document.getElementById('btn-toast-secondary');
+          if (toastAction && primaryBtn && secondaryBtn) {
+            toastAction.style.display = 'flex';
+            primaryBtn.textContent = 'Learn Why';
+            primaryBtn.onclick = () => {
+              // Display a professional explanation modal
+              const modal = document.getElementById('crash-explanation-modal');
+              const closeBtn = document.getElementById('crash-explanation-close');
+              if (modal && closeBtn) {
+                closeBtn.onclick = () => {
+                  modal.style.display = 'none';
+                };
+                modal.style.display = 'flex';
+              }
+              window.toastManager.hide();
+            };
+            secondaryBtn.textContent = 'Dismiss';
+            secondaryBtn.onclick = () => {
+              window.toastManager.hide();
+            };
+          }
+        } else {
+          window.toastManager.show('⚠️ Page Crashed', 'Recovering page without special features (Safe Mode).', 6000);
+        }
+      }
+      setTimeout(() => {
+        if (tab.webviewEl) {
+          try {
+            tab.webviewEl.loadURL(redirectUrl);
+          } catch (err) {
+            tab.webviewEl.src = redirectUrl;
+          }
+        }
+      }, 500);
+    };
+    tab.webviewEl.addEventListener('render-process-gone', handleCrash);
+    tab.webviewEl.addEventListener('plugin-crashed', handleCrash);
+    tab.webviewEl.addEventListener('crashed', handleCrash);
+
     // Catch the manual tab interceptor messages
     tab.webviewEl.addEventListener('console-message', (e) => {
       if (!e.message) return;
@@ -2032,6 +2175,17 @@ class TabManager {
         this.createTab(url);
       }
       
+      if (e.message.startsWith('LEEF_WEBAUTHN_PROMPT:')) {
+        try {
+          const data = JSON.parse(e.message.substring('LEEF_WEBAUTHN_PROMPT:'.length));
+          if (window.permissionManager) {
+            window.permissionManager.requestWebAuthnConsent(tab, data);
+          }
+        } catch (err) {
+          console.error('Failed to parse WebAuthn prompt data:', err);
+        }
+      }
+
       if (e.message === 'LEEF_DICT_MODAL') {
         const modal = document.getElementById('dict-info-modal');
         if (modal) {
@@ -2048,6 +2202,10 @@ class TabManager {
     tab.webviewEl.addEventListener('did-start-navigation', (e) => {
       if (tab.isHibernated) return;
       if (e.isMainFrame) {
+        if (!e.isSameDocument && !e.isInPlace) {
+          tab.isMainFrameLoading = true;
+          this.startLoadingBar(tab);
+        }
         tab.title = 'Loading...';
         tab.url = e.url; // Update URL identity immediately to prevent state leaks
         tab.isInternal = e.url.startsWith('leef:') || (e.url.startsWith('file:') && !e.url.includes('offline.html')) || e.url.startsWith('chrome:');
@@ -2080,7 +2238,7 @@ class TabManager {
       const s = this.settings.currentSettings;
       const tabUrl = e.url || '';
       const isGoogle = tabUrl.includes('google.com') || tabUrl.includes('google.co.');
-      if (s.blockAIOverview && isGoogle) {
+      if (s.blockAIOverview && isGoogle && !tab._isCrashRecovering) {
         const aiCSS = `
           [data-attnms],
           .Kevs9.SLPe5b:has([data-attnms]),
@@ -2110,6 +2268,10 @@ class TabManager {
 
     tab.webviewEl.addEventListener('did-stop-loading', () => {
       if (tab.isHibernated) return;
+      if (tab.isMainFrameLoading) {
+        tab.isMainFrameLoading = false;
+        this.completeLoadingBar(tab);
+      }
       // Final title sync once everything is done
       const currentTitle = tab.webviewEl.getTitle();
       if (currentTitle && currentTitle !== 'Loading...') {
@@ -2120,7 +2282,7 @@ class TabManager {
       tab._didStopLoadingFired = true;
 
       // ── Native Dictionary (injected after page is fully hydrated) ────
-      if (this.settings.currentSettings.nativeDictionary !== false) {
+      if (this.settings.currentSettings.nativeDictionary !== false && !tab._isCrashRecovering) {
         const stopUrl = tab.webviewEl.getURL ? tab.webviewEl.getURL() : tab.url;
         const isGoogleSearch = stopUrl.includes('google.com/search') ||
           (stopUrl.includes('google.co.') && stopUrl.includes('/search'));
@@ -2148,6 +2310,25 @@ class TabManager {
         try { tab.webviewEl.setZoomFactor(parseFloat(this.settings.currentSettings.zoom) || 1.0); } catch (e) { }
       }
       this.updateTabUI(tab);
+
+      // Inject custom premium scrollbar styles to match the brand's green theme inside the guest webview page
+      const scrollbarCSS = `
+        ::-webkit-scrollbar {
+          width: 8px !important;
+          height: 8px !important;
+        }
+        ::-webkit-scrollbar-track {
+          background: transparent !important;
+        }
+        ::-webkit-scrollbar-thumb {
+          background: rgba(23, 179, 64, 0.3) !important;
+          border-radius: 10px !important;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: rgba(23, 179, 64, 0.55) !important;
+        }
+      `;
+      tab.webviewEl.insertCSS(scrollbarCSS).catch(() => {});
       const currentTabUrl = tab.url || '';
       const isGoogleSearch = currentTabUrl.includes('google.com/search') ||
         (currentTabUrl.includes('google.co.') && currentTabUrl.includes('/search'));
@@ -2159,7 +2340,7 @@ class TabManager {
       tab._dictWord = '';
       tab._didStopLoadingFired = false;
 
-      if (this.settings.currentSettings.nativeDictionary !== false && isGoogleSearch) {
+      if (this.settings.currentSettings.nativeDictionary !== false && isGoogleSearch && !tab._isCrashRecovering) {
         let searchQuery = '';
         try {
           const urlObj = new URL(currentTabUrl);
@@ -2216,7 +2397,11 @@ class TabManager {
 
       // BATCHED JS INJECTION (Performance: single IPC round-trip per page load)
       // All per-page scripts are assembled here and fired in ONE executeJavaScript call.
-      const s = this.settings.currentSettings;
+      const s = { ...this.settings.currentSettings };
+      if (tab._isCrashRecovering) {
+        s.blockAIOverview = false;
+        s.adBlockerMode = 'none';
+      }
       const labs = window.labsManager;
       const tabUrl = tab.url || '';
       const isGoogle = tabUrl.includes('google.com') || tabUrl.includes('google.co.');
@@ -2245,6 +2430,63 @@ class TabManager {
 
       // Build the injection payload conditionally
       const chunks = [];
+
+      // WebAuthn / Windows Hello interceptor
+      chunks.push(`
+        (function() {
+          if (window.__leefWebAuthnHooked) return;
+          window.__leefWebAuthnHooked = true;
+
+          const originalCreate = navigator.credentials.create;
+          const originalGet = navigator.credentials.get;
+
+          let requestCounter = 0;
+          window.__leefWebAuthnRequests = new Map();
+
+          function promptUser(type, options) {
+            return new Promise((resolve, reject) => {
+              const id = ++requestCounter;
+              window.__leefWebAuthnRequests.set(id, { resolve, reject, type, options });
+              console.log('LEEF_WEBAUTHN_PROMPT:' + JSON.stringify({
+                id: id,
+                type: type,
+                origin: window.location.origin,
+                host: window.location.host
+              }));
+            });
+          }
+
+          window.__resolveLeefWebAuthn = function(id, allowed) {
+            const request = window.__leefWebAuthnRequests.get(id);
+            if (!request) return;
+            window.__leefWebAuthnRequests.delete(id);
+
+            if (!allowed) {
+              request.reject(new DOMException("User denied permission to use Windows Hello / Platform Authenticator.", "NotAllowedError"));
+              return;
+            }
+
+            const origFn = request.type === 'create' ? originalCreate : originalGet;
+            origFn.call(navigator.credentials, request.options)
+              .then(res => request.resolve(res))
+              .catch(err => request.reject(err));
+          };
+
+          navigator.credentials.create = function(options) {
+            if (options && options.publicKey) {
+              return promptUser('create', options);
+            }
+            return originalCreate.call(navigator.credentials, options);
+          };
+
+          navigator.credentials.get = function(options) {
+            if (options && options.publicKey) {
+              return promptUser('get', options);
+            }
+            return originalGet.call(navigator.credentials, options);
+          };
+        })();
+      `);
 
       // Scroll-reset (always on DOM ready to fix scrolling carryover bug)
       chunks.push(`
@@ -2526,7 +2768,7 @@ class TabManager {
             clearTimeout(tab._ytNavTimer);
             tab._ytNavTimer = setTimeout(() => {
               const s2 = this.settings.currentSettings;
-              if (s2.adBlockerMode === 'none') return;
+              if (s2.adBlockerMode === 'none' || tab._isCrashRecovering) return;
               const labs2 = window.labsManager;
               const isWarp2 = !!(labs2 && labs2.isFlagEnabled('yt_warp_speed'));
               tab.webviewEl.executeJavaScript(`
@@ -2559,6 +2801,7 @@ class TabManager {
         tab.webviewEl.addEventListener('did-navigate-in-page', (e) => {
           if (!e.isMainFrame) return;
           if (tab.webviewEl.getURL().includes('google.')) {
+            if (tab._isCrashRecovering) return;
             // 1. Re-apply elevated CSS injection
             const aiCSS = `
               [data-attnms],
@@ -2698,13 +2941,16 @@ class TabManager {
     if (!rawInput || !rawInput.trim()) return; // guard empty input
 
     // Hide address bar suggestions and remove focus when navigating
-    if (window.addressBarManager && window.addressBarManager.suggestionsEl) {
-      window.addressBarManager.suggestionsEl.style.display = 'none';
+    if (window.addressBarManager) {
+      window.addressBarManager._hideSuggestions();
     }
     if (UI.inputs.address) UI.inputs.address.blur();
 
     const tab = this.getActiveTab();
     if (!tab) return;
+
+    tab._isCrashRecovering = false; // Reset crash recovery mode on manual navigation
+
     const fullUrl = BrowserUtils.parseAddress(rawInput.trim(), this.settings.currentSettings.searchEngine, this.settings.currentSettings.blockAIOverview);
 
     if (!tab.webviewEl) {
@@ -2838,6 +3084,10 @@ class TabManager {
   }
 
   switchTab(tabId) {
+    if (window.addressBarManager) {
+      window.addressBarManager._hideSuggestions();
+    }
+
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab) return;
 
@@ -2926,6 +3176,10 @@ class TabManager {
     });
     tab.tabEl.classList.add('active');
 
+    // Scroll the newly activated tab into view smoothly
+    tab.tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    this.updateTabScrollButtons();
+
     // Sync UI to tab state (Volume, etc)
     if (window.quickSettingsManager) {
       window.quickSettingsManager.updateUI();
@@ -2967,6 +3221,7 @@ class TabManager {
     if (drmIndicator) drmIndicator.style.display = tab.hasDRM ? 'flex' : 'none';
 
     this.updateTabUI(tab);
+    this.updateLoadingBar();
   }
 
   closeTab(tabId) {
@@ -2974,6 +3229,11 @@ class TabManager {
     if (index === -1) return;
 
     const tab = this.tabs[index];
+
+    if (tab.loadingInterval) {
+      clearInterval(tab.loadingInterval);
+      tab.loadingInterval = null;
+    }
 
     // Determine target tab to switch to first if we are closing the active tab
     let targetTabId = null;
@@ -3054,6 +3314,7 @@ class TabManager {
         tab.webviewEl = null;
         tab.tabEl = null;
         tab.tabTitle = null;
+        this.updateTabScrollButtons();
       };
 
       // Listen for transitionend or use a timeout fallback to perform cleanup
@@ -3096,10 +3357,66 @@ class TabManager {
     } catch (e) { }
   }
 
+  updateTabScrollButtons() {
+    const container = UI.tabsContainer;
+    const btnLeft = document.getElementById('btn-tab-scroll-left');
+    const btnRight = document.getElementById('btn-tab-scroll-right');
+    if (!container || !btnLeft || !btnRight) return;
+
+    const hasOverflow = container.scrollWidth > container.clientWidth;
+    if (hasOverflow) {
+      btnLeft.style.display = 'flex';
+      btnRight.style.display = 'flex';
+      
+      const scrollLeft = container.scrollLeft;
+      const maxScrollLeft = container.scrollWidth - container.clientWidth;
+      
+      btnLeft.style.opacity = scrollLeft <= 1 ? '0.3' : '0.7';
+      btnLeft.style.pointerEvents = scrollLeft <= 1 ? 'none' : 'auto';
+      
+      btnRight.style.opacity = scrollLeft >= maxScrollLeft - 1 ? '0.3' : '0.7';
+      btnRight.style.pointerEvents = scrollLeft >= maxScrollLeft - 1 ? 'none' : 'auto';
+    } else {
+      btnLeft.style.display = 'none';
+      btnRight.style.display = 'none';
+    }
+  }
+
   bindGlobalEvents() {
+    // Tab scroll button click event listeners
+    const btnLeft = document.getElementById('btn-tab-scroll-left');
+    const btnRight = document.getElementById('btn-tab-scroll-right');
+    if (btnLeft) {
+      btnLeft.addEventListener('click', () => {
+        UI.tabsContainer.scrollBy({ left: -200, behavior: 'smooth' });
+      });
+    }
+    if (btnRight) {
+      btnRight.addEventListener('click', () => {
+        UI.tabsContainer.scrollBy({ left: 200, behavior: 'smooth' });
+      });
+    }
+
+    // Scroll buttons state update on tab container scroll or window resize
+    UI.tabsContainer.addEventListener('scroll', () => {
+      this.updateTabScrollButtons();
+    });
+    window.addEventListener('resize', () => {
+      this.updateTabScrollButtons();
+    });
+
+    // Translate vertical mouse wheel scrolling to horizontal scrolling for the tab row
+    UI.tabsContainer.addEventListener('wheel', (e) => {
+      if (e.deltaY !== 0) {
+        e.preventDefault();
+        UI.tabsContainer.scrollLeft += e.deltaY;
+      }
+    }, { passive: false });
+
     UI.tabsContainer.parentElement.addEventListener('contextmenu', (e) => {
       if (!e.target.closest('.tab') && !e.target.closest('.new-tab-btn')) {
         e.preventDefault();
+        e.stopPropagation();
         try {
           window.require('electron').ipcRenderer.send('show-tab-context-menu', { tabId: null });
         } catch (err) { }
@@ -5196,6 +5513,7 @@ class AddressBarManager {
 
     this.selectedIndex = -1;
     this.currentFetchId = 0; // Track requests to ignore stale results
+    this.lastWebSuggestions = []; // Cache to prevent layout jumping/flashing
     this.bindEvents();
 
     // Re-position on resize
@@ -5216,100 +5534,156 @@ class AddressBarManager {
   bindEvents() {
     if (!this.input) return;
 
-    this.input.addEventListener('input', () => this.showSuggestions());
+    // Debounce input to limit suggestion updates and avoid flicker
+    this.input.addEventListener('input', () => {
+      if (this._suggestTimer) clearTimeout(this._suggestTimer);
+      this._suggestTimer = setTimeout(() => this.showSuggestions(), 100);
+    });
     this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
     this.input.addEventListener('blur', () => {
-      setTimeout(() => { this.suggestionsEl.style.display = 'none'; }, 200);
+      // Delay hide to allow click on a suggestion
+      setTimeout(() => { this._hideSuggestions(); }, 100);
     });
     this.input.addEventListener('focus', () => this.showSuggestions());
+  }
+
+  _hideSuggestions() {
+    this.suggestionsEl.classList.remove('visible');
+    this.lastWebSuggestions = []; // Clear cached suggestions on hide
+    setTimeout(() => {
+      if (!this.suggestionsEl.classList.contains('visible')) {
+        this.suggestionsEl.style.display = 'none';
+      }
+    }, 260);
   }
 
   async showSuggestions() {
     const val = this.input.value.trim();
     if (!val) {
-      this.suggestionsEl.style.display = 'none';
+      this._hideSuggestions();
       return;
     }
 
-    this.updatePosition();
+    // If not yet visible, position and show the dropdown
+    if (!this.suggestionsEl.classList.contains('visible')) {
+      this.updatePosition();
+      this.suggestionsEl.style.display = 'block';
+      requestAnimationFrame(() => this.suggestionsEl.classList.add('visible'));
+    }
+
+    // When already visible, we skip repositioning – the dropdown stays where it is
 
     // 1. Local Bookmarks (Fast)
     const lowerVal = val.toLowerCase();
     const bookmarkMatches = this.bookmarksManager.saved.filter(b =>
       b.title.toLowerCase().includes(lowerVal) || b.url.toLowerCase().includes(lowerVal)
-    ).slice(0, 3); // Max 3 bookmarks
+    ).slice(0, 3);
 
-    // If autocomplete is disabled, render immediately and stop
     const settings = window.tabManager ? window.tabManager.settings : null;
     const isLiveEnabled = settings ? settings.currentSettings.liveAutocomplete : false;
-
     if (!isLiveEnabled) {
+      this.lastWebSuggestions = [];
       this.renderSuggestions(val, bookmarkMatches, []);
-      this.suggestionsEl.style.display = 'block';
       return;
     }
 
-    this.renderSuggestions(val, bookmarkMatches, []);
-    this.suggestionsEl.style.display = 'block';
+    // Keep the previous web suggestions temporarily to prevent layout jumping/flashing
+    this.renderSuggestions(val, bookmarkMatches, this.lastWebSuggestions || []);
 
     // 2. Fetch Live Autocomplete from Main Process (Bypass CORS)
     const requestId = ++this.currentFetchId;
     try {
       const webSuggestions = await window.require('electron').ipcRenderer.invoke('fetch-autocomplete', val);
-
-      // Re-render only if this is still the most recent request
       if (this.currentFetchId === requestId && this.input.value.trim() === val) {
-        this.renderSuggestions(val, bookmarkMatches, webSuggestions.slice(0, 6));
+        const sliced = webSuggestions.slice(0, 6);
+        this.lastWebSuggestions = sliced;
+        this.renderSuggestions(val, bookmarkMatches, sliced);
       }
-    } catch (err) {
-      // Ignore abort errors or offline
-    }
+    } catch (e) {}
   }
 
   renderSuggestions(val, bookmarkMatches, webSuggestions) {
-    this.suggestionsEl.innerHTML = '';
     this.selectedIndex = -1;
 
-    // Helper to add items
-    const addItem = (title, url, iconHtml, isWeb, queryVal) => {
-      const item = document.createElement('div');
-      item.className = 'suggestion-item';
-      if (queryVal !== undefined && queryVal !== null) {
-        item.setAttribute('data-query', queryVal);
-      }
-      item.innerHTML = iconHtml + '<div class="suggestion-info"><div class="suggestion-title">' + BrowserUtils.sanitize(title) + '</div><div class="suggestion-url" style="' + (isWeb ? 'display:none;' : '') + '">' + BrowserUtils.sanitize(url) + '</div></div>';
-
-      item.addEventListener('click', () => {
-        if (window.tabManager) window.tabManager.navigateToUrl(url || title); // URL for bookmarks, title for queries
-        this.suggestionsEl.style.display = 'none';
-      });
-
-      this.suggestionsEl.appendChild(item);
-    };
-
-    // 1. Fallback / Current Input (Search for...)
     const searchForText = window.t ? window.t('Search for "{query}"').replace('{query}', val) : 'Search for "' + val + '"';
-    addItem(searchForText, val, '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 10px; opacity: 0.6; flex-shrink: 0;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>', true, val);
+    const searchIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:10px;opacity:0.6;flex-shrink:0"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>';
 
-    // 2. Bookmarks
+    const itemData = [];
+    itemData.push({ title: searchForText, url: val, iconHtml: searchIcon, isWeb: true, queryVal: val });
+
     bookmarkMatches.forEach(match => {
       let faviconUrl = '';
       try { faviconUrl = 'https://www.google.com/s2/favicons?domain=' + new URL(match.url).hostname + '&sz=32'; } catch (e) { }
       const icon = '<img class="suggestion-favicon" src="' + faviconUrl + '" onerror="this.style.display=\'none\'">';
-      addItem(match.title, match.url, icon, false);
+      itemData.push({ title: match.title, url: match.url, iconHtml: icon, isWeb: false, queryVal: null });
     });
 
-    // 3. Web Autocomplete
     webSuggestions.forEach(suggestion => {
-      if (suggestion.toLowerCase() === val.toLowerCase()) return; // Skip if it's identical to the fallback
-      const icon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 10px; opacity: 0.6; flex-shrink: 0;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>';
-      addItem(suggestion, suggestion, icon, true);
+      if (suggestion.toLowerCase() === val.toLowerCase()) return;
+      itemData.push({ title: suggestion, url: suggestion, iconHtml: searchIcon, isWeb: true, queryVal: null });
     });
+
+    const existing = Array.from(this.suggestionsEl.querySelectorAll('.suggestion-item'));
+
+    itemData.forEach((data, i) => {
+      let item = existing[i];
+
+      if (!item) {
+        // Build item DOM structure once — never replace it later
+        item = document.createElement('div');
+        item.className = 'suggestion-item';
+        const iconSlot = document.createElement('span');
+        iconSlot.className = 'item-icon-slot';
+        const info = document.createElement('div');
+        info.className = 'suggestion-info';
+        const titleEl = document.createElement('div');
+        titleEl.className = 'suggestion-title';
+        const urlEl = document.createElement('div');
+        urlEl.className = 'suggestion-url';
+        info.appendChild(titleEl);
+        info.appendChild(urlEl);
+        item.appendChild(iconSlot);
+        item.appendChild(info);
+        item.onclick = () => {
+          if (window.tabManager) window.tabManager.navigateToUrl(item._navUrl);
+          this._hideSuggestions();
+        };
+        this.suggestionsEl.appendChild(item);
+      }
+
+      // Update only what changed — no full innerHTML replacement
+      const iconSlot = item.querySelector('.item-icon-slot');
+      const titleEl = item.querySelector('.suggestion-title');
+      const urlEl = item.querySelector('.suggestion-url');
+
+      if (iconSlot && item._iconHtml !== data.iconHtml) {
+        iconSlot.innerHTML = data.iconHtml;
+        item._iconHtml = data.iconHtml;
+      }
+      if (titleEl && titleEl.textContent !== data.title) titleEl.textContent = data.title;
+      if (urlEl) {
+        if (urlEl.textContent !== data.url) urlEl.textContent = data.url;
+        urlEl.style.display = data.isWeb ? 'none' : '';
+      }
+
+      item._navUrl = data.url || data.title;
+
+      if (data.queryVal !== null && data.queryVal !== undefined) {
+        item.setAttribute('data-query', data.queryVal);
+      } else {
+        item.removeAttribute('data-query');
+      }
+    });
+
+    // Remove surplus nodes
+    for (let i = itemData.length; i < existing.length; i++) {
+      existing[i].remove();
+    }
   }
 
   handleKeydown(e) {
     const items = this.suggestionsEl.querySelectorAll('.suggestion-item');
-    if (this.suggestionsEl.style.display === 'none' || items.length === 0) return;
+    if (!this.suggestionsEl.classList.contains('visible') || items.length === 0) return;
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -5362,6 +5736,8 @@ class PermissionManager {
     this.currentReqId = null;
     this.currentOrigin = null;
     this.currentPermission = null;
+    this.currentWebAuthnReq = null;
+    this.currentWebAuthnTab = null;
 
     this.bindEvents();
   }
@@ -5379,8 +5755,8 @@ class PermissionManager {
       document.body.classList.add('modal-open');
 
       // Hide dynamic address bar suggestions so they don't overlap the modal
-      if (window.addressBarManager && window.addressBarManager.suggestionsEl) {
-        window.addressBarManager.suggestionsEl.style.display = 'none';
+      if (window.addressBarManager) {
+        window.addressBarManager._hideSuggestions();
       }
     });
 
@@ -5420,6 +5796,18 @@ class PermissionManager {
   handleResponse(granted) {
     this.promptOverlay.style.display = 'none';
     document.body.classList.remove('modal-open');
+
+    if (this.currentWebAuthnReq !== null) {
+      const tab = this.currentWebAuthnTab;
+      const reqId = this.currentWebAuthnReq.id;
+      if (tab && tab.webviewEl) {
+        tab.webviewEl.executeJavaScript(`if (typeof window.__resolveLeefWebAuthn === 'function') window.__resolveLeefWebAuthn(${reqId}, ${granted});`).catch(() => {});
+      }
+      this.currentWebAuthnReq = null;
+      this.currentWebAuthnTab = null;
+      return;
+    }
+
     if (this.currentReqId !== null) {
       window.require('electron').ipcRenderer.send('permission-response', {
         id: this.currentReqId,
@@ -5428,6 +5816,22 @@ class PermissionManager {
       this.updateSetting(this.currentOrigin, this.currentPermission, granted);
       this.currentReqId = null;
     }
+  }
+
+  requestWebAuthnConsent(tab, req) {
+    if (window.addressBarManager) {
+      window.addressBarManager._hideSuggestions();
+    }
+
+    this.currentWebAuthnReq = req;
+    this.currentWebAuthnTab = tab;
+    this.currentOrigin = req.origin;
+    this.currentPermission = "Windows Hello / Security Key";
+
+    this.originEl.textContent = req.host;
+    this.typeEl.textContent = "Windows Hello / Security Key";
+    this.promptOverlay.style.display = 'flex';
+    document.body.classList.add('modal-open');
   }
 
   updateSetting(origin, permission, granted) {
@@ -5442,8 +5846,8 @@ class PermissionManager {
     this.renderManagerList();
     this.managerModal.style.display = 'flex';
     document.body.classList.add('modal-open');
-    if (window.addressBarManager && window.addressBarManager.suggestionsEl) {
-      window.addressBarManager.suggestionsEl.style.display = 'none';
+    if (window.addressBarManager) {
+      window.addressBarManager._hideSuggestions();
     }
   }
 
@@ -5602,7 +6006,7 @@ class FindManager {
 
   bindEvents() {
     window.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && e.key.toLowerCase() === 'f') {
+      if ((e.ctrlKey && e.key.toLowerCase() === 'f') || e.key.toLowerCase() === 'f3') {
         e.preventDefault();
         this.show();
       }
