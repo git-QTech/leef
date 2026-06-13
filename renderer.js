@@ -2434,6 +2434,7 @@ class TabManager {
       // WebAuthn / Windows Hello interceptor
       chunks.push(`
         (function() {
+          if (!navigator.credentials) return;
           if (window.__leefWebAuthnHooked) return;
           window.__leefWebAuthnHooked = true;
 
