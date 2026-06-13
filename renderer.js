@@ -2047,7 +2047,7 @@ class TabManager {
             void this.loadingBar.offsetWidth;
             this.loadingBar.style.transition = oldTransition;
           }
-        }, 250); // Must be slightly longer than the opacity transition time (0.2s)
+        }, 750); // Must be slightly longer than the total transition timeline (700ms)
       }
     }
   }
@@ -2912,12 +2912,10 @@ class TabManager {
     // The main process handles OS-level fullscreen via webContents events directly.
     tab.webviewEl.addEventListener('enter-html-full-screen', () => {
       document.body.classList.add('video-fullscreen');
-      try { document.documentElement.requestFullscreen(); } catch (e) {}
     });
 
     tab.webviewEl.addEventListener('leave-html-full-screen', () => {
       document.body.classList.remove('video-fullscreen');
-      try { document.exitFullscreen(); } catch (e) {}
     });
 
     // Close dropdowns when clicking on the webview (registers as focus)
@@ -4889,7 +4887,8 @@ class SiteIdentityManager {
 
     // Check if GPC is disabled globally
     if (!gpcEnabled) {
-      iconEl.textContent = '⚪';
+      iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#999999" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>`;
+      iconEl.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
       subtitleEl.textContent = 'GPC Signal Disabled';
       subtitleEl.style.background = 'rgba(0, 0, 0, 0.05)';
       subtitleEl.style.color = '#999';
@@ -4909,7 +4908,8 @@ class SiteIdentityManager {
     }
 
     if (!tab || tab.isInternal) {
-      iconEl.textContent = 'ℹ️';
+      iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#666666" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
+      iconEl.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
       subtitleEl.textContent = 'Local Application Page';
       subtitleEl.style.background = 'rgba(0, 0, 0, 0.05)';
       subtitleEl.style.color = '#666';
@@ -4957,7 +4957,8 @@ class SiteIdentityManager {
     });
 
     if (isManuallyApproved || tab.gpcManuallyVerified) {
-      iconEl.textContent = '🛡️';
+      iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#2196f3" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 11 2 2 4-4"></path></svg>`;
+      iconEl.style.backgroundColor = 'rgba(33, 150, 243, 0.1)';
       subtitleEl.textContent = 'Manually Verified';
       subtitleEl.style.background = 'rgba(33, 150, 243, 0.1)';
       subtitleEl.style.color = '#2196f3';
@@ -5041,7 +5042,8 @@ class SiteIdentityManager {
     });
 
     if (isNonCompliant) {
-      iconEl.textContent = '🚨';
+      iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#f44336" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
+      iconEl.style.backgroundColor = 'rgba(244, 67, 54, 0.1)';
       subtitleEl.textContent = 'No GPC Support';
       subtitleEl.style.background = 'rgba(244, 67, 54, 0.1)';
       subtitleEl.style.color = '#f44336';
@@ -5068,7 +5070,8 @@ class SiteIdentityManager {
 
     if (tab.gpcVerified !== undefined) {
       if (tab.gpcVerified) {
-        iconEl.textContent = '✅';
+        iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#17b340" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 11 11 13 15 9"></polyline></svg>`;
+        iconEl.style.backgroundColor = 'rgba(23, 179, 64, 0.1)';
         subtitleEl.textContent = 'Verified Compliant ✓';
         subtitleEl.style.background = 'rgba(23, 179, 64, 0.1)';
         subtitleEl.style.color = '#17b340';
@@ -5089,7 +5092,8 @@ class SiteIdentityManager {
           </p>
         `;
       } else {
-        iconEl.textContent = '⚠️';
+        iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#ff9800" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
+        iconEl.style.backgroundColor = 'rgba(255, 152, 0, 0.1)';
         subtitleEl.textContent = 'Unverified Response';
         subtitleEl.style.background = 'rgba(255, 152, 0, 0.1)';
         subtitleEl.style.color = '#ff9800';
