@@ -56,6 +56,9 @@ if (isDev) {
   console.log('Dev Mode: Data isolated to', devPath);
 }
 
+let allowedPopupDomains = new Set();
+let blockedPopupDomains = new Set();
+
 
 
 
@@ -1499,27 +1502,60 @@ ipcMain.on('set-default-browser', () => {
 
 app.on('web-contents-created', (event, contents) => {
   const handleWindowOpen = ({ url, features, disposition }) => {
+    let requesterHost = '';
+    let targetHost = '';
+    try { requesterHost = new URL(contents.getURL()).hostname; } catch(e) {}
+    try { targetHost = new URL(url).hostname; } catch(e) {}
+
+    if (!requesterHost && targetHost) {
+      requesterHost = targetHost;
+    }
+
+    // Check blocklist first
+    if (blockedPopupDomains.has(requesterHost) || (targetHost && blockedPopupDomains.has(targetHost))) {
+      console.log('Silently blocking popup due to blocklist:', url);
+      return { action: 'deny' };
+    }
+
+    // Check allowlist
+    const isAllowed = allowedPopupDomains.has(requesterHost) || (targetHost && allowedPopupDomains.has(targetHost));
 
     // 1. Detect if this is a legitimate popup (typical for Login/OAuth)
     // - Features present (width/height defined by site)
     // - Specific identity provider domains
     const isPopup = (features && features.length > 0);
-    const isAuth = url.includes('accounts.google.com') ||
-      url.includes('facebook.com/dialog/oauth') ||
-      url.includes('github.com/login/oauth') ||
-      url.includes('auth.services.adobe.com');
+    
+    const lowerUrl = url.toLowerCase();
+    const isAuth = lowerUrl.includes('accounts.google.com') ||
+      lowerUrl.includes('auth.services.adobe.com') ||
+      lowerUrl.includes('oauth') ||
+      lowerUrl.includes('authorize') ||
+      lowerUrl.includes('login') ||
+      lowerUrl.includes('signin') ||
+      lowerUrl.includes('signup');
 
-    if (isPopup || isAuth) {
-      console.log('Allowing themed popup for:', url);
-      return {
-        action: 'allow',
-        overrideBrowserWindowOptions: {
-          backgroundColor: '#1c1c1c',
-          icon: path.join(__dirname, 'images/icon.png')
-          // Note: titleBarOverlay doesn't apply to native popups easily, 
-          // but we can set the background to match.
+    if (isPopup) {
+      if (isAllowed || isAuth) {
+        console.log('Allowing popup for:', url);
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            backgroundColor: '#1c1c1c',
+            icon: path.join(__dirname, 'images/icon.png'),
+            webPreferences: {
+              preload: path.join(__dirname, 'preload.cjs'),
+              contextIsolation: true,
+              nodeIntegration: false
+            }
+          }
+        };
+      } else {
+        console.log('Blocking popup attempt for:', url, 'from requester:', requesterHost);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('popup-blocked', { url, requester: requesterHost });
         }
-      };
+        return { action: 'deny' };
+      }
     }
 
     // 2. Default: Treat as a standard link and open in a Leef Tab
@@ -1646,4 +1682,44 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
+});
+
+ipcMain.on('update-popup-rules', (event, { allowed, blocked }) => {
+  allowedPopupDomains = new Set(allowed || []);
+  blockedPopupDomains = new Set(blocked || []);
+  console.log('Main Process: Updated popup rules. Allowed:', allowedPopupDomains.size, 'Blocked:', blockedPopupDomains.size);
+});
+
+ipcMain.on('open-popup-window', (event, url) => {
+  if (!url) return;
+  console.log('Main Process: Explicitly opening popup window for:', url);
+  const popupWin = new BrowserWindow({
+    width: 800,
+    height: 600,
+    backgroundColor: '#1c1c1c',
+    icon: path.join(__dirname, 'images/icon.png'),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  popupWin.webContents.setWindowOpenHandler(({ url: nestedUrl, features }) => {
+    const isPopup = (features && features.length > 0);
+    if (isPopup) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        let requesterHost = '';
+        try { requesterHost = new URL(popupWin.webContents.getURL()).hostname; } catch(e) {}
+        mainWindow.webContents.send('popup-blocked', { url: nestedUrl, requester: requesterHost });
+      }
+      return { action: 'deny' };
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('open-new-tab', nestedUrl);
+    }
+    return { action: 'deny' };
+  });
+
+  popupWin.loadURL(url);
 });

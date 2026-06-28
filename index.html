@@ -336,6 +336,7 @@
           <polyline points="9 18 15 12 9 6"></polyline>
         </svg>
       </button>
+      <div id="pinned-scores-container" class="pinned-scores-container"></div>
     </div>
 
     <!-- Find in Page Bar -->
@@ -394,11 +395,20 @@
                     <line x1="12" y1="8" x2="12.01" y2="8"></line>
                   </svg>
                   <div class="news-disclaimer-tooltip">
-                    Yahoo News is not associated with Leef. We use their RSS feed to fetch headlines locally. Dismissed
-                    headlines are stored on your device and are not shared with Yahoo. Yahoo may collect analytics if
-                    you click on an article.
+                    Yahoo News and ESPN are not associated with Leef. We use their public feeds to fetch headlines and
+                    scores locally. All trademarks (including FIFA®, NFL®, NBA®, MLB®, NHL®) and logos are the property
+                    of their respective owners.
                   </div>
                 </div>
+                <button id="btn-news-settings" class="news-settings-btn" title="News Settings">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path
+                      d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
+                    </path>
+                  </svg>
+                </button>
               </div>
               <button id="btn-refresh-news" class="news-refresh-btn" title="Refresh news">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -450,6 +460,85 @@
       <div class="changelog-content">
         <h1 data-i18n="What's New">What's New in Leef</h1>
         <p class="changelog-subtitle">Discover the latest updates and improvements</p>
+        <div class="update-card">
+          <div class="update-header-meta">
+            <span class="changelog-badge latest">Latest</span>
+            <span class="changelog-badge date">June 28, 2026</span>
+          </div>
+          <h2 class="changelog-title">v1.1.0</h2>
+          <p class="changelog-desc">Live sports scores in your news feed, content filtering, and a pile of fixes and
+            polish.</p>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category sports">Sports</span>
+              <span class="changelog-section-title">Live scores</span>
+            </div>
+            <ul>
+              <li>
+                <strong>Live sports scores in your news feed</strong>
+                <p>Follow your teams and see live score updates right in the news feed. Works for basketball, football,
+                  hockey, baseball, FIFA World Cup, and more. Scores update every 60 seconds.</p>
+              </li>
+              <li>
+                <strong>Score pills in the tab bar</strong>
+                <p>Pin live scores to your tab bar so you can glance at the game while you're doing other things. The
+                  score updates live without needing a click.</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category privacy">Privacy</span>
+              <span class="changelog-section-title">Content control</span>
+            </div>
+            <ul>
+              <li>
+                <strong>Word blocklist for news</strong>
+                <p>Add words to a blocklist and articles containing them will be hidden from your news feed. Want to
+                  avoid certain topics? You decide what you don't want to see.</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category interface">Interface</span>
+              <span class="changelog-section-title">Updates &amp; improvements</span>
+            </div>
+            <ul>
+              <li>
+                <strong>Redesigned security dashboard</strong>
+                <p>The security info panel has been redesigned to match the rest of Leef's interface, making it clearer
+                  and easier to understand your connection details at a glance.</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category bug-fixes">Bug fixes</span>
+              <span class="changelog-section-title">Polish &amp; stability</span>
+            </div>
+            <ul>
+              <li>
+                <strong>Fixed emoji rendering</strong>
+                <p>Some emojis weren't displaying correctly. That's fixed now.</p>
+              </li>
+              <li>
+                <strong>Search autofill cleanup</strong>
+                <p>The search autofill dropdown was lingering on screen after you pressed enter or clicked away. It now
+                  dismisses properly.</p>
+              </li>
+              <li>
+                <strong>Dependency updates</strong>
+                <p>Fixed several dependency alerts to keep Leef secure and up to date.</p>
+              </li>
+            </ul>
+          </div>
+        </div>
+
         <div class="update-card">
           <div class="update-header-meta">
             <span class="changelog-badge milestone">Milestone release</span>
@@ -1259,6 +1348,16 @@
               </svg></span>
             <span data-i18n="Appearance">Appearance</span>
           </li>
+          <li data-section="sec-hub">
+            <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+                stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="9"></rect>
+                <rect x="14" y="3" width="7" height="5"></rect>
+                <rect x="14" y="12" width="7" height="9"></rect>
+                <rect x="3" y="16" width="7" height="5"></rect>
+              </svg></span>
+            <span data-i18n="Hub">Hub</span>
+          </li>
           <li data-section="sec-privacy">
             <span class="settings-nav-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none"
                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1628,6 +1727,18 @@
             <label class="switch"><input type="checkbox" id="flag-css-sanitize" checked><span
                 class="slider"></span></label>
           </div>
+          <div class="setting-group">
+            <h3 data-i18n="Site Permissions">Site Permissions</h3>
+            <button class="settings-btn" id="btn-camera-mic" data-i18n="Manage Camera & Microphone">Manage Camera &
+              Microphone</button>
+            <button class="settings-btn" id="btn-location" data-i18n="Location Settings">Location Settings</button>
+          </div>
+        </div>
+
+        <!-- Hub -->
+        <div class="settings-section" id="sec-hub">
+          <h1 data-i18n="Hub">Hub</h1>
+
           <div class="setting-group toggle-group">
             <div>
               <h3 data-i18n="Manual News Refresh">Manual News Refresh</h3>
@@ -1637,11 +1748,26 @@
             </div>
             <label class="switch"><input type="checkbox" id="news-manual-refresh"><span class="slider"></span></label>
           </div>
+
+          <!-- Word/Topic Filter -->
           <div class="setting-group">
-            <h3 data-i18n="Site Permissions">Site Permissions</h3>
-            <button class="settings-btn" id="btn-camera-mic" data-i18n="Manage Camera & Microphone">Manage Camera &
-              Microphone</button>
-            <button class="settings-btn" id="btn-location" data-i18n="Location Settings">Location Settings</button>
+            <h3>News Word Filter</h3>
+            <p style="margin-bottom: 10px;">Hide headlines containing specific words or phrases. Not case-sensitive.</p>
+            <div class="news-filter-input-row">
+              <input type="text" id="news-word-filter-input" placeholder='e.g. "trump", "crypto"…' autocomplete="off"
+                spellcheck="false" class="news-filter-input">
+              <button id="news-word-filter-add" class="news-filter-add-btn">Add</button>
+            </div>
+            <div id="news-word-filter-tags" class="news-filter-tags"></div>
+          </div>
+
+          <!-- Sports Scores -->
+          <div class="setting-group">
+            <h3>Sports Scores</h3>
+            <p style="margin-bottom: 8px;">Follow specific teams to see live scores above your news feed. Only games
+              your teams are playing in will appear.</p>
+            <div id="followed-teams-tags" class="news-filter-tags" style="margin-bottom: 12px;"></div>
+            <div id="sports-team-picker"></div>
           </div>
         </div>
 
@@ -1815,58 +1941,120 @@
     <!-- Privacy Dashboard View (External Lab) -->
     <div class="privacy-layout" id="privacy-view" style="display: none;">
       <div class="privacy-content">
-        <div class="privacy-header">
-          <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 10px;">
-            <h1 style="font-family: var(--font-display); font-size: 2.5rem; color: var(--primary-color);"
-              data-i18n="Privacy Analytics">Privacy Analytics</h1>
+        <div class="privacy-hero">
+          <h1 data-i18n="Privacy Dashboard">Privacy Dashboard</h1>
+          <p data-i18n="A locally-processed overview of your digital footprint.">A locally-processed overview of your
+            digital footprint.</p>
+        </div>
+
+        <div id="privacy-disabled-state" style="display: none;">
+          <div class="privacy-disabled-card">
+            <div class="privacy-disabled-icon">🛡️</div>
+            <h2 data-i18n="Ad Blocking is Disabled">Ad Blocking is Disabled</h2>
+            <p
+              data-i18n="To see how well Leef protects you from ads and trackers, you first need to enable the blocker in your settings.">
+              To see how well Leef protects you from ads and trackers, enable the ad blocker in Settings.</p>
+            <button id="btn-privacy-enable-blocker" class="privacy-cta-btn" data-i18n="Open Protection Settings">Open
+              Protection Settings</button>
           </div>
-          <p class="flags-subtitle" data-i18n="A live look at how Leef is protecting your privacy.">A live look at how
-            Leef is protecting your privacy.</p>
         </div>
 
-        <!-- State: Blocker Disabled -->
-        <div id="privacy-disabled-state"
-          style="display: none; text-align: center; padding: 40px 20px; background: white; border-radius: 20px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 20px rgba(0,0,0,0.02);">
-          <div style="font-size: 4rem; margin-bottom: 20px;">🛡️</div>
-          <h2 style="margin-bottom: 10px;" data-i18n="Ad Blocking is Disabled">Ad Blocking is Disabled</h2>
-          <p style="color: #666; margin-bottom: 25px; max-width: 400px; margin-inline: auto;"
-            data-i18n="To see how well Leef protects you from ads and trackers, you first need to enable the blocker in your settings.">
-            To see how well Leef protects you from ads and trackers, you first need to enable the blocker in your
-            settings.</p>
-          <button id="btn-privacy-enable-blocker" class="settings-btn"
-            style="background: var(--primary-color); color: white; border: none; padding: 12px 24px; font-weight: 600;"
-            data-i18n="Open Protection Settings">Open Protection Settings</button>
-        </div>
-
-        <!-- State: Blocker Enabled -->
         <div id="privacy-enabled-state">
+
+          <!-- Stat Cards -->
           <div class="privacy-stats-grid">
-            <div class="privacy-stat-card">
+            <div class="privacy-stat-card psc-green">
+              <div class="psc-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+              </div>
               <div class="stat-value" id="stat-total-blocked">0</div>
-              <div class="stat-label" data-i18n="Ads & Trackers Blocked">Ads & Trackers Blocked</div>
+              <div class="stat-label" data-i18n="Ads &amp; Trackers Blocked">Ads & Trackers Blocked</div>
               <div class="stat-desc" data-i18n="Since you started using Leef">Since you started using Leef</div>
             </div>
-            <div class="privacy-stat-card">
-              <div class="stat-value" id="stat-secure-percent">100%</div>
+            <div class="privacy-stat-card psc-blue">
+              <div class="psc-icon psc-icon-blue">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              </div>
+              <div class="stat-value" id="stat-secure-percent" style="color: #2563eb;">100%</div>
               <div class="stat-label" data-i18n="HTTPS Connections">HTTPS Connections</div>
               <div class="stat-desc" data-i18n="Secure vs Unsecured browsing">Secure vs Unsecured browsing</div>
             </div>
-          </div>
-
-          <div class="privacy-section" style="margin-top: 30px;">
-            <h3 style="margin-bottom: 15px; font-weight: 600;" data-i18n="Protection activity from this session">
-              Protection activity from this session</h3>
-            <div id="privacy-recent-list" class="privacy-recent-list">
-              <p style="opacity:0.5; font-size:0.9rem; padding: 15px; text-align: center;"
-                data-i18n="Start browsing to see protection in action.">Start browsing to see protection in action.</p>
+            <div class="privacy-stat-card psc-purple">
+              <div class="psc-icon psc-icon-purple">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </div>
+              <div class="stat-value" id="stat-session-blocked" style="color: #7c3aed;">0</div>
+              <div class="stat-label">Blocked This Session</div>
+              <div class="stat-desc">Since the browser opened</div>
             </div>
           </div>
 
-          <div class="privacy-info-card"
-            style="margin-top: 40px; background: rgba(255,255,255,0.6); border: 1px solid rgba(0,0,0,0.05);">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-            </svg>
+          <!-- HTTPS Security Bar -->
+          <div class="privacy-section privacy-https-section">
+            <div class="privacy-section-header">
+              <div class="privacy-section-title-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                <h3>Connection Security</h3>
+              </div>
+            </div>
+            <div class="https-bar-wrap">
+              <div class="https-bar-track">
+                <div class="https-bar-fill" id="https-bar-fill" style="width: 100%;"></div>
+              </div>
+              <div class="https-bar-labels">
+                <span class="https-label-secure">
+                  <span class="https-dot https-dot-secure"></span>Secure (HTTPS)
+                </span>
+                <span class="https-label-insecure">
+                  <span class="https-dot https-dot-insecure"></span>Insecure (HTTP)
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Protection Feed -->
+          <div class="privacy-section">
+            <div class="privacy-section-header">
+              <div class="privacy-section-title-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                <h3 data-i18n="Protection activity from this session">Protection activity from this session</h3>
+              </div>
+              <span class="privacy-live-badge">
+                <span class="privacy-live-dot"></span> LIVE
+              </span>
+            </div>
+            <div id="privacy-recent-list" class="privacy-recent-list">
+              <div class="privacy-empty-state">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                  opacity="0.3">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                <p data-i18n="Start browsing to see protection in action.">Start browsing to see protection in action.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Local Data Footer -->
+          <div class="privacy-local-card">
+            <div class="privacy-local-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            </div>
             <div>
               <h4 data-i18n="Your data is your business.">Your data is your business.</h4>
               <p
@@ -1875,6 +2063,7 @@
                 locally on your machine.</p>
             </div>
           </div>
+
         </div>
       </div>
     </div>
@@ -2026,7 +2215,7 @@
     <div class="hub-modal" style="max-width: 500px; width: 90%;">
       <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
         <span style="font-size: 1.5rem;">📰</span>
-        <h3 style="margin: 0;">News & Privacy</h3>
+        <h3 style="margin: 0;">News, Sports & Privacy</h3>
       </div>
 
       <div style="font-size: 0.9rem; color: #444; line-height: 1.6; margin-bottom: 20px;">
@@ -2038,13 +2227,20 @@
           preference is stored exclusively in your local browser settings. We do <strong>not</strong> send this feedback
           to Yahoo or any other server. It's just a local filter to help you curate your own feed.</p>
 
+        <p style="margin-bottom: 10px;"><strong>Sports Scores & Trademarks:</strong> Live scores are fetched directly
+          from ESPN's public APIs. All sports league names, team names, logos, and trademarks (including FIFA®, NFL®,
+          NBA®, MLB®, NHL®) are registered trademarks of their respective owners. Their use on Leef Browser is solely
+          for informational purposes to identify matches and does not imply any affiliation, sponsorship, or
+          endorsement.</p>
+
         <p style="margin-bottom: 10px;"><strong>Third-Party Analytics:</strong> Because you are fetching the RSS feed
-          directly, Yahoo may see your IP address and basic browser info (like any website you visit). If you click on
-          an article, you are leaving Leef's local environment and entering Yahoo's website, where their standard
-          privacy policy and analytics apply.</p>
+          and scores
+          directly, Yahoo and ESPN may see your IP address and basic browser info. If you click on
+          an article, you are leaving Leef's local environment, where their standard
+          privacy policies apply.</p>
 
         <p><strong>Affiliation:</strong> Leef Browser is an independent project and is not affiliated with, sponsored
-          by, or endorsed by Yahoo or its parent companies.</p>
+          by, or endorsed by Yahoo, ESPN, FIFA®, or any other third-party trademark owners.</p>
       </div>
 
       <div class="hub-modal-actions">
@@ -2057,7 +2253,9 @@
   <div id="gpc-info-modal" class="hub-modal-overlay" style="display:none; z-index: 10001;">
     <div class="hub-modal" style="max-width: 500px; width: 90%;">
       <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 18px;">
-        <div id="gpc-modal-icon" style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 10px; flex-shrink: 0;"></div>
+        <div id="gpc-modal-icon"
+          style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 10px; flex-shrink: 0;">
+        </div>
         <div>
           <h3 id="gpc-modal-title" style="margin: 0; font-family: var(--font-display); font-size: 1.25rem;">Global
             Privacy Control</h3>
@@ -2574,6 +2772,34 @@
   </div>
 
   <!-- <div class="prerelease-banner">prerelease do not share</div> -->
+
+  <!-- Popup Blocker Toast -->
+  <div id="popup-blocker-toast" class="popup-blocker-toast" style="display: none;">
+    <button id="btn-popup-close" class="popup-close-btn" title="Dismiss Alert">&times;</button>
+    <div id="popup-blocker-main-content" class="popup-toast-body">
+      <div class="popup-toast-title">
+        <span class="popup-shield-icon">🛡️</span>
+        <span>Popup Blocked</span>
+      </div>
+      <p class="popup-toast-desc">Leef blocked a popup from <strong id="popup-requester-domain">example.com</strong>.
+      </p>
+      <div class="popup-toast-actions">
+        <button id="btn-popup-allow-once" class="popup-action-btn primary">Allow Once</button>
+        <button id="btn-popup-always-allow" class="popup-action-btn secondary">Always Allow</button>
+        <button id="btn-popup-never-allow" class="popup-action-btn danger">Never Allow</button>
+      </div>
+    </div>
+    <div id="popup-blocker-confirm-content" class="popup-toast-body" style="display: none;">
+      <div class="popup-toast-title danger-text">
+        <span>⚠️ Permanent Block</span>
+      </div>
+      <p class="popup-toast-desc">(ARE YOU ABSOLUTELY SURE you want to block all future popups from this site?)</p>
+      <div class="popup-toast-actions">
+        <button id="btn-popup-confirm-yes" class="popup-action-btn danger">Yes, Block it</button>
+        <button id="btn-popup-confirm-no" class="popup-action-btn secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="./renderer.js"></script>
 </body>

@@ -10,7 +10,8 @@ const SEND_ALLOWLIST = [
   'pause-download', 'resume-download', 'cancel-download', 'retry-download',
   'clear-data', 'clear-site-data', 'generate-bug-log', 'set-cpu-throttle',
   'capture-page', 'set-default-browser', 'recovery-action',
-  'update-closed-tabs-count', 'open-downloaded-file'
+  'update-closed-tabs-count', 'open-downloaded-file',
+  'update-popup-rules', 'open-popup-window'
 ];
 
 const ON_ALLOWLIST = [
@@ -20,7 +21,7 @@ const ON_ALLOWLIST = [
   'permission-request', 'drm-detected', 'trigger-find-in-page',
   'trigger-offline-game', 'apply-url-rules', 'screenshot-captured',
   'bug-log-generated', 'critical-mode-blocked-nav', 'open-external-url',
-  'focus-address-bar'
+  'focus-address-bar', 'popup-blocked'
 ];
 
 const INVOKE_ALLOWLIST = [
@@ -111,3 +112,46 @@ contextBridge.exposeInMainWorld('leefAPI', {
     return ipcRenderer.invoke('fetch-rss', url, options);
   }
 });
+
+// Inject flag emoji font face overrides into all web pages on Windows
+if (process.platform === 'win32') {
+  const injectFlagsCSS = () => {
+    if (!document || !document.head) return;
+    const id = 'leef-flag-emoji-polyfill';
+    if (document.getElementById(id)) return;
+
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
+      @font-face {
+        font-family: "Segoe UI Emoji";
+        unicode-range: U+1F1E6-1F1FF, U+1F3F4, U+E0062-E0063, U+E0065, U+E0067, U+E006C, U+E006E, U+E0073-E0074, U+E0077, U+E007F;
+        src: url('https://cdn.jsdelivr.net/npm/country-flag-emoji-polyfill@0.1/dist/TwemojiCountryFlags.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: "Segoe UI Symbol";
+        unicode-range: U+1F1E6-1F1FF, U+1F3F4, U+E0062-E0063, U+E0065, U+E0067, U+E006C, U+E006E, U+E0073-E0074, U+E0077, U+E007F;
+        src: url('https://cdn.jsdelivr.net/npm/country-flag-emoji-polyfill@0.1/dist/TwemojiCountryFlags.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: "Apple Color Emoji";
+        unicode-range: U+1F1E6-1F1FF, U+1F3F4, U+E0062-E0063, U+E0065, U+E0067, U+E006C, U+E006E, U+E0073-E0074, U+E0077, U+E007F;
+        src: url('https://cdn.jsdelivr.net/npm/country-flag-emoji-polyfill@0.1/dist/TwemojiCountryFlags.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: "Noto Color Emoji";
+        unicode-range: U+1F1E6-1F1FF, U+1F3F4, U+E0062-E0063, U+E0065, U+E0067, U+E006C, U+E006E, U+E0073-E0074, U+E0077, U+E007F;
+        src: url('https://cdn.jsdelivr.net/npm/country-flag-emoji-polyfill@0.1/dist/TwemojiCountryFlags.woff2') format('woff2');
+      }
+    `;
+    document.head.appendChild(style);
+  };
+
+  // Run as early as possible and fallback to DOMContentLoaded
+  if (document.head) {
+    injectFlagsCSS();
+  } else {
+    document.addEventListener('DOMContentLoaded', injectFlagsCSS);
+  }
+}
+

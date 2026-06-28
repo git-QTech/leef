@@ -12,15 +12,15 @@ async function loadTranslations() {
 // Perf: Cache language at module level — avoids localStorage read + JSON.parse on every t() call.
 // Call window.refreshLang() whenever settings are saved.
 let _cachedLang = 'en';
-window.refreshLang = function() {
+window.refreshLang = function () {
   try {
     const s = localStorage.getItem('leef_settings');
     if (s) _cachedLang = JSON.parse(s).language || 'en';
-  } catch (e) {}
+  } catch (e) { }
 };
 window.refreshLang();
 
-window.t = function(key) {
+window.t = function (key) {
   if (_cachedLang !== 'en' && TRANSLATIONS[_cachedLang] && TRANSLATIONS[_cachedLang][key]) {
     return TRANSLATIONS[_cachedLang][key];
   }
@@ -132,7 +132,9 @@ class SettingsManager {
       cpuLimit: 100,
       ramLimit: 0,
       customNewTab: 'home',
-      sitePermissions: {}
+      sitePermissions: {},
+      newsWordFilters: [],
+      followedTeams: []
     };
     // Load previously saved settings and merge with defaults
     this.currentSettings = this.loadSavedSettings();
@@ -229,20 +231,20 @@ class SettingsManager {
     if (document.getElementById('news-manual-refresh')) document.getElementById('news-manual-refresh').checked = s.newsManualRefresh;
     if (el('allow-notifications')) el('allow-notifications').checked = s.allowNotifications;
     if (el('ask-download')) el('ask-download').checked = s.askDownload;
-    
+
     if (el('block-ai')) el('block-ai').checked = s.blockAIOverview;
     if (el('block-ai-browsing')) el('block-ai-browsing').checked = s.blockAIOverview;
-    
+
     if (el('native-dictionary')) el('native-dictionary').checked = s.nativeDictionary !== false;
     if (el('native-dictionary-browsing')) el('native-dictionary-browsing').checked = s.nativeDictionary !== false;
-    
+
     if (el('custom-ua')) el('custom-ua').value = s.customUa || '';
     if (el('doh-toggle')) el('doh-toggle').checked = s.dohToggle;
     if (el('proxy-url')) el('proxy-url').value = s.proxyUrl || '';
-    
+
     if (el('live-autocomplete')) el('live-autocomplete').checked = s.liveAutocomplete;
     if (el('live-autocomplete-browsing')) el('live-autocomplete-browsing').checked = s.liveAutocomplete;
-    
+
     if (el('flag-gpc')) el('flag-gpc').checked = s.gpc !== false; // Default to true
     document.querySelectorAll(`input[name="startup"]`).forEach(r => { r.checked = r.value === s.startup; });
     document.querySelectorAll(`input[name="tracking"]`).forEach(r => { r.checked = r.value === s.tracking; });
@@ -313,25 +315,25 @@ class SettingsManager {
     if (settingsSearch) {
       settingsSearch.addEventListener('input', () => {
         const query = settingsSearch.value.trim().toLowerCase();
-        
+
         if (query.length > 0) {
           // Temporarily disable/fade normal sidebar nav item selection
           settingsNavItems.forEach(item => {
             item.style.pointerEvents = 'none';
             item.style.opacity = '0.4';
           });
-          
+
           settingsSections.forEach(sec => {
             let sectionHasMatch = false;
             const groups = sec.querySelectorAll('.setting-group');
-            
+
             groups.forEach(group => {
               // Extract all user-facing text from headers, paragraphs, labels, spans, options
               const textContent = Array.from(group.querySelectorAll('h3, p, label, span, strong, option'))
                 .map(node => node.textContent.trim())
                 .join(' ')
                 .toLowerCase();
-              
+
               if (textContent.includes(query) || group.textContent.toLowerCase().includes(query)) {
                 group.classList.remove('search-hidden');
                 sectionHasMatch = true;
@@ -339,7 +341,7 @@ class SettingsManager {
                 group.classList.add('search-hidden');
               }
             });
-            
+
             if (sectionHasMatch) {
               sec.classList.add('active');
               sec.classList.remove('search-hidden');
@@ -354,10 +356,10 @@ class SettingsManager {
             item.style.pointerEvents = '';
             item.style.opacity = '';
           });
-          
+
           const activeNav = document.querySelector('.settings-nav li.active');
           const activeSectionId = activeNav ? activeNav.getAttribute('data-section') : 'sec-general';
-          
+
           settingsSections.forEach(sec => {
             sec.classList.remove('search-hidden');
             sec.querySelectorAll('.setting-group').forEach(group => {
@@ -710,7 +712,9 @@ class SettingsManager {
       efficiencyMode: document.getElementById('efficiency-mode').checked,
       cpuLimit: parseInt(document.getElementById('cpu-limit-slider').value),
       ramLimit: parseInt(document.getElementById('ram-limit-slider').value),
-      customNewTab: document.getElementById('custom-new-tab')?.value || ''
+      customNewTab: document.getElementById('custom-new-tab')?.value || '',
+      newsWordFilters: this.currentSettings.newsWordFilters || [],
+      followedTeams: this.currentSettings.followedTeams || []
     };
 
     this.applyVisualSettings();
@@ -724,7 +728,7 @@ class SettingsManager {
       // Persist to localStorage AND send to main process
       localStorage.setItem('leef_settings', JSON.stringify(this.currentSettings));
       window.require('electron').ipcRenderer.send('apply-settings', settingsWithLabs);
-      
+
       if (window.toastManager) {
         if (oldLanguage !== this.currentSettings.language) {
           window.toastManager.show('⚙️ Settings Saved', 'Your preferences have been applied. Please restart the browser to complete the language change.', 6000);
@@ -801,7 +805,7 @@ const DropdownUtils = {
       return;
     }
     el.classList.remove('visible');
-    
+
     let cleaned = false;
     const onTransitionEnd = (e) => {
       if (e.propertyName === 'opacity' || e.propertyName === 'transform') {
@@ -813,7 +817,7 @@ const DropdownUtils = {
       }
     };
     el.addEventListener('transitionend', onTransitionEnd);
-    
+
     // Fallback timeout to ensure display is set to none if transition doesn't fire
     setTimeout(() => {
       if (!cleaned) {
@@ -990,9 +994,9 @@ class HubManager {
     this.btnConfirm.addEventListener('click', () => {
       const name = this.nameInput.value.trim();
       const url = this.urlInput.value.trim();
-      
-      const activeColor = this.pickerHue && this.pickerSat && this.pickerLight 
-        ? `hsl(${this.pickerHue.value}, ${this.pickerSat.value}%, ${this.pickerLight.value}%)` 
+
+      const activeColor = this.pickerHue && this.pickerSat && this.pickerLight
+        ? `hsl(${this.pickerHue.value}, ${this.pickerSat.value}%, ${this.pickerLight.value}%)`
         : '#92ff78';
 
       if (!name || !url) {
@@ -1068,7 +1072,7 @@ class HubManager {
       if (tile.color) {
         el.style.backgroundColor = tile.color;
         el.style.backgroundImage = 'none';
-        
+
         // Auto-calculate text color based on lightness
         let isDark = false;
         if (tile.color.startsWith('hsl')) {
@@ -1124,7 +1128,7 @@ class HubManager {
     if (this.tilePreviewName) {
       this.tilePreviewName.textContent = 'Site Name';
     }
-    
+
     // Reset colors to default brand green HSL (109, 100%, 74%)
     if (this.pickerHue) this.pickerHue.value = 109;
     if (this.pickerSat) this.pickerSat.value = 100;
@@ -1263,6 +1267,7 @@ class NewsService {
             const xml = new DOMParser().parseFromString(data, 'text/xml');
             const rawItems = xml.querySelectorAll('item');
             this.allItems = [];
+            const filters = (window.settingsManager?.currentSettings?.newsWordFilters || []).map(w => w.toLowerCase());
             for (let i = 0; i < rawItems.length; i++) {
               const item = rawItems[i];
               const title = item.querySelector('title')?.textContent || 'Breaking News';
@@ -1271,6 +1276,12 @@ class NewsService {
 
               // Filter out dismissed headlines
               if (this.dismissedHeadlines[link]) continue;
+
+              // Filter out word-blocked headlines
+              if (filters.length > 0) {
+                const lowerTitle = title.toLowerCase();
+                if (filters.some(f => lowerTitle.includes(f))) continue;
+              }
 
               let imgSrc = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=300&h=200&fit=crop';
               const mediaCont = item.getElementsByTagName('media:content');
@@ -1322,6 +1333,11 @@ class NewsService {
       });
       this.container.appendChild(card);
     });
+
+    // Restore sports score cards if they were fetched before news loaded
+    if (window.sportsSvc && window.sportsSvc.lastChips && window.sportsSvc.lastChips.length > 0) {
+      window.sportsSvc._render(window.sportsSvc.lastChips);
+    }
   }
 
   dismissCard(slotIdx) {
@@ -1351,6 +1367,714 @@ class NewsService {
       this.renderCards();
       if (window.toastManager) window.toastManager.show('📰 No More Headlines', 'You\'ve seen all available stories. Try refreshing later!', 4000);
     }
+  }
+
+  // Called by SettingsManager when word filters change — re-fetches with new filters applied
+  reloadWithFilters() {
+    this.allItems = [];
+    this.shownIndices = [];
+    this.isManualTrigger = true;
+    this.loadNews();
+  }
+}
+
+// --- LEAGUE METADATA CACHE ---
+// Slugs are ESPN's stable permanent identifiers and never change.
+// Display names (e.g. "FIFA World Cup 2026" → "FIFA World Cup 2030") are fetched
+// from ESPN and cached locally for 24 hours so they update automatically each season.
+class LeagueMetaCache {
+  static CACHE_KEY = 'leef_league_meta_cache';
+  static TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+  static load() {
+    try { return JSON.parse(localStorage.getItem(LeagueMetaCache.CACHE_KEY) || '{}'); }
+    catch { return {}; }
+  }
+
+  static save(cache) {
+    localStorage.setItem(LeagueMetaCache.CACHE_KEY, JSON.stringify(cache));
+  }
+
+  // Returns cached display name if fresh, otherwise null
+  static get(slug) {
+    const cache = LeagueMetaCache.load();
+    const entry = cache[slug];
+    if (entry && (Date.now() - entry.ts < LeagueMetaCache.TTL)) return entry;
+    return null;
+  }
+
+  // Fetch live from ESPN scoreboard (already called during refresh), cache & return
+  static async fetch(sport, slug) {
+    const cached = LeagueMetaCache.get(slug);
+    if (cached) return cached;
+
+    const https = window.require('https');
+    const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${slug}/scoreboard`;
+    const data = await new Promise(resolve => {
+      https.get(url, { headers: { 'User-Agent': 'LeefBrowser/1.0', Accept: 'application/json' } }, res => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch { resolve(null); } });
+      }).on('error', () => resolve(null));
+    });
+
+    if (!data) return null;
+    const league = data.leagues?.[0];
+    if (!league) return null;
+
+    const entry = {
+      ts: Date.now(),
+      name: league.name,
+      season: league.season?.displayName || league.season?.year?.toString() || '',
+      // Whether the season is currently active (has events today)
+      hasEvents: Array.isArray(data.events) && data.events.length > 0,
+    };
+    const cache = LeagueMetaCache.load();
+    cache[slug] = entry;
+    LeagueMetaCache.save(cache);
+    return entry;
+  }
+}
+
+// --- SPORTS SERVICE ---
+class SportsService {
+  constructor() {
+    this._refreshTimer = null;
+    this.lastChips = []; // cache to avoid unnecessary redraws
+  }
+
+  // Stable ESPN sport/league identifiers. Slugs never change between seasons.
+  // Display names are fetched live from ESPN via LeagueMetaCache.
+  static get LEAGUES() {
+    return [
+      { emoji: '⚽', sport: 'soccer', slug: 'fifa.world' },
+      { emoji: '⚽', sport: 'soccer', slug: 'eng.1' },
+      { emoji: '⚽', sport: 'soccer', slug: 'usa.1' },
+      { emoji: '🏀', sport: 'basketball', slug: 'nba' },
+      { emoji: '🏈', sport: 'football', slug: 'nfl' },
+      { emoji: '⚾', sport: 'baseball', slug: 'mlb' },
+      { emoji: '🏒', sport: 'hockey', slug: 'nhl' },
+    ];
+  }
+
+  // Resolve a human-readable name for a slug, using cache if available
+  static getLeagueName(slug) {
+    const cached = LeagueMetaCache.get(slug);
+    let name = cached ? cached.name : slug.replace(/[._]/g, ' ').toUpperCase();
+    if (name) {
+      name = name.replace(/Football/g, 'American Football').replace(/football/g, 'american football');
+      name = name.replace(/Soccer/g, 'Football').replace(/soccer/g, 'football');
+      name = name.replace(/\bFIFA\b/g, 'FIFA®');
+    }
+    return name;
+  }
+
+  start() {
+    this.refresh();
+    // Auto-refresh every 60 seconds
+    this._refreshTimer = setInterval(() => this.refresh(), 60 * 1000);
+  }
+
+  stop() {
+    if (this._refreshTimer) { clearInterval(this._refreshTimer); this._refreshTimer = null; }
+  }
+
+  async refresh() {
+    const followedTeams = window.settingsManager?.currentSettings?.followedTeams || [];
+    if (followedTeams.length === 0) { this._hide(); return; }
+
+    // Prune game-over times older than 24 hours to prevent localStorage bloating
+    try {
+      const now = Date.now();
+      const ONE_DAY = 24 * 60 * 60 * 1000;
+      const gameOverTimes = JSON.parse(localStorage.getItem('leef_game_over_times') || '{}');
+      let changedGov = false;
+      for (const key in gameOverTimes) {
+        if (now - gameOverTimes[key] > ONE_DAY) {
+          delete gameOverTimes[key];
+          changedGov = true;
+        }
+      }
+      if (changedGov) localStorage.setItem('leef_game_over_times', JSON.stringify(gameOverTimes));
+    } catch (e) { }
+
+    // Group followed teams by leagueSlug so we only fire one request per league
+    const byLeague = {};
+    followedTeams.forEach(t => {
+      if (!byLeague[t.leagueSlug]) byLeague[t.leagueSlug] = { sport: t.sport, teams: [] };
+      byLeague[t.leagueSlug].teams.push(t);
+    });
+
+    const chips = [];
+    const https = window.require('https');
+
+    const fetchJSON = (url) => new Promise((resolve) => {
+      https.get(url, { headers: { 'User-Agent': 'LeefBrowser/1.0', Accept: 'application/json' } }, res => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch { resolve(null); } });
+      }).on('error', () => resolve(null));
+    });
+
+    for (const [slug, { sport, teams }] of Object.entries(byLeague)) {
+      const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${slug}/scoreboard?_t=${Date.now()}`;
+      const data = await fetchJSON(url);
+      if (!data || !data.events) continue;
+
+      const followedIds = new Set(teams.map(t => String(t.teamId)));
+
+      for (const event of data.events) {
+        // Skip games that are too far in the past or future (e.g. ESPN off-season scoreboard fallback)
+        if (event.date) {
+          const eventDate = new Date(event.date);
+          const diffMs = Math.abs(eventDate - Date.now());
+          const MAX_DIFF = 3 * 24 * 60 * 60 * 1000; // 3 days window
+          if (diffMs > MAX_DIFF) continue;
+        }
+
+        const comps = event.competitions?.[0];
+        if (!comps) continue;
+        const competitors = comps.competitors || [];
+        // Only include if one of our followed teams is playing
+        const myTeam = competitors.find(c => followedIds.has(String(c.id)));
+        if (!myTeam) continue;
+
+        const [home, away] = competitors[0].homeAway === 'home'
+          ? [competitors[0], competitors[1]]
+          : [competitors[1], competitors[0]];
+
+        const matchKey = `${home.team.abbreviation}-${away.team.abbreviation}`;
+
+        // Filter out explicitly closed games
+        try {
+          const closedGames = JSON.parse(localStorage.getItem('leef_closed_games') || '[]');
+          if (closedGames.includes(matchKey)) continue;
+        } catch (e) { }
+
+        const status = comps.status?.type;
+        const isLive = status?.state === 'in';
+        const isOver = status?.completed;
+        const clock = status?.shortDetail || status?.detail || '';
+
+        // Auto-remove 30 minutes after game is over
+        if (isOver) {
+          try {
+            const gameOverTimes = JSON.parse(localStorage.getItem('leef_game_over_times') || '{}');
+            if (!gameOverTimes[matchKey]) {
+              gameOverTimes[matchKey] = Date.now();
+              localStorage.setItem('leef_game_over_times', JSON.stringify(gameOverTimes));
+            } else if (Date.now() - gameOverTimes[matchKey] > 30 * 60 * 1000) {
+              continue; // Skip rendering this game
+            }
+          } catch (e) { }
+        }
+
+        // Calculate countdown timer for upcoming/scheduled games
+        let displayClock = clock;
+        const isUpcoming = !isLive && !isOver;
+        if (isUpcoming && event.date) {
+          const startTime = new Date(event.date);
+          const diffMs = startTime - Date.now();
+          if (diffMs > 0) {
+            const diffMins = Math.floor(diffMs / 60000);
+            if (diffMins < 60) {
+              displayClock = `Starts in ${diffMins}m`;
+            } else {
+              const diffHours = Math.floor(diffMins / 60);
+              const remainingMins = diffMins % 60;
+              displayClock = `Starts in ${diffHours}h ${remainingMins}m`;
+            }
+          }
+        }
+
+        // For soccer, include group note if available
+        const groupNote = comps.altGameNote ? ` · ${comps.altGameNote}` : '';
+
+        chips.push({
+          homeAbbr: home.team.abbreviation,
+          awayAbbr: away.team.abbreviation,
+          homeLogo: home.team.logo,
+          awayLogo: away.team.logo,
+          homeScore: isLive || isOver ? home.score : null,
+          awayScore: isLive || isOver ? away.score : null,
+          homeColor: '#' + (home.team.color || '17b340'),
+          awayColor: '#' + (away.team.color || '17b340'),
+          clock: displayClock,
+          isLive,
+          isOver,
+          groupNote,
+          leagueName: SportsService.getLeagueName(slug),
+          leagueEmoji: SportsService.LEAGUES.find(l => l.slug === slug)?.emoji || '🏅',
+        });
+      }
+    }
+
+    if (chips.length === 0) { this._hide(); return; }
+    this._render(chips);
+  }
+
+  _render(chips) {
+    const oldChips = this.lastChips || [];
+    this.lastChips = chips;
+    const container = document.getElementById('dynamic-news-container');
+    if (!container) return;
+
+    // Remove any previously injected score cards
+    container.querySelectorAll('.news-card-score').forEach(el => el.remove());
+
+    let minimizedList = [];
+    let maximizedList = [];
+    let pinnedList = [];
+    try {
+      minimizedList = JSON.parse(localStorage.getItem('leef_minimized_games') || '[]');
+      maximizedList = JSON.parse(localStorage.getItem('leef_maximized_games') || '[]');
+      pinnedList = JSON.parse(localStorage.getItem('leef_pinned_games') || '[]');
+    } catch (e) { }
+
+    // Render pinned scores in the tab bar
+    this._renderPinnedScores(chips, pinnedList, oldChips);
+
+    // Inject one score card per chip at the top of the container
+    chips.slice().reverse().forEach(chip => {
+      const matchKey = `${chip.homeAbbr}-${chip.awayAbbr}`;
+      const isNotStarted = !chip.isLive && !chip.isOver;
+      const isMinimized = isNotStarted ? !maximizedList.includes(matchKey) : minimizedList.includes(matchKey);
+      const isPinned = pinnedList.includes(matchKey);
+
+      // Check for goals (score increased since last render)
+      const oldChip = oldChips.find(c => c.homeAbbr === chip.homeAbbr && c.awayAbbr === chip.awayAbbr);
+      const isHomeGoal = oldChip && oldChip.homeScore !== null && chip.homeScore !== null && parseInt(chip.homeScore) > parseInt(oldChip.homeScore);
+      const isAwayGoal = oldChip && oldChip.awayScore !== null && chip.awayScore !== null && parseInt(chip.awayScore) > parseInt(oldChip.awayScore);
+
+      const card = document.createElement('div');
+      card.className = 'news-card news-card-score' + (chip.isLive ? ' score-live' : '') + (chip.isOver ? ' score-over' : '') + (isMinimized ? ' minimized' : '');
+
+      let homeWinner = false, awayWinner = false, homeLoser = false, awayLoser = false;
+      if (chip.isOver && chip.homeScore !== null && chip.awayScore !== null) {
+        const h = parseInt(chip.homeScore), a = parseInt(chip.awayScore);
+        if (h > a) { homeWinner = true; awayLoser = true; }
+        else if (a > h) { awayWinner = true; homeLoser = true; }
+      }
+
+      card.innerHTML = `
+        <div class="score-card-actions" style="position: absolute; top: 10px; right: 15px; display: flex; gap: 8px; z-index: 10;">
+          <button class="score-action-btn btn-score-pin ${isPinned ? 'pinned' : ''}" title="${isPinned ? 'Unpin from tab bar' : 'Pin to tab bar'}">
+            📌
+          </button>
+          <button class="score-action-btn btn-score-minimize" title="${isMinimized ? 'Expand' : 'Minimize'}" style="background: transparent; border: none; cursor: pointer; opacity: 0.5; padding: 4px; display: flex; align-items: center; justify-content: center; color: inherit;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              ${isMinimized ? '<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>' : '<line x1="5" y1="12" x2="19" y2="12"></line>'}
+            </svg>
+          </button>
+          ${chip.isOver ? `
+            <button class="score-action-btn btn-score-close" title="Close" style="background: transparent; border: none; cursor: pointer; opacity: 0.5; padding: 4px; display: flex; align-items: center; justify-content: center; color: inherit;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          ` : ''}
+        </div>
+        <div class="news-content" style="padding: 20px; align-items: center; justify-content: center; text-align: center;">
+          <div class="score-card-league" style="margin-bottom: 12px;">${chip.leagueEmoji} ${chip.leagueName}${chip.groupNote}</div>
+          <div class="score-card-matchup">
+            <div class="score-card-team away ${awayWinner ? 'winner-team' : ''} ${awayLoser ? 'loser-team' : ''}">
+              <img class="score-card-team-logo" src="${chip.awayLogo || ''}" onerror="this.style.display='none'" loading="lazy">
+              <span class="score-card-team-name">${chip.awayAbbr}</span>
+              ${awayWinner ? '<span class="winner-crown">👑</span>' : ''}
+              ${chip.awayScore !== null ? `<span class="score-card-score-val ${isAwayGoal ? 'score-goal-anim' : ''}">${chip.awayScore}</span>` : ''}
+            </div>
+            
+            <div class="score-card-divider" style="display: flex; flex-direction: column; align-items: center; min-width: 60px;">
+              <div class="score-card-status ${chip.isLive ? 'status-live' : chip.isOver ? 'status-over' : 'status-upcoming'}" style="font-size: 0.9rem; white-space: nowrap;">
+                ${(isHomeGoal || isAwayGoal) ? `
+                  <span class="score-goal-badge" style="background: #ffbc00; color: #000; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.75rem; animation: pulse 1.5s infinite;">⚽ GOAL!</span>
+                ` : (chip.clock === 'HT' || chip.clock === 'Halftime') ? `
+                  <span class="score-halftime-badge" style="background: #e65100; color: #fff; padding: 2px 8px; border-radius: 10px; font-weight: bold; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 4px rgba(230,81,0,0.2);">⏸️ HT</span>
+                ` : `
+                  ${chip.isLive ? `<span class="status-live-dot" style="display: inline-block; margin-right: 4px;"></span>` : ''}
+                  ${chip.isLive ? chip.clock : chip.isOver ? 'FT' : chip.clock}
+                `}
+              </div>
+            </div>
+
+            <div class="score-card-team home ${homeWinner ? 'winner-team' : ''} ${homeLoser ? 'loser-team' : ''}">
+              ${homeWinner ? '<span class="winner-crown">👑</span>' : ''}
+              <img class="score-card-team-logo" src="${chip.homeLogo || ''}" onerror="this.style.display='none'" loading="lazy">
+              <span class="score-card-team-name">${chip.homeAbbr}</span>
+              ${chip.homeScore !== null ? `<span class="score-card-score-val ${isHomeGoal ? 'score-goal-anim' : ''}">${chip.homeScore}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+      container.insertBefore(card, container.firstChild);
+
+      // Event listeners for actions
+      const pinBtn = card.querySelector('.btn-score-pin');
+      if (pinBtn) {
+        pinBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          try {
+            const list = JSON.parse(localStorage.getItem('leef_pinned_games') || '[]');
+            const idx = list.indexOf(matchKey);
+            if (idx !== -1) {
+              list.splice(idx, 1);
+            } else {
+              list.push(matchKey);
+            }
+            localStorage.setItem('leef_pinned_games', JSON.stringify(list));
+          } catch (err) { }
+          this._render(this.lastChips);
+        });
+      }
+
+      const minimizeBtn = card.querySelector('.btn-score-minimize');
+      if (minimizeBtn) {
+        minimizeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          try {
+            const isNotStarted = !chip.isLive && !chip.isOver;
+            if (isNotStarted) {
+              const list = JSON.parse(localStorage.getItem('leef_maximized_games') || '[]');
+              const idx = list.indexOf(matchKey);
+              if (idx !== -1) {
+                list.splice(idx, 1);
+              } else {
+                list.push(matchKey);
+              }
+              localStorage.setItem('leef_maximized_games', JSON.stringify(list));
+            } else {
+              const list = JSON.parse(localStorage.getItem('leef_minimized_games') || '[]');
+              const idx = list.indexOf(matchKey);
+              if (idx !== -1) {
+                list.splice(idx, 1);
+              } else {
+                list.push(matchKey);
+              }
+              localStorage.setItem('leef_minimized_games', JSON.stringify(list));
+            }
+          } catch (err) { }
+          this._render(this.lastChips);
+        });
+      }
+
+      const closeBtn = card.querySelector('.btn-score-close');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          try {
+            const list = JSON.parse(localStorage.getItem('leef_closed_games') || '[]');
+            if (!list.includes(matchKey)) {
+              list.push(matchKey);
+              localStorage.setItem('leef_closed_games', JSON.stringify(list));
+            }
+          } catch (err) { }
+          card.remove();
+          this.refresh();
+        });
+      }
+
+      if (isHomeGoal || isAwayGoal) {
+        setTimeout(() => {
+          const badge = card.querySelector('.score-goal-badge');
+          if (badge) {
+            badge.outerHTML = `
+              ${chip.isLive ? `<span class="status-live-dot" style="display: inline-block; margin-right: 4px;"></span>` : ''}
+              ${chip.isLive ? chip.clock : chip.isOver ? 'FT' : chip.clock}
+            `;
+          }
+        }, 5000);
+      }
+
+      // Remove a regular news article to maintain the 3-item grid layout
+      const allCards = container.querySelectorAll('.news-card');
+      if (allCards.length > 3) {
+        allCards[allCards.length - 1].remove();
+      }
+    });
+  }
+
+  _renderPinnedScores(chips, pinnedList, oldChips) {
+    const container = document.getElementById('pinned-scores-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    chips.forEach(chip => {
+      const matchKey = `${chip.homeAbbr}-${chip.awayAbbr}`;
+      if (!pinnedList.includes(matchKey)) return;
+
+      const oldChip = (oldChips || []).find(c => c.homeAbbr === chip.homeAbbr && c.awayAbbr === chip.awayAbbr);
+      const isHomeGoal = oldChip && oldChip.homeScore !== null && chip.homeScore !== null && parseInt(chip.homeScore) > parseInt(oldChip.homeScore);
+      const isAwayGoal = oldChip && oldChip.awayScore !== null && chip.awayScore !== null && parseInt(chip.awayScore) > parseInt(oldChip.awayScore);
+      const isGoal = isHomeGoal || isAwayGoal;
+
+      const pill = document.createElement('div');
+      pill.className = 'pinned-score-pill' + (chip.isLive ? ' score-live' : '') + (isGoal ? ' goal-active' : '');
+
+      const isHT = chip.clock === 'HT' || chip.clock === 'Halftime';
+      const scoreStr = isGoal ? '⚽ GOAL!' : `${chip.awayAbbr} ${chip.awayScore !== null ? chip.awayScore : ''} - ${chip.homeScore !== null ? chip.homeScore : ''} ${chip.homeAbbr}${isHT ? ' (HT)' : ''}`;
+
+      pill.innerHTML = `
+        <div class="pill-content">
+          ${isGoal ? '' : `<img src="${chip.awayLogo}" onerror="this.style.display='none'">`}
+          <span>${scoreStr}</span>
+          ${isGoal ? '' : `<img src="${chip.homeLogo}" onerror="this.style.display='none'">`}
+        </div>
+        <div class="unpin-overlay">Click to Unpin</div>
+      `;
+      pill.addEventListener('click', (e) => {
+        e.stopPropagation();
+        try {
+          let list = JSON.parse(localStorage.getItem('leef_pinned_games') || '[]');
+          list = list.filter(k => k !== matchKey);
+          localStorage.setItem('leef_pinned_games', JSON.stringify(list));
+        } catch (err) { }
+        this._render(this.lastChips);
+      });
+      if (isGoal) {
+        setTimeout(() => {
+          pill.classList.remove('goal-active');
+          const content = pill.querySelector('.pill-content');
+          if (content) {
+            content.innerHTML = `
+              <img src="${chip.awayLogo}" onerror="this.style.display='none'">
+              <span>${chip.awayAbbr} ${chip.awayScore !== null ? chip.awayScore : ''} - ${chip.homeScore !== null ? chip.homeScore : ''} ${chip.homeAbbr}</span>
+              <img src="${chip.homeLogo}" onerror="this.style.display='none'">
+            `;
+          }
+        }, 5000);
+      }
+
+      container.appendChild(pill);
+    });
+  }
+
+  _hide() {
+    this.lastChips = [];
+    document.getElementById('dynamic-news-container')
+      ?.querySelectorAll('.news-card-score')
+      .forEach(el => el.remove());
+    const pinnedContainer = document.getElementById('pinned-scores-container');
+    if (pinnedContainer) pinnedContainer.innerHTML = '';
+  }
+}
+
+// --- SPORTS TEAM PICKER (used in settings UI) ---
+class SportsTeamPicker {
+  constructor(settingsManager) {
+    this.settingsManager = settingsManager;
+    this.container = document.getElementById('sports-team-picker');
+    if (!this.container) return;
+    this._renderLeagues();
+    this._bindFollowedTagsRender();
+  }
+
+  _renderLeagues() {
+    this.container.innerHTML = '';
+    SportsService.LEAGUES.forEach(league => {
+      const group = document.createElement('div');
+      group.className = 'sport-league-group';
+      // Start with a slug-based placeholder; update async once ESPN responds
+      const placeholderName = SportsService.getLeagueName(league.slug);
+      group.innerHTML = `
+        <button class="sport-league-toggle" data-slug="${league.slug}" data-sport="${league.sport}">
+          <span class="sport-league-label">${league.emoji} <span class="league-name-text">${placeholderName}</span></span>
+          <svg class="sport-league-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="sport-league-teams" id="teams-${league.slug}" style="display:none;"></div>
+      `;
+      group.querySelector('.sport-league-toggle').addEventListener('click', () => {
+        this._toggleLeague(league);
+      });
+      this.container.appendChild(group);
+
+      LeagueMetaCache.fetch(league.sport, league.slug).then(meta => {
+        if (!meta) return;
+        const nameEl = group.querySelector('.league-name-text');
+        if (nameEl) nameEl.textContent = SportsService.getLeagueName(league.slug);
+      });
+    });
+  }
+
+  async _toggleLeague(league) {
+    const teamsDiv = document.getElementById(`teams-${league.slug}`);
+    const chevron = this.container.querySelector(`[data-slug="${league.slug}"] .sport-league-chevron`);
+    if (!teamsDiv) return;
+
+    if (teamsDiv.style.display !== 'none') {
+      teamsDiv.style.display = 'none';
+      chevron.style.transform = '';
+      return;
+    }
+
+    // Show loading state
+    teamsDiv.style.display = 'block';
+    chevron.style.transform = 'rotate(180deg)';
+    teamsDiv.innerHTML = '<p class="sport-loading">Loading teams...</p>';
+
+    const https = window.require('https');
+    const url = `https://site.api.espn.com/apis/site/v2/sports/${league.sport}/${league.slug}/teams`;
+    const data = await new Promise(resolve => {
+      https.get(url, { headers: { 'User-Agent': 'LeefBrowser/1.0', Accept: 'application/json' } }, res => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString())); } catch { resolve(null); } });
+      }).on('error', () => resolve(null));
+    });
+
+    if (!data) { teamsDiv.innerHTML = '<p class="sport-loading">Failed to load teams.</p>'; return; }
+
+    const teams = (data.sports?.[0]?.leagues?.[0]?.teams || []).map(t => t.team);
+    if (!teams.length) { teamsDiv.innerHTML = '<p class="sport-loading">No teams found.</p>'; return; }
+
+    const followed = this.settingsManager.currentSettings.followedTeams || [];
+    teamsDiv.innerHTML = '';
+
+    // Search box
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'sport-team-search-wrap';
+    searchWrap.innerHTML = `<input type="text" class="sport-team-search" placeholder="Filter teams..." autocomplete="off">`;
+    teamsDiv.appendChild(searchWrap);
+
+    const listDiv = document.createElement('div');
+    listDiv.className = 'sport-team-list';
+    teamsDiv.appendChild(listDiv);
+
+    const renderList = (filter = '') => {
+      const lower = filter.toLowerCase();
+      listDiv.innerHTML = '';
+      teams
+        .filter(t => !filter || t.displayName.toLowerCase().includes(lower))
+        .forEach(team => {
+          const isChecked = followed.some(f => f.teamId === team.id && f.leagueSlug === league.slug);
+          const row = document.createElement('label');
+          row.className = 'sport-team-row' + (isChecked ? ' checked' : '');
+          const logoUrl = team.logos?.[0]?.href || '';
+          row.innerHTML = `
+            <img class="sport-team-logo" src="${logoUrl}" loading="lazy" onerror="this.style.display='none'">
+            <span>${team.displayName}</span>
+            <input type="checkbox" class="sport-team-check" ${isChecked ? 'checked' : ''} style="margin-left:auto;">
+          `;
+          row.querySelector('input').addEventListener('change', e => {
+            const current = this.settingsManager.currentSettings.followedTeams || [];
+            if (e.target.checked) {
+              if (!current.some(f => f.teamId === team.id && f.leagueSlug === league.slug)) {
+                current.push({ teamId: team.id, teamName: team.displayName, leagueSlug: league.slug, sport: league.sport, leagueName: SportsService.getLeagueName(league.slug) });
+              }
+              row.classList.add('checked');
+            } else {
+              const idx = current.findIndex(f => f.teamId === team.id && f.leagueSlug === league.slug);
+              if (idx !== -1) current.splice(idx, 1);
+              row.classList.remove('checked');
+            }
+            this.settingsManager.currentSettings.followedTeams = current;
+            localStorage.setItem('leef_settings', JSON.stringify(this.settingsManager.currentSettings));
+            this._bindFollowedTagsRender();
+            if (window.sportsSvc) window.sportsSvc.refresh();
+          });
+          listDiv.appendChild(row);
+        });
+    };
+
+    renderList();
+    searchWrap.querySelector('input').addEventListener('input', e => renderList(e.target.value));
+  }
+
+  _bindFollowedTagsRender() {
+    const tagContainer = document.getElementById('followed-teams-tags');
+    if (!tagContainer) return;
+    const followed = this.settingsManager.currentSettings.followedTeams || [];
+    tagContainer.innerHTML = '';
+    if (followed.length === 0) {
+      tagContainer.innerHTML = '<span class="news-filter-empty">No teams followed yet.</span>';
+      return;
+    }
+    followed.forEach((t, i) => {
+      const tag = document.createElement('span');
+      tag.className = 'news-filter-tag';
+      tag.textContent = t.teamName + ' ';
+      
+      const hint = document.createElement('span');
+      hint.className = 'tag-league-hint';
+      hint.textContent = t.leagueName;
+      tag.appendChild(hint);
+      
+      tag.appendChild(document.createTextNode(' '));
+      
+      const btn = document.createElement('button');
+      btn.className = 'tag-remove';
+      btn.title = 'Unfollow';
+      btn.textContent = '✕';
+      tag.appendChild(btn);
+
+      btn.addEventListener('click', () => {
+        const current = this.settingsManager.currentSettings.followedTeams || [];
+        current.splice(i, 1);
+        this.settingsManager.currentSettings.followedTeams = current;
+        localStorage.setItem('leef_settings', JSON.stringify(this.settingsManager.currentSettings));
+        this._bindFollowedTagsRender();
+        if (window.sportsSvc) window.sportsSvc.refresh();
+      });
+      tagContainer.appendChild(tag);
+    });
+  }
+}
+
+// --- NEWS WORD FILTER UI (used in settings) ---
+class NewsWordFilterUI {
+  constructor(settingsManager) {
+    this.settingsManager = settingsManager;
+    this.input = document.getElementById('news-word-filter-input');
+    this.addBtn = document.getElementById('news-word-filter-add');
+    this.tagContainer = document.getElementById('news-word-filter-tags');
+    if (!this.input || !this.addBtn) return;
+    this.addBtn.addEventListener('click', () => this._addWord());
+    this.input.addEventListener('keydown', e => { if (e.key === 'Enter') this._addWord(); });
+    this._render();
+  }
+
+  _addWord() {
+    const word = this.input.value.trim().toLowerCase();
+    if (!word) return;
+    const filters = this.settingsManager.currentSettings.newsWordFilters || [];
+    if (!filters.includes(word)) {
+      filters.push(word);
+      this.settingsManager.currentSettings.newsWordFilters = filters;
+      localStorage.setItem('leef_settings', JSON.stringify(this.settingsManager.currentSettings));
+      if (window.newsSvc) window.newsSvc.reloadWithFilters();
+    }
+    this.input.value = '';
+    this._render();
+  }
+
+  _render() {
+    if (!this.tagContainer) return;
+    const filters = this.settingsManager.currentSettings.newsWordFilters || [];
+    this.tagContainer.innerHTML = '';
+    if (filters.length === 0) {
+      this.tagContainer.innerHTML = '<span class="news-filter-empty">No filters added.</span>';
+      return;
+    }
+    filters.forEach((word, i) => {
+      const tag = document.createElement('span');
+      tag.className = 'news-filter-tag';
+      tag.textContent = word + ' ';
+      
+      const btn = document.createElement('button');
+      btn.className = 'tag-remove';
+      btn.title = 'Remove';
+      btn.textContent = '✕';
+      tag.appendChild(btn);
+      
+      btn.addEventListener('click', () => {
+        filters.splice(i, 1);
+        this.settingsManager.currentSettings.newsWordFilters = filters;
+        localStorage.setItem('leef_settings', JSON.stringify(this.settingsManager.currentSettings));
+        if (window.newsSvc) window.newsSvc.reloadWithFilters();
+        this._render();
+      });
+      this.tagContainer.appendChild(tag);
+    });
   }
 }
 
@@ -1413,6 +2137,8 @@ const LEEF_DICT_CSS = `
       background: rgba(23, 179, 64, 0.15);
     }
   }
+
+
   .ld-fetching {
     margin-top: 14px;
     font-size: 0.75rem;
@@ -1678,9 +2404,9 @@ function handleAutocorrectFallback(tab) {
   }
 
   if (correctedWord &&
-      correctedWord.toLowerCase() !== tab._dictWord.toLowerCase() &&
-      /^[a-zA-Z][a-zA-Z\s'-]*$/.test(correctedWord) &&
-      correctedWord.length < 40) {
+    correctedWord.toLowerCase() !== tab._dictWord.toLowerCase() &&
+    /^[a-zA-Z][a-zA-Z\s'-]*$/.test(correctedWord) &&
+    correctedWord.length < 40) {
 
     console.log('[Dict Autocorrect] Correcting', tab._dictWord, '->', correctedWord);
     tab._dictWord = correctedWord;
@@ -1688,7 +2414,7 @@ function handleAutocorrectFallback(tab) {
     tab._dictResolvedJS = null;
 
     if (window.toastManager) window.toastManager.show('📖 Leef Dictionary (Beta)', `Looking up "${correctedWord}"…`, 15000);
-    tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => {});
+    tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => { });
 
     tab._dictFetch = fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(correctedWord.toLowerCase())}`)
       .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
@@ -1697,13 +2423,13 @@ function handleAutocorrectFallback(tab) {
         if (!data || !data.length) throw new Error('empty');
         const successJS = getInjectSuccessJS(data[0]);
         tab._dictResolvedJS = successJS;
-        tab.webviewEl.executeJavaScript(successJS).catch(() => {});
+        tab.webviewEl.executeJavaScript(successJS).catch(() => { });
         return successJS;
       })
       .catch(() => {
         tab._dictLoading = false;
         tab._dictResolvedJS = getRemoveSkeletonJS();
-        tab.webviewEl.executeJavaScript(getRemoveSkeletonJS()).catch(() => {});
+        tab.webviewEl.executeJavaScript(getRemoveSkeletonJS()).catch(() => { });
         return null;
       });
   }
@@ -2119,7 +2845,7 @@ class TabManager {
             redirectUrl = `https://duckduckgo.com/?q=${encodeURIComponent(q)}`;
             usingFallback = true;
           }
-        } catch (err) {}
+        } catch (err) { }
       }
 
       if (window.toastManager) {
@@ -2174,7 +2900,7 @@ class TabManager {
         const url = e.message.replace('LEEF_NEW_TAB:', '');
         this.createTab(url);
       }
-      
+
       if (e.message.startsWith('LEEF_WEBAUTHN_PROMPT:')) {
         try {
           const data = JSON.parse(e.message.substring('LEEF_WEBAUTHN_PROMPT:'.length));
@@ -2232,8 +2958,8 @@ class TabManager {
 
       // Force scroll reset to top of page on cross-page navigation
       try {
-        tab.webviewEl.executeJavaScript('window.scrollTo(0, 0);').catch(() => {});
-      } catch (err) {}
+        tab.webviewEl.executeJavaScript('window.scrollTo(0, 0);').catch(() => { });
+      } catch (err) { }
 
       const s = this.settings.currentSettings;
       const tabUrl = e.url || '';
@@ -2289,9 +3015,9 @@ class TabManager {
 
         if (isGoogleSearch) {
           if (tab._dictResolvedJS) {
-            tab.webviewEl.executeJavaScript(tab._dictResolvedJS).catch(() => {});
+            tab.webviewEl.executeJavaScript(tab._dictResolvedJS).catch(() => { });
           } else if (tab._dictLoading) {
-            tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => {});
+            tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => { });
           } else {
             handleAutocorrectFallback(tab);
           }
@@ -2328,7 +3054,43 @@ class TabManager {
           background: rgba(23, 179, 64, 0.55) !important;
         }
       `;
-      tab.webviewEl.insertCSS(scrollbarCSS).catch(() => {});
+      tab.webviewEl.insertCSS(scrollbarCSS).catch(() => { });
+
+      // Inject Twemoji to fix flag emojis on Windows (which lacks native country flag support)
+      if (process.platform === 'win32') {
+        const twemojiJS = `
+          (function() {
+            if (window.__leefTwemojiInjected) return;
+            window.__leefTwemojiInjected = true;
+
+            // Size flag images to match surrounding text
+            var style = document.createElement('style');
+            style.textContent = 'img.emoji { height: 1em; width: 1em; margin: 0 0.05em 0 0.1em; vertical-align: -0.1em; display: inline; }';
+            document.head.appendChild(style);
+
+            var s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/twemoji@14.0.2/dist/twemoji.min.js';
+            s.crossOrigin = 'anonymous';
+            s.onload = function() {
+              if (typeof twemoji !== 'undefined') {
+                twemoji.parse(document.body, {
+                  folder: 'svg',
+                  ext: '.svg',
+                  base: 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/',
+                  callback: function(icon, options) {
+                    // Only replace flag emojis (regional indicator pairs start with 1f1e_)
+                    var cp = parseInt(icon, 16);
+                    if (cp >= 0x1F1E6 && cp <= 0x1F1FF) return options.base + options.size + '/' + icon + options.ext;
+                    return false; // skip non-flags, let browser handle them
+                  }
+                });
+              }
+            };
+            document.head.appendChild(s);
+          })();
+        `;
+        tab.webviewEl.executeJavaScript(twemojiJS).catch(() => { });
+      }
       const currentTabUrl = tab.url || '';
       const isGoogleSearch = currentTabUrl.includes('google.com/search') ||
         (currentTabUrl.includes('google.co.') && currentTabUrl.includes('/search'));
@@ -2345,7 +3107,7 @@ class TabManager {
         try {
           const urlObj = new URL(currentTabUrl);
           searchQuery = urlObj.searchParams.get('q') || '';
-        } catch (e) {}
+        } catch (e) { }
 
         const rawQuery = searchQuery.trim();
         if (rawQuery) {
@@ -2368,7 +3130,7 @@ class TabManager {
             if (window.toastManager) window.toastManager.show('📖 Leef Dictionary (Beta)', `Looking up "${searchWord}"…`, 15000);
 
             // Also try skeleton in the webview (best-effort).
-            tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => {});
+            tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => { });
 
             tab._dictFetch = fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(searchWord.toLowerCase())}`)
               .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
@@ -2378,7 +3140,7 @@ class TabManager {
                 const successJS = getInjectSuccessJS(data[0]);
                 tab._dictResolvedJS = successJS;
                 if (tab._didStopLoadingFired) {
-                  tab.webviewEl.executeJavaScript(successJS).catch(() => {});
+                  tab.webviewEl.executeJavaScript(successJS).catch(() => { });
                 }
                 return successJS;
               })
@@ -2941,7 +3703,10 @@ class TabManager {
 
     // Hide address bar suggestions and remove focus when navigating
     if (window.addressBarManager) {
-      window.addressBarManager._hideSuggestions();
+      window.addressBarManager._hideSuggestions(true);
+    }
+    if (window.homeSearchManager) {
+      window.homeSearchManager._hideSuggestions(true);
     }
     if (UI.inputs.address) UI.inputs.address.blur();
 
@@ -3366,13 +4131,13 @@ class TabManager {
     if (hasOverflow) {
       btnLeft.style.display = 'flex';
       btnRight.style.display = 'flex';
-      
+
       const scrollLeft = container.scrollLeft;
       const maxScrollLeft = container.scrollWidth - container.clientWidth;
-      
+
       btnLeft.style.opacity = scrollLeft <= 1 ? '0.3' : '0.7';
       btnLeft.style.pointerEvents = scrollLeft <= 1 ? 'none' : 'auto';
-      
+
       btnRight.style.opacity = scrollLeft >= maxScrollLeft - 1 ? '0.3' : '0.7';
       btnRight.style.pointerEvents = scrollLeft >= maxScrollLeft - 1 ? 'none' : 'auto';
     } else {
@@ -3662,40 +4427,72 @@ class TabManager {
   analyzeTextForSlop(text) {
     if (!text || !window.toastManager) return;
 
-    const SLOP_WORDS = [
-      'delve', 'meticulous', 'comprehensive', 'tapestry', 'embark',
-      'furthermore', 'in conclusion', 'important to note', 'ever-evolving',
-      'unlock the potential', 'pave the way', 'demystify', 'seamlessly',
-      'vital', 'crucial', 'harness', 'leverage', 'beacon', 'testament',
-      'unwavering', 'underscores', 'invaluable', 'shines a light',
-      'in today\'s digital age', 'at its core', 'look no further',
-      'it is worth noting', 'notably', 'moreover', 'indeed', 'ultimately',
-      'pivotal', 'transformative', 'unparalleled', 'essential', 'landscape',
-      'dynamic', 'integration', 'paradigm shift', 'synergy', 'bespoke',
-      'robust', 'enhanced', 'optimized', 'ensure', 'proactive', 'streamlined',
-      'critical', 'policy', 'discover', 'vulnerability'
+    const STRONG_MARKERS = [
+      'delve', 'tapestry', 'ever-evolving', 'unlock the potential', 'pave the way',
+      'demystify', 'in today\'s digital age', 'look no further', 'it is worth noting',
+      'important to note', 'paradigm shift', 'multifaceted', 'plethora', 'in the realm of',
+      'at its core', 'shines a light', 'shed light', 'testament to'
     ];
 
-    const lowerText = text.toLowerCase();
+    const MODERATE_MARKERS = [
+      'meticulous', 'comprehensive', 'embark', 'furthermore', 'in conclusion',
+      'seamlessly', 'vital', 'crucial', 'harness', 'leverage', 'beacon',
+      'unwavering', 'underscores', 'invaluable', 'notably', 'moreover',
+      'ultimately', 'pivotal', 'transformative', 'unparalleled', 'synergy',
+      'bespoke', 'robust', 'nuance', 'nuanced', 'navigating', 'foster',
+      'catalyst', 'undeniable', 'resonate', 'intricate', 'interplay',
+      'symbiotic', 'cornerstone', 'orchestrate', 'empower', 'revolutionize',
+      'elevate', 'transcend', 'dynamic', 'integration'
+    ];
+
     let found = [];
-    SLOP_WORDS.forEach(word => {
-      if (lowerText.includes(word)) {
+    let score = 0;
+
+    STRONG_MARKERS.forEach(word => {
+      const regex = new RegExp(`\\b${word}\\b`, 'i');
+      if (regex.test(text)) {
         found.push(word);
+        score += 2;
+      }
+    });
+
+    MODERATE_MARKERS.forEach(word => {
+      const regex = new RegExp(`\\b${word}\\b`, 'i');
+      if (regex.test(text)) {
+        found.push(word);
+        score += 1;
       }
     });
 
     // Structural check: Em-dash density (GPT-4 hallmark)
     const emDashes = (text.match(/—/g) || []).length;
-    if (emDashes >= 1) {
+    if (emDashes >= 2) {
+      found.push(`Structural marker (multiple em-dashes)`);
+      score += 2;
+    } else if (emDashes === 1) {
       found.push(`Structural marker (em-dash)`);
+      score += 1;
     }
 
-    const score = found.length;
+    // Structural check: Bullet points
+    const bullets = (text.match(/^\\s*[•*-]\\s/gm) || []).length;
+    if (bullets >= 3) {
+      found.push(`Structural marker (bullet lists)`);
+      score += 1;
+    }
+
+    // Structural check: Title case colons (e.g. "Concept: ")
+    const colons = (text.match(/[A-Z][a-z]+:\\s/g) || []).length;
+    if (colons >= 2) {
+      found.push(`Structural marker (label colons)`);
+      score += 1;
+    }
+
     let confidence = "No Patterns Detected";
     let icon = "✅";
     let titleMsg = "Audit Complete";
 
-    if (score >= 3) {
+    if (score >= 4) {
       titleMsg = "Highly Possible AI";
       confidence = "High Probability Synthesis";
       icon = "🚨";
@@ -3703,7 +4500,7 @@ class TabManager {
       titleMsg = "Likely Synthetic";
       confidence = "Moderate Linguistic Signal";
       icon = "⚠️";
-    } else if (score === 1) {
+    } else if (score >= 1) {
       titleMsg = "Suspicious Outlier";
       confidence = "Low/Vague Signal";
       icon = "🧐";
@@ -3711,7 +4508,7 @@ class TabManager {
 
     window.toastManager.show("✨ Analyzing...", "Auditing linguistic indicators...", 1000);
     setTimeout(() => {
-      let summary = score >= 1 ? `Found ${score} linguistic markers.` : `No synthetic patterns found.`;
+      let summary = score >= 1 ? `Found ${found.length} linguistic markers.` : `No synthetic patterns found.`;
       window.toastManager.show(titleMsg, summary, 12000);
 
       const toastAction = document.getElementById('leef-toast-action');
@@ -5293,7 +6090,7 @@ class HeroManager {
       if (hours < 12) greet = 'Good Morning';
       else if (hours < 17) greet = 'Good Afternoon';
       else if (hours > 21) greet = 'Good Night';
-      
+
       const lang = window.settingsManager?.currentSettings?.language || 'en';
       if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][greet]) {
         this.greetingEl.textContent = TRANSLATIONS[lang][greet];
@@ -5547,19 +6344,25 @@ class AddressBarManager {
     this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
     this.input.addEventListener('blur', () => {
       // Delay hide to allow click on a suggestion
-      setTimeout(() => { this._hideSuggestions(); }, 100);
+      setTimeout(() => { this._hideSuggestions(true); }, 100);
     });
     this.input.addEventListener('focus', () => this.showSuggestions());
   }
 
-  _hideSuggestions() {
+  _hideSuggestions(immediate = false) {
+    if (immediate) {
+      this.suggestionsEl.classList.remove('visible');
+      this.suggestionsEl.style.display = 'none';
+      this.lastWebSuggestions = [];
+      return;
+    }
     this.suggestionsEl.classList.remove('visible');
     this.lastWebSuggestions = []; // Clear cached suggestions on hide
     setTimeout(() => {
       if (!this.suggestionsEl.classList.contains('visible')) {
         this.suggestionsEl.style.display = 'none';
       }
-    }, 260);
+    }, 160);
   }
 
   async showSuggestions() {
@@ -5604,7 +6407,7 @@ class AddressBarManager {
         this.lastWebSuggestions = sliced;
         this.renderSuggestions(val, bookmarkMatches, sliced);
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   renderSuggestions(val, bookmarkMatches, webSuggestions) {
@@ -5701,6 +6504,10 @@ class AddressBarManager {
     } else if (e.key === 'Enter' && this.selectedIndex !== -1) {
       e.preventDefault();
       items[this.selectedIndex].click();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      this._hideSuggestions(true);
+      this.input.blur();
     }
   }
 
@@ -5806,7 +6613,7 @@ class PermissionManager {
       const tab = this.currentWebAuthnTab;
       const reqId = this.currentWebAuthnReq.id;
       if (tab && tab.webviewEl) {
-        tab.webviewEl.executeJavaScript(`if (typeof window.__resolveLeefWebAuthn === 'function') window.__resolveLeefWebAuthn(${reqId}, ${granted});`).catch(() => {});
+        tab.webviewEl.executeJavaScript(`if (typeof window.__resolveLeefWebAuthn === 'function') window.__resolveLeefWebAuthn(${reqId}, ${granted});`).catch(() => { });
       }
       this.currentWebAuthnReq = null;
       this.currentWebAuthnTab = null;
@@ -5904,6 +6711,7 @@ class PrivacyManager {
     this.totalBlocked = parseInt(localStorage.getItem('leef_privacy_total_blocked') || '0');
     this.totalRequests = parseInt(localStorage.getItem('leef_privacy_total_requests') || '0');
     this.secureRequests = parseInt(localStorage.getItem('leef_privacy_secure_requests') || '0');
+    this.sessionBlocked = 0; // resets each browser open
     this.recentBlocks = []; // { domain: string, time: number }
 
     this.view = document.getElementById('privacy-view');
@@ -5912,7 +6720,9 @@ class PrivacyManager {
 
     this.elTotal = document.getElementById('stat-total-blocked');
     this.elSecure = document.getElementById('stat-secure-percent');
+    this.elSession = document.getElementById('stat-session-blocked');
     this.elRecentList = document.getElementById('privacy-recent-list');
+    this.elHttpsBar = document.getElementById('https-bar-fill');
 
     this.btnBack = document.getElementById('btn-privacy-back');
     this.btnEnableBlocker = document.getElementById('btn-privacy-enable-blocker');
@@ -5941,6 +6751,7 @@ class PrivacyManager {
 
   recordBlock(domain) {
     this.totalBlocked++;
+    this.sessionBlocked++;
     this.recentBlocks.unshift({ domain, time: Date.now() });
     if (this.recentBlocks.length > 30) this.recentBlocks.pop();
 
@@ -5976,19 +6787,26 @@ class PrivacyManager {
     }
 
     if (this.elTotal) this.elTotal.textContent = this.totalBlocked.toLocaleString();
+    if (this.elSession) this.elSession.textContent = this.sessionBlocked.toLocaleString();
+
     if (this.elSecure) {
       const pct = this.totalRequests > 0 ? Math.round((this.secureRequests / this.totalRequests) * 100) : 100;
       this.elSecure.textContent = pct + '%';
+      if (this.elHttpsBar) this.elHttpsBar.style.width = pct + '%';
     }
 
     if (this.elRecentList && isBlockerEnabled) {
       if (this.recentBlocks.length === 0) {
-        this.elRecentList.innerHTML = '<p style="opacity:0.5; font-size:0.9rem; padding: 20px; text-align: center;">Start browsing to see protection in action.</p>';
+        this.elRecentList.innerHTML = `<div class="privacy-empty-state">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <p>Start browsing to see protection in action.</p>
+        </div>`;
       } else {
-        this.elRecentList.innerHTML = this.recentBlocks.slice(0, 10).map(b => `
+        this.elRecentList.innerHTML = this.recentBlocks.slice(0, 15).map(b => `
           <div class="privacy-recent-item">
-            <span style="font-weight:500;">${BrowserUtils.sanitize(b.domain)}</span>
-            <span style="opacity:0.5; font-size:0.75rem;">${new Date(b.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+            <span class="privacy-recent-domain">${BrowserUtils.sanitize(b.domain)}</span>
+            <span class="privacy-recent-badge">🚫 Blocked</span>
+            <span class="privacy-recent-time">${new Date(b.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
           </div>
         `).join('');
       }
@@ -6220,7 +7038,7 @@ window.onload = async () => {
 
         const autoEl = document.getElementById('live-autocomplete');
         if (autoEl) autoEl.checked = autoChecked;
-        
+
         const dictEl = document.getElementById('native-dictionary');
         if (dictEl) dictEl.checked = dictChecked;
 
@@ -6259,6 +7077,10 @@ window.onload = async () => {
   const bookmarksMgr = new BookmarksManager();
   const hubMgr = new HubManager();
   window.newsSvc = new NewsService();
+  window.sportsSvc = new SportsService();
+  window.sportsSvc.start();
+  window.sportsTeamPicker = new SportsTeamPicker(settingsMgr);
+  window.newsWordFilterUI = new NewsWordFilterUI(settingsMgr);
 
   // Push loaded settings to main process immediately so rules are active on startup
   settingsMgr.sendSettingsToMain();
@@ -6280,6 +7102,25 @@ window.onload = async () => {
     btnRefreshNews.addEventListener('click', () => {
       window.newsSvc.refresh();
       if (window.toastManager) window.toastManager.show('🔄 Refreshing News', 'Fetching the latest headlines...', 2500);
+    });
+  }
+
+  // Wire news settings button
+  const btnNewsSettings = document.getElementById('btn-news-settings');
+  if (btnNewsSettings) {
+    btnNewsSettings.addEventListener('click', () => {
+      window.tabManager.createTab('settings');
+      // Switch to Hub tab
+      const hubTab = document.querySelector('[data-section="sec-hub"]');
+      if (hubTab) hubTab.click();
+      // Scroll to news word filter input
+      setTimeout(() => {
+        const filterInput = document.getElementById('news-word-filter-input');
+        if (filterInput) {
+          filterInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          filterInput.focus();
+        }
+      }, 100);
     });
   }
 
@@ -6326,11 +7167,11 @@ window.onload = async () => {
   if (process.platform === 'linux') {
     try {
       const ipc = window.require('electron').ipcRenderer;
-      
+
       const btnMin = document.getElementById('btn-linux-minimize');
       const btnMax = document.getElementById('btn-linux-maximize');
       const btnClose = document.getElementById('btn-linux-close');
-      
+
       if (btnMin) btnMin.addEventListener('click', () => ipc.send('window-minimize'));
       if (btnMax) btnMax.addEventListener('click', () => ipc.send('window-maximize'));
       if (btnClose) btnClose.addEventListener('click', () => ipc.send('window-close'));
@@ -6361,13 +7202,13 @@ window.onload = async () => {
         const dl = document.getElementById('downloads-dropdown');
         const si = document.getElementById('site-identity-dropdown');
         const webviewsContainer = document.getElementById('webviews-container');
-        
+
         let activeDropdown = null;
         if (qs && qs.style.display !== 'none') activeDropdown = qs;
         else if (bm && bm.style.display !== 'none') activeDropdown = bm;
         else if (dl && dl.style.display !== 'none') activeDropdown = dl;
         else if (si && si.style.display !== 'none') activeDropdown = si;
-        
+
         if (webviewsContainer) {
           if (activeDropdown) {
             const rect = activeDropdown.getBoundingClientRect();
@@ -6407,4 +7248,95 @@ window.onload = async () => {
       if (window.toastManager) window.toastManager.show('🧩 Plugin Store', 'The Plugin Store is a work in progress and will be coming soon!', 3000);
     });
   }
+
+  // Popup Blocker Manager
+  function syncPopupRules() {
+    try {
+      const allowed = JSON.parse(localStorage.getItem('leef_allowed_popups') || '[]');
+      const blocked = JSON.parse(localStorage.getItem('leef_blocked_popups') || '[]');
+      window.leefAPI.ipc.send('update-popup-rules', { allowed, blocked });
+    } catch (e) {
+      console.error('Failed to sync popup rules:', e);
+    }
+  }
+
+  // Sync rules on boot
+  syncPopupRules();
+
+  // Listen to blocked popup attempts
+  window.leefAPI.ipc.on('popup-blocked', (event, { url, requester }) => {
+    const toast = document.getElementById('popup-blocker-toast');
+    const domainSpan = document.getElementById('popup-requester-domain');
+    const mainContent = document.getElementById('popup-blocker-main-content');
+    const confirmContent = document.getElementById('popup-blocker-confirm-content');
+
+    if (!toast || !domainSpan || !mainContent || !confirmContent) return;
+
+    domainSpan.textContent = requester || 'Unknown Site';
+    mainContent.style.display = 'flex';
+    confirmContent.style.display = 'none';
+    toast.style.display = 'block';
+
+    // Clear and clone buttons to avoid multiple event listeners accumulating
+    const clearListeners = (id) => {
+      const el = document.getElementById(id);
+      if (el) {
+        const clone = el.cloneNode(true);
+        el.parentNode.replaceChild(clone, el);
+        return clone;
+      }
+      return null;
+    };
+
+    const btnClose = clearListeners('btn-popup-close');
+    const btnAllowOnce = clearListeners('btn-popup-allow-once');
+    const btnAlwaysAllow = clearListeners('btn-popup-always-allow');
+    const btnNeverAllow = clearListeners('btn-popup-never-allow');
+    const btnConfirmYes = clearListeners('btn-popup-confirm-yes');
+    const btnConfirmNo = clearListeners('btn-popup-confirm-no');
+
+    btnClose?.addEventListener('click', () => {
+      toast.style.display = 'none';
+    });
+
+    btnAllowOnce?.addEventListener('click', () => {
+      window.leefAPI.ipc.send('open-popup-window', url);
+      toast.style.display = 'none';
+    });
+
+    btnAlwaysAllow?.addEventListener('click', () => {
+      try {
+        const allowed = JSON.parse(localStorage.getItem('leef_allowed_popups') || '[]');
+        if (!allowed.includes(requester)) {
+          allowed.push(requester);
+          localStorage.setItem('leef_allowed_popups', JSON.stringify(allowed));
+        }
+      } catch (e) { }
+      syncPopupRules();
+      window.leefAPI.ipc.send('open-popup-window', url);
+      toast.style.display = 'none';
+    });
+
+    btnNeverAllow?.addEventListener('click', () => {
+      mainContent.style.display = 'none';
+      confirmContent.style.display = 'flex';
+    });
+
+    btnConfirmYes?.addEventListener('click', () => {
+      try {
+        const blocked = JSON.parse(localStorage.getItem('leef_blocked_popups') || '[]');
+        if (!blocked.includes(requester)) {
+          blocked.push(requester);
+          localStorage.setItem('leef_blocked_popups', JSON.stringify(blocked));
+        }
+      } catch (e) { }
+      syncPopupRules();
+      toast.style.display = 'none';
+    });
+
+    btnConfirmNo?.addEventListener('click', () => {
+      confirmContent.style.display = 'none';
+      mainContent.style.display = 'flex';
+    });
+  });
 };
