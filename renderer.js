@@ -1557,7 +1557,15 @@ class SportsService {
         const clock = status?.shortDetail || status?.detail || '';
 
         // Auto-remove 30 minutes after game is over
-        if (isOver) {
+        if (!isOver) {
+          try {
+            const gameOverTimes = JSON.parse(localStorage.getItem('leef_game_over_times') || '{}');
+            if (gameOverTimes[matchKey]) {
+              delete gameOverTimes[matchKey];
+              localStorage.setItem('leef_game_over_times', JSON.stringify(gameOverTimes));
+            }
+          } catch (e) { }
+        } else {
           try {
             const gameOverTimes = JSON.parse(localStorage.getItem('leef_game_over_times') || '{}');
             if (!gameOverTimes[matchKey]) {
@@ -1597,6 +1605,10 @@ class SportsService {
           awayLogo: away.team.logo,
           homeScore: isLive || isOver ? home.score : null,
           awayScore: isLive || isOver ? away.score : null,
+          homeShootoutScore: home.shootoutScore,
+          awayShootoutScore: away.shootoutScore,
+          homeWinner: home.winner,
+          awayWinner: away.winner,
           homeColor: '#' + (home.team.color || '17b340'),
           awayColor: '#' + (away.team.color || '17b340'),
           clock: displayClock,
@@ -1619,8 +1631,10 @@ class SportsService {
     const container = document.getElementById('dynamic-news-container');
     if (!container) return;
 
-    // Remove any previously injected score cards
-    container.querySelectorAll('.news-card-score').forEach(el => el.remove());
+    const currentMatchKeys = chips.map(c => `${c.homeAbbr}-${c.awayAbbr}`);
+    container.querySelectorAll('.news-card-score').forEach(el => {
+      if (!currentMatchKeys.includes(el.dataset.matchKey)) el.remove();
+    });
 
     let minimizedList = [];
     let maximizedList = [];
@@ -1646,14 +1660,31 @@ class SportsService {
       const isHomeGoal = oldChip && oldChip.homeScore !== null && chip.homeScore !== null && parseInt(chip.homeScore) > parseInt(oldChip.homeScore);
       const isAwayGoal = oldChip && oldChip.awayScore !== null && chip.awayScore !== null && parseInt(chip.awayScore) > parseInt(oldChip.awayScore);
 
-      const card = document.createElement('div');
-      card.className = 'news-card news-card-score' + (chip.isLive ? ' score-live' : '') + (chip.isOver ? ' score-over' : '') + (isMinimized ? ' minimized' : '');
+      let card = container.querySelector(`.news-card-score[data-match-key="${matchKey}"]`);
+      if (!card) {
+        card = document.createElement('div');
+        card.dataset.matchKey = matchKey;
+      }
+      const isHT = chip.clock === 'HT' || chip.clock === 'Halftime';
+      card.className = 'news-card news-card-score' + (chip.isLive ? ' score-live' : '') + (isHT ? ' score-ht' : '') + (chip.isOver ? ' score-over' : '') + (isMinimized ? ' minimized' : '');
 
       let homeWinner = false, awayWinner = false, homeLoser = false, awayLoser = false;
-      if (chip.isOver && chip.homeScore !== null && chip.awayScore !== null) {
-        const h = parseInt(chip.homeScore), a = parseInt(chip.awayScore);
-        if (h > a) { homeWinner = true; awayLoser = true; }
-        else if (a > h) { awayWinner = true; homeLoser = true; }
+      if (chip.isOver) {
+        if (chip.homeWinner === true) homeWinner = true;
+        if (chip.awayWinner === true) awayWinner = true;
+
+        if (!homeWinner && !awayWinner && chip.homeScore !== null && chip.awayScore !== null) {
+          let h = parseInt(chip.homeScore), a = parseInt(chip.awayScore);
+          if (chip.homeShootoutScore !== undefined && chip.awayShootoutScore !== undefined && h === a) {
+            h = parseInt(chip.homeShootoutScore);
+            a = parseInt(chip.awayShootoutScore);
+          }
+          if (h > a) { homeWinner = true; }
+          else if (a > h) { awayWinner = true; }
+        }
+
+        if (homeWinner) awayLoser = true;
+        if (awayWinner) homeLoser = true;
       }
 
       card.innerHTML = `
@@ -1682,7 +1713,7 @@ class SportsService {
               <img class="score-card-team-logo" src="${chip.awayLogo || ''}" onerror="this.style.display='none'" loading="lazy">
               <span class="score-card-team-name">${chip.awayAbbr}</span>
               ${awayWinner ? '<span class="winner-crown">👑</span>' : ''}
-              ${chip.awayScore !== null ? `<span class="score-card-score-val ${isAwayGoal ? 'score-goal-anim' : ''}">${chip.awayScore}</span>` : ''}
+              ${chip.awayScore !== null ? `<span class="score-card-score-val ${isAwayGoal ? 'score-goal-anim' : ''}">${chip.awayScore}${chip.awayShootoutScore !== undefined ? `<span style="font-size: 0.6em; opacity: 0.8; margin-left: 3px;">(${chip.awayShootoutScore})</span>` : ''}</span>` : ''}
             </div>
             
             <div class="score-card-divider" style="display: flex; flex-direction: column; align-items: center; min-width: 60px;">
@@ -1702,12 +1733,14 @@ class SportsService {
               ${homeWinner ? '<span class="winner-crown">👑</span>' : ''}
               <img class="score-card-team-logo" src="${chip.homeLogo || ''}" onerror="this.style.display='none'" loading="lazy">
               <span class="score-card-team-name">${chip.homeAbbr}</span>
-              ${chip.homeScore !== null ? `<span class="score-card-score-val ${isHomeGoal ? 'score-goal-anim' : ''}">${chip.homeScore}</span>` : ''}
+              ${chip.homeScore !== null ? `<span class="score-card-score-val ${isHomeGoal ? 'score-goal-anim' : ''}">${chip.homeScore}${chip.homeShootoutScore !== undefined ? `<span style="font-size: 0.6em; opacity: 0.8; margin-left: 3px;">(${chip.homeShootoutScore})</span>` : ''}</span>` : ''}
             </div>
           </div>
         </div>
       `;
-      container.insertBefore(card, container.firstChild);
+      if (!card.parentNode) {
+        container.insertBefore(card, container.firstChild);
+      }
 
       // Event listeners for actions
       const pinBtn = card.querySelector('.btn-score-pin');
@@ -1809,10 +1842,11 @@ class SportsService {
       const isGoal = isHomeGoal || isAwayGoal;
 
       const pill = document.createElement('div');
-      pill.className = 'pinned-score-pill' + (chip.isLive ? ' score-live' : '') + (isGoal ? ' goal-active' : '');
-
       const isHT = chip.clock === 'HT' || chip.clock === 'Halftime';
-      const scoreStr = isGoal ? '⚽ GOAL!' : `${chip.awayAbbr} ${chip.awayScore !== null ? chip.awayScore : ''} - ${chip.homeScore !== null ? chip.homeScore : ''} ${chip.homeAbbr}${isHT ? ' (HT)' : ''}`;
+      pill.className = 'pinned-score-pill' + (chip.isLive ? ' score-live' : '') + (isHT ? ' score-ht' : '') + (isGoal ? ' goal-active' : '');
+      const awayScStr = chip.awayScore !== null ? `${chip.awayScore}${chip.awayShootoutScore !== undefined ? `(${chip.awayShootoutScore})` : ''}` : '';
+      const homeScStr = chip.homeScore !== null ? `${chip.homeScore}${chip.homeShootoutScore !== undefined ? `(${chip.homeShootoutScore})` : ''}` : '';
+      const scoreStr = isGoal ? '⚽ GOAL!' : `${chip.awayAbbr} ${awayScStr} - ${homeScStr} ${chip.homeAbbr}${isHT ? ' (HT)' : ''}`;
 
       pill.innerHTML = `
         <div class="pill-content">
@@ -1838,7 +1872,7 @@ class SportsService {
           if (content) {
             content.innerHTML = `
               <img src="${chip.awayLogo}" onerror="this.style.display='none'">
-              <span>${chip.awayAbbr} ${chip.awayScore !== null ? chip.awayScore : ''} - ${chip.homeScore !== null ? chip.homeScore : ''} ${chip.homeAbbr}</span>
+              <span>${chip.awayAbbr} ${chip.awayScore !== null ? `${chip.awayScore}${chip.awayShootoutScore !== undefined ? `(${chip.awayShootoutScore})` : ''}` : ''} - ${chip.homeScore !== null ? `${chip.homeScore}${chip.homeShootoutScore !== undefined ? `(${chip.homeShootoutScore})` : ''}` : ''} ${chip.homeAbbr}</span>
               <img src="${chip.homeLogo}" onerror="this.style.display='none'">
             `;
           }
@@ -2802,6 +2836,7 @@ class TabManager {
       tab.volumeBoost = 1; // Reset volume on moving to a new tab
       tab.blockedAds = 0; // Reset adblock stats on moving to a new tab
       tab.blockedTrackers = 0; // Reset trackers stats on moving to a new tab
+      tab.blockedDomains = []; // Reset tracked domains
       tab.hasDRM = false; // Reset DRM status
       if (this.activeTabId === tab.id) {
         const drmIndicator = document.getElementById('drm-indicator');
@@ -4320,6 +4355,16 @@ class TabManager {
       } catch (err) { }
     });
 
+    window.addEventListener('keydown', (e) => {
+      if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r') || e.key === 'F5') {
+        const tab = this.getActiveTab();
+        if (tab && !tab.isInternal && tab.webviewEl) {
+          e.preventDefault();
+          tab.webviewEl.reload();
+        }
+      }
+    });
+
     // Address Bar
     UI.inputs.address.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this.navigateToUrl(UI.inputs.address.value);
@@ -4351,8 +4396,20 @@ class TabManager {
           const trackers = data.trackers || 0;
           tab.blockedAds = (tab.blockedAds || 0) + ads;
           tab.blockedTrackers = (tab.blockedTrackers || 0) + trackers;
+          if (!tab.blockedDomains) tab.blockedDomains = [];
+          if (data.domains) {
+            data.domains.forEach(d => {
+               if (!tab.blockedDomains.some(b => b.domain === d) && tab.blockedDomains.length < 50) {
+                  tab.blockedDomains.push({ domain: d, timestamp: Date.now() });
+               }
+            });
+          }
           if (this.activeTabId === tab.id && window.siteIdentityManager) {
             window.siteIdentityManager.updateUI();
+            const trackerView = document.getElementById('si-tracker-view');
+            if (trackerView && trackerView.style.display === 'block') {
+              window.siteIdentityManager.populateTrackerList();
+            }
           }
           if (window.privacyManager) {
             try {
@@ -5275,6 +5332,12 @@ class SiteIdentityManager {
         if (isVisible) {
           DropdownUtils.hide(this.dropdown);
         } else {
+          const mainView = document.getElementById('si-main-view');
+          const trackerView = document.getElementById('si-tracker-view');
+          if (mainView && trackerView) {
+             mainView.style.display = 'block';
+             trackerView.style.display = 'none';
+          }
           DropdownUtils.show(this.dropdown, 'block');
           // Close others
           const d1 = document.getElementById('bookmarks-dropdown');
@@ -5307,6 +5370,42 @@ class SiteIdentityManager {
           }, 1000);
         } else {
           if (this._updateInterval) { clearInterval(this._updateInterval); this._updateInterval = null; }
+        }
+      });
+    }
+
+    const btnShowTrackers = document.getElementById('btn-show-trackers');
+    const btnHideTrackers = document.getElementById('btn-hide-trackers');
+    const mainView = document.getElementById('si-main-view');
+    const trackerView = document.getElementById('si-tracker-view');
+
+    if (btnShowTrackers) {
+      btnShowTrackers.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (mainView && trackerView) {
+          mainView.style.display = 'none';
+          trackerView.style.display = 'block';
+          this.populateTrackerList();
+          if (this.dropdown) {
+             this.dropdown.style.display = 'none';
+             void this.dropdown.offsetHeight;
+             this.dropdown.style.display = 'block';
+          }
+        }
+      });
+    }
+
+    if (btnHideTrackers) {
+      btnHideTrackers.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (mainView && trackerView) {
+          trackerView.style.display = 'none';
+          mainView.style.display = 'block';
+          if (this.dropdown) {
+             this.dropdown.style.display = 'none';
+             void this.dropdown.offsetHeight;
+             this.dropdown.style.display = 'block';
+          }
         }
       });
     }
@@ -5396,6 +5495,42 @@ class SiteIdentityManager {
         if (e.target === gpcInfoModal) gpcInfoModal.style.display = 'none';
       });
     }
+  }
+
+  populateTrackerList() {
+    const listEl = document.getElementById('si-tracker-list');
+    const emptyEl = document.getElementById('si-tracker-empty');
+    if (!listEl || !emptyEl) return;
+    listEl.innerHTML = '';
+    
+    const tab = window.tabManager?.getActiveTab();
+    if (!tab || !tab.blockedDomains || tab.blockedDomains.length === 0) {
+      listEl.style.display = 'none';
+      emptyEl.style.display = 'block';
+      return;
+    }
+    
+    listEl.style.display = 'block';
+    emptyEl.style.display = 'none';
+    
+    const now = Date.now();
+    const twelveHours = 12 * 60 * 60 * 1000;
+    
+    // Filter and sort domains
+    const activeDomains = tab.blockedDomains.filter(d => (now - d.timestamp) < twelveHours);
+    
+    if (activeDomains.length === 0) {
+      listEl.style.display = 'none';
+      emptyEl.style.display = 'block';
+      return;
+    }
+    
+    activeDomains.forEach(d => {
+      const li = document.createElement('li');
+      li.className = 'si-tracker-item';
+      li.innerHTML = `<span class="si-tracker-domain">${d.domain}</span><span class="si-tracker-blocked-badge">Blocked</span>`;
+      listEl.appendChild(li);
+    });
   }
 
   updateUI() {
@@ -6900,7 +7035,7 @@ class FindManager {
 
   startFind(text, forward, findNext = false) {
     if (!text) {
-      const tab = window.tabManager.getActiveTab();
+      const tab = window.tabManager?.getActiveTab();
       if (tab && tab.webviewEl) tab.webviewEl.stopFindInPage('clearSelection');
       this.resultsEl.textContent = '0/0';
       return;

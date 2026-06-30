@@ -26,8 +26,8 @@ textarea,
   --card-bg: #cffebb;
   --text-dark: #111;
 
-  --font-display: 'Outfit', 'Georgia', 'Twemoji Country Flags', "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", serif;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, 'Twemoji Country Flags', "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+  --font-display: 'Twemoji Country Flags', 'Outfit', 'Georgia', "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", serif;
+  --font-sans: 'Twemoji Country Flags', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
 }
 
 body {
@@ -452,7 +452,20 @@ body.video-fullscreen .main-content {
 }
 
 @keyframes border-glow-spin {
+  0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.news-card-score.score-live.score-ht::before,
+.pinned-score-pill.score-live.score-ht::before {
+  background: #f59e0b; /* Solid orange/amber for half time */
+  animation: border-pulse-ht 2s ease-in-out infinite;
+}
+
+@keyframes border-pulse-ht {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
 }
 
 .news-card-score.score-live .news-content {
@@ -3754,6 +3767,7 @@ body.modal-open .browser-top {
   border: 1.5px solid rgba(23, 179, 64, 0.2);
   z-index: 2000;
   overflow: hidden;
+  contain: paint;
   font-family: var(--font-sans);
   opacity: 0;
   transform: scale(0.95) translateY(-10px);
@@ -3762,7 +3776,6 @@ body.modal-open .browser-top {
   transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1),
               transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
               visibility 0.18s linear;
-  will-change: transform, opacity;
 }
 
 /* --- Header --- */
@@ -3887,6 +3900,107 @@ body.modal-open .browser-top {
   opacity: 0.6;
   color: var(--text-dark);
 }
+
+/* --- Tracker Submenu --- */
+.si-submenu-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 14px 12px;
+  border-bottom: 1.5px solid rgba(23, 179, 64, 0.12);
+  background: var(--bg-main);
+}
+
+.si-submenu-header h3 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  margin: 0;
+}
+
+.si-submenu-back {
+  background: rgba(23, 179, 64, 0.1);
+  border: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-color);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.si-submenu-back:hover {
+  background: rgba(23, 179, 64, 0.2);
+  transform: translateX(-2px);
+}
+
+.si-tracker-list-container {
+  padding: 8px 0;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.si-tracker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.si-tracker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+
+.si-tracker-item:last-child {
+  border-bottom: none;
+}
+
+.si-tracker-domain {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #333;
+  word-break: break-all;
+  padding-right: 8px;
+}
+
+.si-tracker-blocked-badge {
+  display: inline-block;
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.si-tracker-empty {
+  padding: 24px 16px;
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  color: #888;
+  font-style: italic;
+}
+
+.clickable-card {
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.clickable-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(23, 179, 64, 0.15);
+}
+
 
 /* --- Actions --- */
 .si-actions {

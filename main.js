@@ -12,6 +12,17 @@ import { ElectronBlocker } from '@ghostery/adblocker-electron';
 import fetch from 'cross-fetch';
 import { execSync } from 'child_process';
 
+// Prevent EPIPE crashes when stdout/stderr streams are closed (e.g. GUI launchers on Linux)
+if (process.stdout) {
+  process.stdout.on('error', (err) => {
+    if (err.code === 'EPIPE') return;
+  });
+}
+if (process.stderr) {
+  process.stderr.on('error', (err) => {
+    if (err.code === 'EPIPE') return;
+  });
+}
 
 // SET IDENTITY AS EARLY AS POSSIBLE (Critical for Windows Taskbar)
 app.name = 'Leef Browser';
@@ -137,10 +148,16 @@ async function initAdBlocker(enabled = false) {
     const pendingBlocks = new Map(); // tabId -> { ads, trackers, lastUrl }
     blocker.on('request-blocked', (request) => {
       const tabId = request.tabId;
-      const stats = pendingBlocks.get(tabId) || { ads: 0, trackers: 0, lastUrl: '' };
+      const stats = pendingBlocks.get(tabId) || { ads: 0, trackers: 0, lastUrl: '', domains: new Set() };
       const type = request.type || '';
       if (['script', 'xmlhttprequest', 'ping', 'beacon', 'websocket'].includes(type.toLowerCase())) {
         stats.trackers++;
+        try {
+          const urlObj = new URL(request.url);
+          if (stats.domains.size < 50) {
+            stats.domains.add(urlObj.hostname);
+          }
+        } catch (e) {}
       } else {
         stats.ads++;
       }
@@ -157,7 +174,8 @@ async function initAdBlocker(enabled = false) {
             tabId,
             ads: stats.ads,
             trackers: stats.trackers,
-            url: stats.lastUrl
+            url: stats.lastUrl,
+            domains: Array.from(stats.domains)
           });
         });
         pendingBlocks.clear();
@@ -385,7 +403,7 @@ async function runKeyCheck() {
   if (process.platform === 'darwin') {
     try {
       const cmd = 'osascript -l JavaScript -e "ObjC.import(\'Cocoa\'); ($.NSEvent.modifierFlags & $.NSEventModifierFlagShift) > 0"';
-      const output = execSync(cmd, { timeout: 2000, encoding: 'utf8' }).trim();
+      const output = execSync(cmd, { timeout: 2000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
       if (output === 'true') {
         isRecoveryMode = true;
         console.log('Leef Browser: Recovery Mode activated via Shift key (macOS).');
@@ -398,7 +416,7 @@ async function runKeyCheck() {
     try {
       // Fast check using partial assembly loading
       const cmd = 'powershell -NoProfile -NonInteractive -Command "[Reflection.Assembly]::LoadWithPartialName(\'System.Windows.Forms\') | Out-Null; [System.Windows.Forms.Control]::ModifierKeys"';
-      const output = execSync(cmd, { timeout: 2000, encoding: 'utf8' }).trim();
+      const output = execSync(cmd, { timeout: 2000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
       if (output && output !== 'None' && output.includes('Shift')) {
         isRecoveryMode = true;
         console.log('Leef Browser: Recovery Mode activated via Shift key.');
@@ -409,7 +427,7 @@ async function runKeyCheck() {
     }
   } else if (process.platform === 'linux') {
     try {
-      const listOutput = execSync('xinput --list', { timeout: 2000, encoding: 'utf8' });
+      const listOutput = execSync('xinput --list', { timeout: 2000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
       const ids = [];
       const lines = listOutput.split('\n');
       for (const line of lines) {
@@ -422,7 +440,7 @@ async function runKeyCheck() {
       }
       for (const id of ids) {
         try {
-          const queryOutput = execSync(`xinput query-state ${id}`, { timeout: 1000, encoding: 'utf8' });
+          const queryOutput = execSync(`xinput query-state ${id}`, { timeout: 1000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
           if (queryOutput.includes('key[50]=down') || queryOutput.includes('key[62]=down')) {
             isRecoveryMode = true;
             console.log('Leef Browser: Recovery Mode activated via Shift key (Linux).');
@@ -1568,10 +1586,10 @@ app.on('web-contents-created', (event, contents) => {
   contents.setWindowOpenHandler(handleWindowOpen);
 
   contents.on('before-input-event', (event, input) => {
-    const isReload = (input.control && input.key.toLowerCase() === 'r') || input.key === 'F5';
+    const isReload = ((input.control || input.meta) && input.key.toLowerCase() === 'r') || input.key === 'F5';
     if (isReload) {
       event.preventDefault();
-      if (mainWindow && !mainWindow.isDestroyed()) {
+      if (input.type === 'keyDown' && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('context-menu-command', { command: 'reload' });
       }
     }

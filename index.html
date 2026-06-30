@@ -86,6 +86,7 @@
 
         <div id="site-identity-dropdown" class="site-identity-dropdown" style="display: none;">
 
+          <div id="si-main-view">
           <!-- Header: icon + domain + status pill -->
           <div class="si-header">
             <div class="si-header-icon" id="si-header-icon">
@@ -113,7 +114,7 @@
               <div class="si-card-label" data-i18n="ADS BLOCKED">Ads Blocked</div>
               <strong id="si-adblock-count" class="si-card-count">0</strong>
             </div>
-            <div class="si-card">
+            <div class="si-card clickable-card" id="btn-show-trackers" title="View blocked trackers">
               <div class="si-card-icon">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
                   <circle cx="12" cy="12" r="10"></circle>
@@ -175,6 +176,26 @@
               <span data-i18n="Privacy Dashboard">Privacy Dashboard</span>
               <span class="si-nav-chevron">›</span>
             </button>
+          </div>
+          </div>
+
+          <!-- TRACKERS VIEW (SUBMENU) -->
+          <div id="si-tracker-view" style="display: none;">
+            <div class="si-submenu-header">
+              <button id="btn-hide-trackers" class="si-submenu-back" title="Back">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="19" y1="12" x2="5" y2="12"></line>
+                  <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+              </button>
+              <h3 data-i18n="Blocked Trackers">Blocked Trackers</h3>
+            </div>
+            <div class="si-tracker-list-container">
+               <ul id="si-tracker-list" class="si-tracker-list"></ul>
+               <div id="si-tracker-empty" class="si-tracker-empty">
+                 No trackers detected yet.
+               </div>
+            </div>
           </div>
 
         </div>
@@ -463,6 +484,27 @@
         <div class="update-card">
           <div class="update-header-meta">
             <span class="changelog-badge latest">Latest</span>
+            <span class="changelog-badge date">June 30, 2026</span>
+          </div>
+          <h2 class="changelog-title">v1.1.1</h2>
+          <p class="changelog-desc">Minor bug fixes and stability improvements.</p>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category bug-fixes">Bug fixes</span>
+              <span class="changelog-section-title">Polish & stability</span>
+            </div>
+            <ul>
+              <li>Fixed a visual bug causing ghosting artifacts under the tracker list.</li>
+              <li>Fixed keyboard shortcuts (Ctrl+R, F5) not reliably reloading the page.</li>
+              <li>Added custom UI states for pinned sports matches during Half-Time.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="update-card">
+          <div class="update-header-meta">
+            <span class="changelog-badge feature">Feature update</span>
             <span class="changelog-badge date">June 28, 2026</span>
           </div>
           <h2 class="changelog-title">v1.1.0</h2>
