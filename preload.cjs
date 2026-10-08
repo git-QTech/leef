@@ -11,7 +11,7 @@ const SEND_ALLOWLIST = [
   'clear-data', 'clear-site-data', 'generate-bug-log', 'set-cpu-throttle',
   'capture-page', 'set-default-browser', 'recovery-action',
   'update-closed-tabs-count', 'open-downloaded-file',
-  'update-popup-rules', 'open-popup-window'
+  'update-popup-rules', 'open-popup-window', 'set-dns'
 ];
 
 const ON_ALLOWLIST = [

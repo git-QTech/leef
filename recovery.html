@@ -144,53 +144,53 @@
 </head>
 <body>
     <div class="container">
-        <h1>Whoops.. Something went wrong</h1>
-        <p class="subtitle">Let's get you back on track</p>
+        <h1 data-i18n="Whoops.. Something went wrong">Whoops.. Something went wrong</h1>
+        <p class="subtitle" data-i18n="Let's get you back on track">Let's get you back on track</p>
         
-        <div id="action-desc" style="color: var(--text-secondary); margin-top: -30px; margin-bottom: 30px; min-height: 1.4em; font-size: 0.95rem; font-style: italic;">
+        <div id="action-desc" style="color: var(--text-secondary); margin-top: -30px; margin-bottom: 30px; min-height: 1.4em; font-size: 0.95rem; font-style: italic;" data-i18n="Hover over an option to see what it does">
             Hover over an option to see what it does
         </div>
 
         <div class="grid">
             <div class="card" id="btn-reset-config" data-desc="Resets your settings, appearance, and bookmarks to defaults.">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                <div class="card-title">Reset<br>Config</div>
+                <div class="card-title" data-i18n="Reset Config">Reset<br>Config</div>
             </div>
             <div class="card" id="btn-rebuild-appdata" data-desc="<span style='color: #ff4444; font-weight: bold;'>NUCLEAR OPTION:</span> Clears EVERYTHING (Cache, Cookies, Sessions). Use only if nothing else works.">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="3" y1="9" x2="21" y2="9"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
-                <div class="card-title">Rebuild<br>AppData</div>
+                <div class="card-title" data-i18n="Rebuild AppData">Rebuild<br>AppData</div>
             </div>
             <div class="card" id="btn-reset-window" data-desc="Resets the window size and centers it on your main monitor.">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><polyline points="21 3 21 8 16 8"></polyline></svg>
-                <div class="card-title">Reset<br>Window</div>
+                <div class="card-title" data-i18n="Reset Window">Reset<br>Window</div>
             </div>
             <div class="card" id="btn-open-appdata" data-desc="Opens the local data folder where Leef stores its files.">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                <div class="card-title">Open<br>AppData</div>
+                <div class="card-title" data-i18n="Open AppData">Open<br>AppData</div>
             </div>
             <div class="card" id="btn-report-bug" data-desc="Generate a diagnostic log and report this issue to the Leef team.">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                <div class="card-title">Report<br>Bug</div>
+                <div class="card-title" data-i18n="Report Bug">Report<br>Bug</div>
             </div>
         </div>
 
         <div id="bug-reporting" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; margin-bottom: 48px; border: 1px solid #333; animation: fadeIn 0.3s ease-out;">
-            <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 16px;">Diagnostic log generated. No personal info included.</p>
+            <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 16px;" data-i18n="Diagnostic log generated. No personal info included.">Diagnostic log generated. No personal info included.</p>
             
             <div style="margin-bottom: 16px;">
-                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">Step 1: Save Log</p>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;" data-i18n="Step 1: Save Log">Step 1: Save Log</p>
                 <div style="display: flex; gap: 12px;">
-                    <button class="btn-continue" style="font-size: 0.85rem; padding: 8px 16px; border-color: var(--accent-color); color: var(--accent-color);" id="btn-save-log">Save Diagnostic Log</button>
-                    <button class="btn-continue" id="btn-show-log" style="font-size: 0.85rem; padding: 8px 16px; border-color: #555; color: #ccc; opacity: 0.3; pointer-events: none;">Show in Folder</button>
+                    <button class="btn-continue" style="font-size: 0.85rem; padding: 8px 16px; border-color: var(--accent-color); color: var(--accent-color);" id="btn-save-log" data-i18n="Save Diagnostic Log">Save Diagnostic Log</button>
+                    <button class="btn-continue" id="btn-show-log" style="font-size: 0.85rem; padding: 8px 16px; border-color: #555; color: #ccc; opacity: 0.3; pointer-events: none;" data-i18n="Show in Folder">Show in Folder</button>
                 </div>
             </div>
 
 
             <div id="bug-step-2" style="opacity: 0.3; pointer-events: none; transition: all 0.3s ease;">
-                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;">Step 2: Report on GitHub</p>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;" data-i18n="Step 2: Report on GitHub">Step 2: Report on GitHub</p>
                 <div style="display: flex; gap: 12px;">
-                    <button class="btn-continue" id="btn-open-github" style="font-size: 0.85rem; padding: 8px 16px;">Open GitHub in Edge</button>
-                    <button class="btn-continue" id="btn-copy-link" style="font-size: 0.85rem; padding: 8px 16px; border-color: #555; color: #ccc;">Copy URL</button>
+                    <button class="btn-continue" id="btn-open-github" style="font-size: 0.85rem; padding: 8px 16px;" data-i18n="Open GitHub in Edge">Open GitHub in Edge</button>
+                    <button class="btn-continue" id="btn-copy-link" style="font-size: 0.85rem; padding: 8px 16px; border-color: #555; color: #ccc;" data-i18n="Copy URL">Copy URL</button>
                 </div>
             </div>
         </div>
@@ -198,40 +198,78 @@
 
         <div class="footer">
 
-            <button class="btn-continue" id="btn-continue">Continue to Browser</button>
+            <button class="btn-continue" id="btn-continue" data-i18n="Continue to Browser">Continue to Browser</button>
         </div>
     </div>
 
+    <script type="module">
+        import { TRANSLATIONS, t, applyLocalization } from './translations.js';
+        let lang = 'en';
+        try {
+            const settings = JSON.parse(localStorage.getItem('leef_settings'));
+            if (settings && settings.language) {
+                lang = settings.language;
+            }
+        } catch (e) {}
+
+        window.t = function(key, params) {
+            if (t) return t(key, params, lang);
+            if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) {
+                return TRANSLATIONS[lang][key];
+            }
+            return key;
+        };
+
+        if (applyLocalization) {
+            applyLocalization(document, lang);
+        }
+
+        // Also translate card data-desc attributes
+        document.querySelectorAll('.card').forEach(card => {
+            const desc = card.getAttribute('data-desc');
+            if (desc) {
+                // If it contains HTML like nuclear option
+                if (desc.includes('NUCLEAR OPTION')) {
+                    const rawNuclear = "NUCLEAR OPTION: Clears EVERYTHING (Cache, Cookies, Sessions). Use only if nothing else works.";
+                    const trans = window.t(rawNuclear);
+                    card.setAttribute('data-desc', `<span style='color: #ff4444; font-weight: bold;'>${trans.split(':')[0]}:</span>${trans.substring(trans.indexOf(':') + 1)}`);
+                } else {
+                    card.setAttribute('data-desc', window.t(desc));
+                }
+            }
+        });
+    </script>
     <script>
         const ipcRenderer = (window.leefAPI && window.leefAPI.ipc) || window.require('electron').ipcRenderer;
         const descEl = document.getElementById('action-desc');
-        const defaultDesc = 'Hover over an option to see what it does';
+        const defaultDesc = () => (window.t ? window.t('Hover over an option to see what it does') : 'Hover over an option to see what it does');
 
         document.querySelectorAll('.card').forEach(card => {
             card.addEventListener('mouseenter', () => {
                 descEl.innerHTML = card.getAttribute('data-desc');
             });
             card.addEventListener('mouseleave', () => {
-                descEl.innerHTML = defaultDesc;
+                descEl.innerHTML = defaultDesc();
             });
         });
 
         document.getElementById('btn-reset-config').addEventListener('click', () => {
-
-            if (confirm('Are you sure? This will reset all settings and bookmarks.')) {
+            const msg = window.t ? window.t('Are you sure? This will reset all settings and bookmarks.') : 'Are you sure? This will reset all settings and bookmarks.';
+            if (confirm(msg)) {
                 ipcRenderer.send('recovery-action', 'reset-config');
             }
         });
 
         document.getElementById('btn-rebuild-appdata').addEventListener('click', () => {
-            if (confirm('This will perform a full factory reset. All data will be lost. Continue?')) {
+            const msg = window.t ? window.t('This will perform a full factory reset. All data will be lost. Continue?') : 'This will perform a full factory reset. All data will be lost. Continue?';
+            if (confirm(msg)) {
                 ipcRenderer.send('recovery-action', 'rebuild-appdata');
             }
         });
 
         document.getElementById('btn-reset-window').addEventListener('click', () => {
             ipcRenderer.send('recovery-action', 'reset-window');
-            alert('Window position reset! The browser will return to its default 1200x800 size on the next launch.');
+            alert(window.t ? window.t('Window position reset! The browser will return to its default 1200x800 size on the next launch.') : 'Window position reset! The browser will return to its default 1200x800 size on the next launch.');
         });
 
         document.getElementById('btn-open-appdata').addEventListener('click', () => {
@@ -246,10 +284,10 @@
 
         document.getElementById('btn-save-log').addEventListener('click', () => {
             ipcRenderer.send('recovery-action', 'save-diagnostic-log');
-            alert('Diagnostic log saved to your AppData folder as leef-diagnostic.txt');
+            alert(window.t ? window.t('Diagnostic log saved to your AppData folder as leef-diagnostic.txt') : 'Diagnostic log saved to your AppData folder as leef-diagnostic.txt');
             document.getElementById('bug-step-2').style.opacity = '1';
             document.getElementById('bug-step-2').style.pointerEvents = 'auto';
-            document.getElementById('btn-save-log').innerText = 'Log Saved ✓';
+            document.getElementById('btn-save-log').innerText = window.t ? window.t('Log Saved ✓') : 'Log Saved ✓';
             document.getElementById('btn-save-log').style.background = 'rgba(76, 175, 80, 0.1)';
             
             // Enable Show in Folder
@@ -261,11 +299,9 @@
             ipcRenderer.send('recovery-action', 'show-diagnostic-log');
         });
 
-
-
         const isWin = (typeof process !== 'undefined' && process.platform === 'win32');
         if (!isWin) {
-            document.getElementById('btn-open-github').innerText = 'Open GitHub';
+            document.getElementById('btn-open-github').innerText = window.t ? window.t('Open GitHub') : 'Open GitHub';
         }
 
         document.getElementById('btn-open-github').addEventListener('click', () => {
@@ -279,12 +315,10 @@
             el.select();
             document.execCommand('copy');
             document.body.removeChild(el);
-            alert('URL copied to clipboard!');
+            alert(window.t ? window.t('URL copied to clipboard!') : 'URL copied to clipboard!');
         });
 
         document.getElementById('btn-continue').addEventListener('click', () => {
-
-
             ipcRenderer.send('recovery-action', 'continue');
         });
     </script>

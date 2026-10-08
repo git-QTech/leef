@@ -1,31 +1,85 @@
-let TRANSLATIONS = {};
-
-async function loadTranslations() {
-  try {
-    const module = await import('./translations.js');
-    TRANSLATIONS = module.TRANSLATIONS;
-  } catch (e) {
-    console.error("Failed to load translations dynamically", e);
-  }
+const ipcRenderer = window.require ? window.require('electron').ipcRenderer : null;
+if (typeof window.leefAPI === 'undefined' && ipcRenderer) {
+  window.leefAPI = {
+    ipc: {
+      send: (channel, ...args) => ipcRenderer.send(channel, ...args),
+      on: (channel, callback) => {
+        const sub = (event, ...args) => callback(event, ...args);
+        ipcRenderer.on(channel, sub);
+        return () => ipcRenderer.removeListener(channel, sub);
+      },
+      invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+      sendSync: (channel, ...args) => ipcRenderer.sendSync(channel, ...args)
+    }
+  };
 }
 
+let TRANSLATIONS = {};
+
 // Perf: Cache language at module level — avoids localStorage read + JSON.parse on every t() call.
-// Call window.refreshLang() whenever settings are saved.
 let _cachedLang = 'en';
 window.refreshLang = function () {
   try {
     const s = localStorage.getItem('leef_settings');
     if (s) _cachedLang = JSON.parse(s).language || 'en';
   } catch (e) { }
+  if (window.i18n && window.i18n.refreshLang) {
+    window.i18n.refreshLang();
+  }
+  return _cachedLang;
 };
 window.refreshLang();
 
-window.t = function (key) {
-  if (_cachedLang !== 'en' && TRANSLATIONS[_cachedLang] && TRANSLATIONS[_cachedLang][key]) {
-    return TRANSLATIONS[_cachedLang][key];
+window.t = function (key, params, lang) {
+  if (window.i18n && window.i18n.t) {
+    return window.i18n.t(key, params, lang || _cachedLang);
+  }
+  const curLang = lang || _cachedLang || 'en';
+  if (curLang !== 'en' && TRANSLATIONS && TRANSLATIONS[curLang] && TRANSLATIONS[curLang][key]) {
+    let res = TRANSLATIONS[curLang][key];
+    if (params && typeof params === 'object') {
+      for (const [k, v] of Object.entries(params)) {
+        res = res.replaceAll('{' + k + '}', v);
+      }
+    }
+    return res;
+  }
+  if (TRANSLATIONS && TRANSLATIONS.en && TRANSLATIONS.en[key]) {
+    let res = TRANSLATIONS.en[key];
+    if (params && typeof params === 'object') {
+      for (const [k, v] of Object.entries(params)) {
+        res = res.replaceAll('{' + k + '}', v);
+      }
+    }
+    return res;
   }
   return key;
 };
+
+async function loadTranslations() {
+  try {
+    const module = await import('./translations.js');
+    TRANSLATIONS = module.TRANSLATIONS || {};
+    if (module.default) {
+      window.i18n = module.default;
+      window.t = (key, params, lang) => module.default.t(key, params, lang);
+    }
+  } catch (e) {
+    console.error("Failed to load translations dynamically", e);
+  }
+}
+loadTranslations();
+
+function relaunchBrowser() {
+  try {
+    const ipc = window.require('electron').ipcRenderer;
+    ipc.send('relaunch-app');
+  } catch (e) {
+    console.warn('IPC relaunch-app failed, falling back to reload', e);
+    window.location.reload();
+  }
+}
+window.relaunchBrowser = relaunchBrowser;
 
 let APP_VERSION = '1.0.0'; // Fallback
 
@@ -37,6 +91,7 @@ function initVersion() {
   } catch (e) {
     console.warn('Failed to get version via IPC:', e);
   }
+  window.APP_VERSION = APP_VERSION;
   document.querySelectorAll('.leef-version-val').forEach(el => {
     el.textContent = APP_VERSION;
   });
@@ -127,17 +182,21 @@ class SettingsManager {
       liveAutocomplete: false,
       enableVolumeBoost: false,
       gpc: true,
+      newsProvider: 'bbc',
       newsManualRefresh: false,
+      hideSportsUntilNearStart: false,
       efficiencyMode: false,
       cpuLimit: 100,
       ramLimit: 0,
       customNewTab: 'home',
       sitePermissions: {},
       newsWordFilters: [],
-      followedTeams: []
+      followedTeams: [],
+      quickLinksStr: "youtube.com\ngoogle.com\nwikipedia.org\ntwitter.com\nreddit.com\namazon.com\nnetflix.com\ndiscord.com\nfacebook.com\ntwitch.tv\ngithub.com"
     };
     // Load previously saved settings and merge with defaults
     this.currentSettings = this.loadSavedSettings();
+    this.sessionInitialLanguage = this.currentSettings.language || 'en';
     this.bindEvents();
     // Sync form elements to loaded values once DOM is ready
     this.syncUIToSettings();
@@ -150,7 +209,7 @@ class SettingsManager {
       const saved = JSON.parse(localStorage.getItem('leef_settings') || '{}');
 
       // Fallback: If saved language is not supported anymore, default to en
-      const supported = ['en', 'en-gb', 'en-ca', 'fr', 'es', 'nl'];
+      const supported = ['en', 'en-gb', 'en-ca', 'fr', 'es', 'nl', 'de'];
       if (saved.language && !supported.includes(saved.language)) {
         saved.language = 'en';
       }
@@ -164,19 +223,19 @@ class SettingsManager {
   applyLocalization() {
     const lang = this.currentSettings.language || 'en';
 
-    // First translate any elements with data-i18n attributes
-    const i18nElements = document.querySelectorAll('[data-i18n]');
-    i18nElements.forEach(el => {
-      const key = el.getAttribute('data-i18n');
-      if (!el.hasAttribute('data-original-html')) {
-        el.setAttribute('data-original-html', el.innerHTML.trim());
-      }
-      if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) {
-        el.innerHTML = TRANSLATIONS[lang][key];
-      } else {
-        el.innerHTML = el.getAttribute('data-original-html') || key;
-      }
-    });
+    if (window.i18n && window.i18n.applyLocalization) {
+      window.i18n.applyLocalization(document, lang);
+    } else {
+      // First translate any elements with data-i18n attributes
+      const i18nElements = document.querySelectorAll('[data-i18n]');
+      i18nElements.forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (!el.hasAttribute('data-original-html')) {
+          el.setAttribute('data-original-html', el.innerHTML.trim());
+        }
+        el.innerHTML = window.t ? window.t(key, null, lang) : (el.getAttribute('data-original-html') || key);
+      });
+    }
 
     // Re-inject dynamic version string
     document.querySelectorAll('.leef-version-val').forEach(el => {
@@ -185,33 +244,46 @@ class SettingsManager {
 
     // Translate dynamic placeholders
     const addressInput = document.getElementById('address-input');
-    if (addressInput) {
-      addressInput.placeholder = window.t("Search or enter web address");
-    }
+    if (addressInput) addressInput.placeholder = window.t("Search or enter web address");
 
     const homeSearchInput = document.getElementById('home-search');
-    if (homeSearchInput) {
-      homeSearchInput.placeholder = window.t("Search or enter a URL...");
-    }
+    if (homeSearchInput) homeSearchInput.placeholder = window.t("Search or enter a URL...");
 
     const settingsSearchInput = document.getElementById('settings-search');
-    if (settingsSearchInput) {
-      settingsSearchInput.placeholder = window.t("Search settings...");
-    }
+    if (settingsSearchInput) settingsSearchInput.placeholder = window.t("Search settings...");
 
-    if (lang === 'en-gb' || lang === 'en-ca') {
-      // Very simple string replacement for common regional spelling differences
-      const targets = document.querySelectorAll('label, h1, h2, h3, p, li, span, strong');
-      targets.forEach(el => {
-        if (el.children.length === 0 || el.tagName === 'STRONG') {
-          // Only replace text in leaf nodes or specific emphasized tags to avoid breaking HTML
-          el.innerHTML = el.innerHTML.replace(/Color/g, 'Colour').replace(/color/g, 'colour');
+    const findInput = document.getElementById('find-input');
+    if (findInput) findInput.placeholder = window.t("Find in page...");
+
+    const qlInput = document.getElementById('quick-links-input');
+    if (qlInput) qlInput.placeholder = window.t('e.g. "youtube.com"');
+
+    const newsFilterInput = document.getElementById('news-word-filter-input');
+    if (newsFilterInput) newsFilterInput.placeholder = window.t('e.g. "trump", "crypto"…');
+  }
+
+  syncLanguageDropdowns() {
+    const supported = (typeof SUPPORTED_LANGUAGES !== 'undefined' ? SUPPORTED_LANGUAGES : (window.SUPPORTED_LANGUAGES || []));
+    if (!Array.isArray(supported) || supported.length === 0) return;
+
+    ['language-select', 'onboard-language'].forEach(id => {
+      const select = document.getElementById(id);
+      if (!select) return;
+      const existingValues = new Set(Array.from(select.options).map(o => o.value));
+      supported.forEach(item => {
+        if (item.code && item.code !== 'common' && !existingValues.has(item.code)) {
+          const opt = document.createElement('option');
+          opt.value = item.code;
+          opt.textContent = item.name || item.code;
+          select.appendChild(opt);
+          existingValues.add(item.code);
         }
       });
-    }
+    });
   }
 
   syncUIToSettings() {
+    this.syncLanguageDropdowns();
     const s = this.currentSettings;
     const el = id => document.getElementById(id);
     if (el('search-engine-select')) el('search-engine-select').value = s.searchEngine;
@@ -229,6 +301,8 @@ class SettingsManager {
     if (el('background-limit')) el('background-limit').checked = s.backgroundLimit;
     if (document.getElementById('enable-volume-boost')) document.getElementById('enable-volume-boost').checked = s.enableVolumeBoost;
     if (document.getElementById('news-manual-refresh')) document.getElementById('news-manual-refresh').checked = s.newsManualRefresh;
+    if (document.getElementById('news-provider-select')) document.getElementById('news-provider-select').value = s.newsProvider || 'bbc';
+    if (document.getElementById('hide-sports-until-near-start')) document.getElementById('hide-sports-until-near-start').checked = !!s.hideSportsUntilNearStart;
     if (el('allow-notifications')) el('allow-notifications').checked = s.allowNotifications;
     if (el('ask-download')) el('ask-download').checked = s.askDownload;
 
@@ -261,7 +335,7 @@ class SettingsManager {
     }
     if (el('ram-limit-slider')) {
       el('ram-limit-slider').value = s.ramLimit || 0;
-      el('ram-limit-value').textContent = s.ramLimit > 0 ? s.ramLimit + ' MB' : 'Off';
+      el('ram-limit-value').textContent = s.ramLimit > 0 ? s.ramLimit + ' MB' : (window.t ? window.t('Off') : 'Off');
     }
 
     // Show adblock badge based on saved setting
@@ -297,6 +371,36 @@ class SettingsManager {
   }
 
   bindEvents() {
+    // Language restart banner actions
+    const btnLangRestartNow = document.getElementById('btn-language-restart-now');
+    if (btnLangRestartNow) {
+      btnLangRestartNow.addEventListener('click', () => {
+        relaunchBrowser();
+      });
+    }
+
+    const btnLangRestartLater = document.getElementById('btn-language-restart-later');
+    if (btnLangRestartLater) {
+      btnLangRestartLater.addEventListener('click', () => {
+        const banner = document.getElementById('language-restart-banner');
+        if (banner) banner.style.display = 'none';
+      });
+    }
+
+    const langSelect = document.getElementById('language-select');
+    if (langSelect) {
+      langSelect.addEventListener('change', () => {
+        const banner = document.getElementById('language-restart-banner');
+        if (banner) {
+          if (langSelect.value !== this.sessionInitialLanguage) {
+            banner.style.display = 'block';
+          } else {
+            banner.style.display = 'none';
+          }
+        }
+      });
+    }
+
     // Nav sidebar logic
     const settingsNavItems = document.querySelectorAll('.settings-nav li');
     const settingsSections = document.querySelectorAll('.settings-section');
@@ -388,14 +492,32 @@ class SettingsManager {
       radio.addEventListener('change', updateHomepageVisibility);
     });
 
-    // Sync duplicate UI elements between tabs
+    // Sync duplicate UI elements between tabs & show Brave Search AI warning modal
+    const checkBraveWarning = (val) => {
+      if (val.includes('search.brave.com')) {
+        if (window.toastManager) {
+          window.toastManager.show(
+            '🦁 Brave Search Notice',
+            'Brave Search includes an AI Overview summary. You can easily turn it off yourself by clicking the settings gear in the top right of the Brave search results page.',
+            8000
+          );
+        }
+      }
+    };
+
     ['search-engine-select', 'block-ai', 'native-dictionary', 'live-autocomplete'].forEach(baseId => {
       const el1 = document.getElementById(baseId);
       const el2 = document.getElementById(baseId + '-browsing');
       if (el1 && el2) {
         if (el1.tagName === 'SELECT') {
-          el1.addEventListener('change', () => el2.value = el1.value);
-          el2.addEventListener('change', () => el1.value = el2.value);
+          el1.addEventListener('change', () => {
+            el2.value = el1.value;
+            checkBraveWarning(el1.value);
+          });
+          el2.addEventListener('change', () => {
+            el1.value = el2.value;
+            checkBraveWarning(el2.value);
+          });
         } else {
           el1.addEventListener('change', () => el2.checked = el1.checked);
           el2.addEventListener('change', () => el1.checked = el2.checked);
@@ -409,7 +531,7 @@ class SettingsManager {
       el.addEventListener('input', () => {
         // Live feedback for sliders
         if (el.id === 'cpu-limit-slider') document.getElementById('cpu-limit-value').textContent = el.value + '%';
-        if (el.id === 'ram-limit-slider') document.getElementById('ram-limit-value').textContent = el.value > 0 ? el.value + ' MB' : 'Off';
+        if (el.id === 'ram-limit-slider') document.getElementById('ram-limit-value').textContent = el.value > 0 ? el.value + ' MB' : (window.t ? window.t('Off') : 'Off');
       });
 
       el.addEventListener('change', () => {
@@ -417,6 +539,17 @@ class SettingsManager {
         saveDebounce = setTimeout(() => this.saveSettings(), 500);
       });
     });
+
+    const hideSportsEl = document.getElementById('hide-sports-until-near-start');
+    if (hideSportsEl) {
+      hideSportsEl.addEventListener('change', (e) => {
+        this.currentSettings.hideSportsUntilNearStart = e.target.checked;
+        this.saveSettings();
+        if (window.sportsSvc) {
+          window.sportsSvc.refresh();
+        }
+      });
+    }
 
     const btnOpenPrivacySettings = document.getElementById('btn-open-privacy-settings');
     if (btnOpenPrivacySettings) {
@@ -440,7 +573,8 @@ class SettingsManager {
     if (UI.buttons.clearData) {
       UI.buttons.clearData.addEventListener('click', () => {
         try {
-          if (confirm('⚠️ FACTORY RESET: This will clear all settings, labs, history, and bookmarks. The browser will then relaunch. Proceed?')) {
+          const resetMsg = window.t ? window.t('⚠️ FACTORY RESET: This will clear all settings, labs, history, and bookmarks. The browser will then relaunch. Proceed?') : '⚠️ FACTORY RESET: This will clear all settings, labs, history, and bookmarks. The browser will then relaunch. Proceed?';
+          if (confirm(resetMsg)) {
             localStorage.clear();
             window.require('electron').ipcRenderer.send('recovery-action', 'rebuild-appdata');
           }
@@ -461,7 +595,7 @@ class SettingsManager {
       btnGenerateLog.addEventListener('click', () => {
         try {
           console.log('Generating bug log...');
-          btnGenerateLog.textContent = 'Generating...';
+          btnGenerateLog.textContent = window.t ? window.t('Generating...') : 'Generating...';
           btnGenerateLog.disabled = true;
 
           const payload = {
@@ -471,7 +605,7 @@ class SettingsManager {
           window.require('electron').ipcRenderer.send('generate-bug-log', payload);
         } catch (e) {
           console.error('Renderer error in generate-bug-log:', e);
-          btnGenerateLog.textContent = 'Generate Diagnostics Log';
+          btnGenerateLog.textContent = window.t ? window.t('Generate Diagnostics Log') : 'Generate Diagnostics Log';
           btnGenerateLog.disabled = false;
         }
       });
@@ -493,13 +627,13 @@ class SettingsManager {
           const action = btnCheck.dataset.action;
           if (action === 'download') {
             window.require('electron').ipcRenderer.send('start-download');
-            btnCheck.textContent = 'Starting Download...';
+            btnCheck.textContent = window.t ? window.t('Starting Download...') : 'Starting Download...';
             btnCheck.disabled = true;
           } else if (action === 'restart') {
             window.require('electron').ipcRenderer.send('restart-to-update');
           } else {
             window.require('electron').ipcRenderer.send('manual-update-check');
-            btnCheck.textContent = 'Checking...';
+            btnCheck.textContent = window.t ? window.t('Checking...') : 'Checking...';
             btnCheck.disabled = true;
           }
         } catch (e) { }
@@ -522,7 +656,7 @@ class SettingsManager {
       console.log('Diagnostics response:', response);
       const btnLog = document.getElementById('btn-generate-log');
       if (btnLog) {
-        btnLog.textContent = 'Generate Diagnostics Log';
+        btnLog.textContent = window.t ? window.t('Generate Diagnostics Log') : 'Generate Diagnostics Log';
         btnLog.disabled = false;
       }
 
@@ -535,7 +669,8 @@ class SettingsManager {
 
         // Ask to open the form
         setTimeout(() => {
-          if (confirm('Diagnostics log generated! This file contains your settings and system info, but NO history or passwords. \n\nWould you like to open the bug report form now to upload it?')) {
+          const formConfirm = window.t ? window.t('Diagnostics log generated! This file contains your settings and system info, but NO history or passwords. \n\nWould you like to open the bug report form now to upload it?') : 'Diagnostics log generated! This file contains your settings and system info, but NO history or passwords. \n\nWould you like to open the bug report form now to upload it?';
+          if (confirm(formConfirm)) {
             if (window.tabManager) window.tabManager.createTab('https://forms.gle/upGc1dvPYaoBw4o96');
           }
         }, 500);
@@ -572,7 +707,7 @@ class SettingsManager {
       const secondaryBtn = document.getElementById('btn-toast-secondary');
 
       if (btn) {
-        btn.textContent = 'Check for Updates Now';
+        btn.textContent = window.t ? window.t('Check for Updates Now') : 'Check for Updates Now';
         btn.disabled = false;
         delete btn.dataset.action;
         btn.style.background = '';
@@ -594,7 +729,7 @@ class SettingsManager {
         }
 
         if (btn) {
-          btn.textContent = `Download & Install ${displayVersion}`;
+          btn.textContent = window.t ? window.t('Download & Install {version}', { version: displayVersion }) : `Download & Install ${displayVersion}`;
           btn.dataset.action = 'download';
           btn.style.background = 'var(--primary-color)';
           btn.style.color = 'white';
@@ -606,14 +741,14 @@ class SettingsManager {
           if (toastAction && primaryBtn && secondaryBtn) {
             toastAction.style.display = 'flex';
             primaryBtn.style.display = 'block';
-            primaryBtn.textContent = 'Download & Install';
+            primaryBtn.textContent = window.t ? window.t('Download & Install') : 'Download & Install';
             primaryBtn.onclick = () => {
               ipc.send('start-download');
               if (window.toastManager) window.toastManager.show('⏳ Starting Download', 'The update will download in the background.', 4000);
             };
 
             secondaryBtn.style.display = 'block';
-            secondaryBtn.textContent = 'View on GitHub';
+            secondaryBtn.textContent = window.t ? window.t('View on GitHub') : 'View on GitHub';
             secondaryBtn.onclick = () => {
               window.tabManager.createTab(`https://github.com/git-QTech/leef/releases/tag/${tag}`);
             };
@@ -629,7 +764,8 @@ class SettingsManager {
         badge.textContent = `[DOWNLOADING ${Math.floor(progress.percent)}%]`;
       }
       if (btn) {
-        btn.textContent = `Downloading (${Math.floor(progress.percent)}%)...`;
+        const pct = Math.floor(progress.percent);
+        btn.textContent = window.t ? window.t('Downloading ({percent}%)...', { percent: pct }) : `Downloading (${pct}%)...`;
         btn.disabled = true;
       }
     });
@@ -647,7 +783,7 @@ class SettingsManager {
       }
 
       if (btn) {
-        btn.textContent = 'Restart & Apply Update';
+        btn.textContent = window.t ? window.t('Restart & Apply Update') : 'Restart & Apply Update';
         btn.dataset.action = 'restart';
         btn.disabled = false;
         btn.style.background = '#17b340';
@@ -659,7 +795,7 @@ class SettingsManager {
 
         if (toastAction && primaryBtn && secondaryBtn) {
           toastAction.style.display = 'flex';
-          primaryBtn.textContent = 'Restart Now';
+          primaryBtn.textContent = window.t ? window.t('Restart Now') : 'Restart Now';
           primaryBtn.onclick = () => {
             ipc.send('restart-to-update');
           };
@@ -709,12 +845,15 @@ class SettingsManager {
       liveAutocomplete: document.getElementById('live-autocomplete').checked,
       gpc: document.getElementById('flag-gpc').checked,
       newsManualRefresh: document.getElementById('news-manual-refresh').checked,
+      newsProvider: document.getElementById('news-provider-select')?.value || this.currentSettings.newsProvider || 'bbc',
+      hideSportsUntilNearStart: document.getElementById('hide-sports-until-near-start') ? document.getElementById('hide-sports-until-near-start').checked : false,
       efficiencyMode: document.getElementById('efficiency-mode').checked,
       cpuLimit: parseInt(document.getElementById('cpu-limit-slider').value),
       ramLimit: parseInt(document.getElementById('ram-limit-slider').value),
       customNewTab: document.getElementById('custom-new-tab')?.value || '',
       newsWordFilters: this.currentSettings.newsWordFilters || [],
-      followedTeams: this.currentSettings.followedTeams || []
+      followedTeams: this.currentSettings.followedTeams || [],
+      quickLinksStr: this.currentSettings.quickLinksStr
     };
 
     this.applyVisualSettings();
@@ -729,10 +868,29 @@ class SettingsManager {
       localStorage.setItem('leef_settings', JSON.stringify(this.currentSettings));
       window.require('electron').ipcRenderer.send('apply-settings', settingsWithLabs);
 
+      // Show/update restart banner if language differs from initial session language
+      const banner = document.getElementById('language-restart-banner');
+      if (banner) {
+        if (this.currentSettings.language !== this.sessionInitialLanguage) {
+          banner.style.display = 'block';
+        } else {
+          banner.style.display = 'none';
+        }
+      }
+
       if (window.toastManager) {
         if (oldLanguage !== this.currentSettings.language) {
-          window.toastManager.show('⚙️ Settings Saved', 'Your preferences have been applied. Please restart the browser to complete the language change.', 6000);
-        } else {
+          window.toastManager.show(
+            '🌐 Language Changed',
+            'Please restart the browser to complete the language change across all menus and shortcuts.',
+            15000,
+            {
+              primaryText: 'Restart Now',
+              secondaryText: 'Later',
+              onPrimary: () => relaunchBrowser()
+            }
+          );
+        } else if (window.toastManager.activeTitle !== '🦁 Brave Search Notice') {
           window.toastManager.show('⚙️ Settings Saved', 'Your preferences have been applied.', 3000);
         }
       }
@@ -828,6 +986,7 @@ const DropdownUtils = {
     }, 220);
   }
 };
+window.DropdownUtils = DropdownUtils;
 
 
 class BookmarksManager {
@@ -911,6 +1070,8 @@ class BookmarksManager {
         if (q) DropdownUtils.hide(q);
         const s = document.getElementById('site-identity-dropdown');
         if (s) DropdownUtils.hide(s);
+        const p = document.getElementById('plugins-dropdown');
+        if (p) DropdownUtils.hide(p);
       } else {
         DropdownUtils.hide(this.dropdown);
       }
@@ -950,8 +1111,8 @@ class HubManager {
       { name: 'X', url: 'https://twitter.com', cls: 'hub-tile-x', subtitle: 'Formerly Twitter' },
       { name: 'Facebook', url: 'https://facebook.com', cls: 'hub-tile-facebook' },
       { name: 'Youtube', url: 'https://youtube.com', cls: 'hub-tile-youtube' },
-      { name: 'Discord', url: 'https://discord.com', cls: 'hub-tile-discord' },
-      { name: 'Disney +', url: 'https://disneyplus.com', cls: 'hub-tile-disney' },
+      { name: 'Wikipedia', url: 'https://wikipedia.org', cls: 'hub-tile-wikipedia' },
+      { name: 'Reddit', url: 'https://reddit.com', cls: 'hub-tile-reddit' },
     ];
     this.tiles = this.loadTiles();
     this.bindModalEvents();
@@ -960,8 +1121,26 @@ class HubManager {
 
   loadTiles() {
     try {
-      const saved = JSON.parse(localStorage.getItem('leef_hub_tiles'));
-      if (saved && saved.length > 0) return saved;
+      let saved = JSON.parse(localStorage.getItem('leef_hub_tiles'));
+      if (saved && saved.length > 0) {
+        // Migrate Discord -> Wikipedia and Disney+ -> Reddit if found in saved tiles
+        let migrated = false;
+        saved = saved.map(tile => {
+          if (tile.name === 'Discord' && tile.url === 'https://discord.com') {
+            migrated = true;
+            return { name: 'Wikipedia', url: 'https://wikipedia.org', cls: 'hub-tile-wikipedia' };
+          }
+          if ((tile.name === 'Disney +' || tile.name === 'Disney+') && tile.url === 'https://disneyplus.com') {
+            migrated = true;
+            return { name: 'Reddit', url: 'https://reddit.com', cls: 'hub-tile-reddit' };
+          }
+          return tile;
+        });
+        if (migrated) {
+          localStorage.setItem('leef_hub_tiles', JSON.stringify(saved));
+        }
+        return saved;
+      }
     } catch (e) { }
     return [...this.defaults];
   }
@@ -1023,7 +1202,7 @@ class HubManager {
     // Real-time site name preview sync
     this.nameInput.addEventListener('input', () => {
       if (this.tilePreviewName) {
-        this.tilePreviewName.textContent = this.nameInput.value.trim() || 'Site Name';
+        this.tilePreviewName.textContent = this.nameInput.value.trim() || (window.t ? window.t('Site Name') : 'Site Name');
       }
     });
 
@@ -1094,9 +1273,11 @@ class HubManager {
         el.style.color = isDark ? '#fff' : '#111';
       }
 
+      const subtitleText = tile.subtitle ? (window.t ? window.t(tile.subtitle) : tile.subtitle) : '';
+      const removeTitle = window.t ? window.t('Remove') : 'Remove';
       el.innerHTML = `
-        ${tile.subtitle ? `<div>${BrowserUtils.sanitize(tile.name)}</div><div class="small-text">${BrowserUtils.sanitize(tile.subtitle)}</div>` : BrowserUtils.sanitize(tile.name)}
-        <button class="hub-tile-remove" data-idx="${i}" title="Remove">&times;</button>
+        ${tile.subtitle ? `<div>${BrowserUtils.sanitize(tile.name)}</div><div class="small-text" data-i18n="${BrowserUtils.sanitize(tile.subtitle)}">${BrowserUtils.sanitize(subtitleText)}</div>` : BrowserUtils.sanitize(tile.name)}
+        <button class="hub-tile-remove" data-idx="${i}" title="${BrowserUtils.sanitize(removeTitle)}">&times;</button>
       `;
       el.addEventListener('click', (e) => {
         if (e.target.closest('.hub-tile-remove')) return;
@@ -1116,7 +1297,8 @@ class HubManager {
     // "Add More" tile
     const addTile = document.createElement('div');
     addTile.className = 'hub-tile hub-tile-add';
-    addTile.innerHTML = '<b>+</b> Add More';
+    const addMoreLabel = window.t ? window.t('Add More') : 'Add More';
+    addTile.innerHTML = `<b>+</b> <span data-i18n="Add More">${addMoreLabel}</span>`;
     addTile.addEventListener('click', () => this.promptAddTile());
     this.gridEl.appendChild(addTile);
   }
@@ -1126,7 +1308,7 @@ class HubManager {
     this.nameInput.value = '';
     this.urlInput.value = '';
     if (this.tilePreviewName) {
-      this.tilePreviewName.textContent = 'Site Name';
+      this.tilePreviewName.textContent = window.t ? window.t('Site Name') : 'Site Name';
     }
 
     // Reset colors to default brand green HSL (109, 100%, 74%)
@@ -1146,6 +1328,125 @@ class HubManager {
   }
 }
 
+// --- NEWS PROVIDERS ---
+const NEWS_PROVIDERS = {
+  bbc: {
+    id: 'bbc',
+    name: 'BBC News',
+    shortName: 'BBC News',
+    brandTag: 'BBC',
+    sub: 'World & UK',
+    color: '#bb1919',
+    bgColor: 'rgba(187, 25, 25, 0.07)',
+    glowColor: 'rgba(187, 25, 25, 0.15)',
+    borderColor: 'rgba(187, 25, 25, 0.3)',
+    url: 'https://feeds.bbci.co.uk/news/world/rss.xml',
+    badge: 'BBC News'
+  },
+  yahoo: {
+    id: 'yahoo',
+    name: 'Yahoo News',
+    shortName: 'Yahoo News',
+    brandTag: 'Yahoo!',
+    sub: 'US & Global',
+    color: '#6001d2',
+    bgColor: 'rgba(96, 1, 210, 0.07)',
+    glowColor: 'rgba(96, 1, 210, 0.15)',
+    borderColor: 'rgba(96, 1, 210, 0.3)',
+    url: 'https://news.yahoo.com/rss/',
+    badge: 'Yahoo News'
+  },
+  npr: {
+    id: 'npr',
+    name: 'NPR News',
+    shortName: 'NPR News',
+    brandTag: 'NPR',
+    sub: 'Public Radio',
+    color: '#0077c8',
+    bgColor: 'rgba(0, 119, 200, 0.07)',
+    glowColor: 'rgba(0, 119, 200, 0.15)',
+    borderColor: 'rgba(0, 119, 200, 0.3)',
+    url: 'https://feeds.npr.org/1001/rss.xml',
+    badge: 'NPR News'
+  },
+  dw: {
+    id: 'dw',
+    name: 'Deutsche Welle',
+    shortName: 'DW News',
+    brandTag: 'DW',
+    sub: 'Europe & Global',
+    color: '#008ac9',
+    bgColor: 'rgba(0, 138, 201, 0.07)',
+    glowColor: 'rgba(0, 138, 201, 0.15)',
+    borderColor: 'rgba(0, 138, 201, 0.3)',
+    url: 'https://rss.dw.com/rdf/rss-en-all',
+    badge: 'DW News'
+  },
+  nos: {
+    id: 'nos',
+    name: 'NOS Nieuws',
+    shortName: 'NOS Nieuws',
+    brandTag: 'NOS',
+    sub: 'Netherlands',
+    color: '#d3131a',
+    bgColor: 'rgba(211, 19, 26, 0.07)',
+    glowColor: 'rgba(211, 19, 26, 0.15)',
+    borderColor: 'rgba(211, 19, 26, 0.3)',
+    url: 'https://feeds.nos.nl/nosnieuwsalgemeen',
+    badge: 'NOS Nieuws'
+  },
+  france24: {
+    id: 'france24',
+    name: 'France 24',
+    shortName: 'France 24',
+    brandTag: 'France 24',
+    sub: 'International',
+    color: '#0055a5',
+    bgColor: 'rgba(0, 85, 165, 0.07)',
+    glowColor: 'rgba(0, 85, 165, 0.15)',
+    borderColor: 'rgba(0, 85, 165, 0.3)',
+    url: 'https://www.france24.com/en/rss',
+    badge: 'France 24'
+  }
+};
+
+const DEFAULT_FEED_THEME = {
+  color: '#2e7d32',
+  bgColor: 'rgba(46, 125, 50, 0.12)',
+  borderColor: 'rgba(46, 125, 50, 0.3)'
+};
+
+const FALLBACK_NEWS_IMG = "data:image/svg+xml;base64," + (typeof btoa !== 'undefined' ? btoa('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#2e7d32" stop-opacity="0.15"/><stop offset="100%" stop-color="#1b5e20" stop-opacity="0.35"/></linearGradient></defs><rect width="300" height="200" fill="url(#g)"/><circle cx="150" cy="100" r="38" fill="#1b5e20" opacity="0.15"/><path d="M150 76 C134 94, 126 116, 150 134 C174 116, 166 94, 150 76 Z" fill="#2e7d32" opacity="0.8"/></svg>') : '');
+
+const NEWS_STOP_WORDS = new Set([
+  // English common & auxiliaries
+  'the','be','to','of','and','a','in','that','have','i','it','for','not','on','with','he','as','you','do','at',
+  'this','but','his','by','from','they','we','say','her','she','or','an','will','my','one','all','would','there',
+  'their','what','so','up','out','if','about','who','get','which','go','me','when','make','can','like','time','no',
+  'just','him','know','take','people','into','year','your','good','some','could','them','see','other','than','then',
+  'now','look','only','come','its','over','think','also','back','after','use','two','how','our','work','first','well',
+  'way','even','new','want','because','any','these','give','day','most','us','says','amid','amidst','told','breaking',
+  'read','full','story','latest','view','watch','live','update','video','photos','report','reports','news',
+  'was','were','been','being','are','has','had','did','does','done','must','should','shall','may','might','much',
+  'many','more','less','better','best','worse','worst','very','deeply','really','still','too','further','both',
+  'several','trying','tried','tries','under','doing','described','named','accused','alleged','allegations','accuser',
+  'several','since','before','while','during','between','through','down','off','again','further','thence','here',
+  'where','why','how','such','own','same','why','whose','whom','whilst','towards','toward','upon','within','without',
+  // Dutch
+  'de','het','een','en','van','ik','te','dat','die','in','is','op','voor','met','als','zijn','er','niet','om',
+  'naar','maar','door','over','aan','uit','bij','ook','tot','je','we','hij','ze','zou','meer','worden','nieuws','werd',
+  'was','waren','zijn','heeft','hadden','hebben','kunnen','moeten','moest','al','nog','heel','veel','weer',
+  // German
+  'der','die','das','und','in','den','von','zu','mit','ist','im','für','auf','nicht','eine','des','ein','dem',
+  'sich','auch','nach','wie','über','aus','bei','um','durch','vom','unter','wird','haben','werden','neue','nachrichten',
+  'war','waren','hatte','hatten','kann','können','muss','müssen','soll','sehr','mehr','schon','wieder',
+  // French & Spanish
+  'le','la','les','un','une','des','du','de','et','en','dans','pour','sur','qui','que','avec','pas','plus',
+  'est','sont','fait','faire','ete','ont','aussi','tres','dans','vers','sous','par',
+  'el','los','las','un','una','unos','unas','y','de','en','por','con','para','como','pero','sobre','este',
+  'del','fue','eran','esta','estos','estas','mas','muy','hacer','hacia','desde'
+]);
+
 class NewsService {
   constructor() {
     this.container = document.getElementById('dynamic-news-container');
@@ -1158,6 +1459,9 @@ class NewsService {
     this.dismissedHeadlines = this.loadDismissed();
     this.pruneOldDismissals();
 
+    // 100% On-Device Smart Model
+    this.smartModel = this.loadSmartModel();
+
     if (localStorage.getItem('leef_onboarding_done')) {
       this.loadNews();
     }
@@ -1166,6 +1470,7 @@ class NewsService {
     const infoTrigger = document.querySelector('.news-info-trigger');
     const privacyModal = document.getElementById('news-privacy-modal');
     const privacyClose = document.getElementById('news-privacy-close');
+    const privacyX = document.getElementById('news-privacy-x');
 
     if (infoTrigger && privacyModal) {
       infoTrigger.style.cursor = 'pointer';
@@ -1179,6 +1484,13 @@ class NewsService {
       privacyClose.addEventListener('click', () => {
         privacyModal.style.display = 'none';
       });
+    }
+    if (privacyX && privacyModal) {
+      privacyX.addEventListener('click', () => {
+        privacyModal.style.display = 'none';
+      });
+    }
+    if (privacyModal) {
       privacyModal.addEventListener('click', (e) => {
         if (e.target === privacyModal) privacyModal.style.display = 'none';
       });
@@ -1208,27 +1520,524 @@ class NewsService {
     if (changed) this.saveDismissed();
   }
 
+  loadSmartModel() {
+    try {
+      const data = JSON.parse(localStorage.getItem('leef_news_smart_model') || '{}');
+      return {
+        topics: data.topics || {},
+        likedUrls: data.likedUrls || {},
+        dislikedUrls: data.dislikedUrls || {}
+      };
+    } catch {
+      return { topics: {}, likedUrls: {}, dislikedUrls: {} };
+    }
+  }
+
+  saveSmartModel() {
+    try {
+      localStorage.setItem('leef_news_smart_model', JSON.stringify(this.smartModel));
+      window.dispatchEvent(new CustomEvent('leef-news-smart-updated', { detail: this.smartModel }));
+    } catch (e) {}
+  }
+
+  resetSmartPreferences() {
+    this.smartModel = { topics: {}, likedUrls: {}, dislikedUrls: {} };
+    this.saveSmartModel();
+    this.refresh();
+  }
+
+  extractKeywords(title, description = '', categories = []) {
+    // Only extract keywords from headline title and explicit RSS categories.
+    // Article descriptions contain dozens of filler words and sentence fragments.
+    const selected = [];
+    const seen = new Set();
+
+    // 1. First add explicit RSS category tags if present (e.g. "US", "Education", "Technology")
+    categories.forEach(cat => {
+      if (selected.length >= 4) return;
+      const clean = cat.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').trim();
+      if (clean.length >= 3 && !NEWS_STOP_WORDS.has(clean) && !seen.has(clean)) {
+        seen.add(clean);
+        selected.push(clean);
+      }
+    });
+
+    // 2. Identify capitalized words in title (excluding the first word if just sentence case)
+    // and salient words >= 4 chars.
+    const titleClean = (title || '').replace(/https?:\/\/\S+/g, ' ');
+    const rawWords = titleClean.split(/\s+/);
+
+    // Prioritize capitalized proper nouns (e.g. Cornell, University, NASA, Boeing)
+    for (let i = 0; i < rawWords.length && selected.length < 4; i++) {
+      const rw = rawWords[i];
+      const stripped = rw.replace(/[^\p{L}\p{N}]/gu, '');
+      const lower = stripped.toLowerCase();
+      if (stripped.length >= 4 && !NEWS_STOP_WORDS.has(lower) && isNaN(stripped)) {
+        // Check if capitalized term (and not merely first word unless length >= 5)
+        const isCapitalized = /^[A-Z\xC0-\xDF]/.test(stripped);
+        if (isCapitalized && (i > 0 || stripped.length >= 5)) {
+          if (!seen.has(lower)) {
+            seen.add(lower);
+            selected.push(lower);
+          }
+        }
+      }
+    }
+
+    // 3. If we still have fewer than 3 keywords, extract remaining meaningful title nouns
+    const remainingTokens = titleClean.toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .split(/\s+/);
+
+    for (const t of remainingTokens) {
+      if (selected.length >= 4) break;
+      if (t.length >= 4 && !NEWS_STOP_WORDS.has(t) && isNaN(t) && !seen.has(t)) {
+        seen.add(t);
+        selected.push(t);
+      }
+    }
+
+    return selected;
+  }
+
+  scoreItem(item) {
+    let score = 0;
+    const topics = this.smartModel.topics || {};
+    for (const kw of item.keywords) {
+      if (topics[kw]) score += topics[kw];
+    }
+    return score;
+  }
+
+  rateItem(slotIdx, delta) {
+    const itemIdx = this.shownIndices[slotIdx];
+    const item = this.allItems[itemIdx];
+    if (!item) return;
+
+    const topics = this.smartModel.topics;
+    item.keywords.forEach(kw => {
+      const current = topics[kw] || 0;
+      const next = current + delta;
+      topics[kw] = Math.max(-10, Math.min(10, next));
+    });
+
+    if (delta > 0) {
+      this.openTopicFeedbackModal(item, slotIdx);
+    } else {
+      this.smartModel.dislikedUrls[item.link] = Date.now();
+      delete this.smartModel.likedUrls[item.link];
+      this.saveSmartModel();
+
+      if (window.toastManager) {
+        window.toastManager.show('👎 Preference Saved', 'Tuned for fewer stories like this on your device.', 3000);
+      }
+      // Immediately replace this slot
+      this.dismissCard(slotIdx);
+    }
+  }
+
+  extractSalientTopics(title, categories = []) {
+    const result = [];
+    const seen = new Set();
+
+    const addTopic = (str) => {
+      if (!str) return;
+      const clean = str.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').trim();
+      const lower = clean.toLowerCase();
+      if (clean.length < 3 || NEWS_STOP_WORDS.has(lower) || !isNaN(clean) || seen.has(lower)) {
+        return;
+      }
+      seen.add(lower);
+      let formatted = clean;
+      if (!/^[A-Z0-9]{2,}$/.test(clean)) {
+        formatted = clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
+      }
+      result.push(formatted);
+    };
+
+    // 1. RSS category tags if present
+    (categories || []).forEach(cat => addTopic(cat));
+
+    // 2. Capitalized words & proper nouns from headline
+    const titleClean = (title || '').replace(/https?:\/\/\S+/g, ' ');
+    const rawTokens = titleClean.split(/\s+/);
+
+    rawTokens.forEach(t => {
+      const stripped = t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+      if (stripped.length >= 3 && /^[A-Z\xC0-\xDF]/.test(stripped)) {
+        addTopic(stripped);
+      }
+    });
+
+    // 3. Other salient words (>= 4 chars)
+    rawTokens.forEach(t => {
+      const stripped = t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+      if (stripped.length >= 4) {
+        addTopic(stripped);
+      }
+    });
+
+    return result.slice(0, 8);
+  }
+
+  openTopicFeedbackModal(item, slotIdx) {
+    const modal = document.getElementById('news-topic-feedback-modal');
+    if (!modal) {
+      // Fallback if modal DOM element not found
+      this.applyLikedTopics(item, item.keywords || []);
+      return;
+    }
+
+    const headlineEl = document.getElementById('news-feedback-headline');
+    const chipsContainer = document.getElementById('news-feedback-chips');
+    const customInput = document.getElementById('news-feedback-custom-input');
+    const addBtn = document.getElementById('news-feedback-add-btn');
+    const closeBtn = document.getElementById('news-topic-feedback-close');
+    const cancelBtn = document.getElementById('news-feedback-cancel');
+    const saveBtn = document.getElementById('news-feedback-save');
+
+    if (headlineEl) {
+      headlineEl.textContent = `"${item.title || ''}"`;
+    }
+    if (customInput) customInput.value = '';
+
+    const topics = this.extractSalientTopics(item.title, item.categories);
+    const selectedTopics = new Set(topics.map(t => t.toLowerCase()));
+
+    const renderChips = () => {
+      if (!chipsContainer) return;
+      chipsContainer.innerHTML = '';
+
+      topics.forEach(topic => {
+        const lower = topic.toLowerCase();
+        const isSelected = selectedTopics.has(lower);
+
+        const chip = document.createElement('div');
+        chip.className = `news-topic-chip ${isSelected ? 'selected' : ''}`;
+        chip.innerHTML = `
+          <span class="chip-check">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </span>
+          <span class="chip-label">${BrowserUtils.sanitize(topic)}</span>
+        `;
+
+        chip.addEventListener('click', () => {
+          if (selectedTopics.has(lower)) {
+            selectedTopics.delete(lower);
+          } else {
+            selectedTopics.add(lower);
+          }
+          renderChips();
+        });
+
+        chipsContainer.appendChild(chip);
+      });
+    };
+
+    renderChips();
+
+    const handleAddCustom = () => {
+      if (!customInput) return;
+      const val = customInput.value.trim();
+      if (!val) return;
+      const lower = val.toLowerCase();
+      if (!selectedTopics.has(lower)) {
+        const display = val.charAt(0).toUpperCase() + val.slice(1);
+        topics.push(display);
+        selectedTopics.add(lower);
+        renderChips();
+      }
+      customInput.value = '';
+    };
+
+    const cleanup = () => {
+      modal.style.display = 'none';
+      document.body.classList.remove('modal-open');
+    };
+
+    if (closeBtn) closeBtn.onclick = cleanup;
+    if (cancelBtn) cancelBtn.onclick = cleanup;
+    modal.onclick = (e) => {
+      if (e.target === modal) cleanup();
+    };
+
+    if (addBtn) addBtn.onclick = handleAddCustom;
+    if (customInput) {
+      customInput.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleAddCustom();
+        }
+      };
+    }
+
+    if (saveBtn) {
+      saveBtn.onclick = () => {
+        const chosen = Array.from(selectedTopics);
+        this.applyLikedTopics(item, chosen);
+        cleanup();
+      };
+    }
+
+    modal.style.display = 'flex';
+    document.body.classList.add('modal-open');
+  }
+
+  applyLikedTopics(item, chosenTopics) {
+    const topics = this.smartModel.topics;
+
+    // Boost only user-approved topics
+    chosenTopics.forEach(kw => {
+      const current = topics[kw] || 0;
+      topics[kw] = Math.max(-10, Math.min(10, current + 2));
+    });
+
+    this.smartModel.likedUrls[item.link] = Date.now();
+    delete this.smartModel.dislikedUrls[item.link];
+    this.saveSmartModel();
+
+    if (window.toastManager) {
+      if (chosenTopics.length > 0) {
+        const displayList = chosenTopics.slice(0, 3).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(', ');
+        const suffix = chosenTopics.length > 3 ? ` +${chosenTopics.length - 3} more` : '';
+        const pattern = window.t ? window.t('Tuned feed for: {topics}') : 'Tuned feed for: {topics}';
+        const msg = pattern.replace('{topics}', displayList + suffix);
+        window.toastManager.show('👍 Preference Saved', msg, 3500);
+      } else {
+        const msg = window.t ? window.t('Story saved to preferences.') : 'Story saved to preferences.';
+        window.toastManager.show('👍 Preference Saved', msg, 3000);
+      }
+    }
+
+    this.renderCards();
+  }
+
   refresh() {
     if (this.isLoading) return;
     this.allItems = [];
     this.shownIndices = [];
-    this.isManualTrigger = true; // Allow fetch even if manual mode is on
-    if (this.container) this.container.innerHTML = '<p style="opacity: 0.6; padding-left: 10px;">Refreshing...</p>';
+    this.isManualTrigger = true;
+    if (this.container) {
+      const loadingText = window.t ? window.t('Refreshing...') : 'Refreshing...';
+      this.container.innerHTML = `<p style="opacity: 0.6; padding-left: 10px;">${loadingText}</p>`;
+    }
     this.loadNews();
   }
 
-  loadNews() {
+  fetchFeedUrl(url, maxRedirects = 3) {
+    return new Promise((resolve, reject) => {
+      if (maxRedirects <= 0) return reject(new Error('Too many redirects'));
+      try {
+        const parsed = new URL(url);
+        const mod = parsed.protocol === 'http:' ? window.require('http') : window.require('https');
+        const options = {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 LeefBrowser/1.0',
+            'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*',
+            'Cache-Control': 'no-cache'
+          }
+        };
+        const req = mod.get(url, options, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            let next = res.headers.location;
+            if (!next.startsWith('http')) next = new URL(next, url).toString();
+            res.resume();
+            return this.fetchFeedUrl(next, maxRedirects - 1).then(resolve).catch(reject);
+          }
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            res.resume();
+            return reject(new Error(`HTTP status ${res.statusCode}`));
+          }
+          const chunks = [];
+          let size = 0;
+          const MAX_BYTES = 1024 * 1024;
+          res.on('data', chunk => {
+            size += chunk.length;
+            if (size < MAX_BYTES) chunks.push(chunk);
+          });
+          res.on('end', () => {
+            resolve(Buffer.concat(chunks).toString('utf8'));
+          });
+        });
+        req.on('error', reject);
+        req.setTimeout(8000, () => {
+          req.destroy();
+          reject(new Error('Feed timeout'));
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  parseFeedXml(data, feedMeta = {}) {
+    const xml = new DOMParser().parseFromString(data, 'text/xml');
+    const items = [];
+
+    // For preloaded sources, ALWAYS use the official shortName!
+    // For custom feeds, if the name is a URL or empty, use clean domain.
+    let resolvedSource = feedMeta.shortName || feedMeta.name;
+    if (!resolvedSource) {
+      const channelTitle = xml.querySelector('channel > title')?.textContent?.trim();
+      resolvedSource = channelTitle || 'News';
+    }
+    if (resolvedSource.startsWith('http://') || resolvedSource.startsWith('https://')) {
+      try {
+        resolvedSource = new URL(resolvedSource).hostname.replace(/^www\./, '');
+      } catch (e) {
+        resolvedSource = 'News';
+      }
+    }
+
+    const sourceColor = feedMeta.color || DEFAULT_FEED_THEME.color;
+    const sourceBg = feedMeta.bgColor || DEFAULT_FEED_THEME.bgColor;
+    const sourceBorder = feedMeta.borderColor || DEFAULT_FEED_THEME.borderColor;
+    const sourceId = feedMeta.id || 'custom';
+
+    // Channel-level logo fallback (e.g. DW provides <image><url>...</url></image>)
+    const channelImg = xml.querySelector('channel > image > url')?.textContent?.trim() ||
+                       xml.querySelector('image > url')?.textContent?.trim() ||
+                       xml.querySelector('image')?.getAttribute('rdf:about') || '';
+
+    // Check RSS / RDF items
+    const rawItems = xml.querySelectorAll('item');
+    if (rawItems && rawItems.length > 0) {
+      rawItems.forEach(item => {
+        const title = item.querySelector('title')?.textContent?.trim() || 'News Headline';
+        const rawLink = item.querySelector('link')?.textContent?.trim() ||
+                        item.getAttribute('rdf:about') ||
+                        item.querySelector('guid')?.textContent?.trim() || '';
+        let link = '';
+        if (rawLink.startsWith('http://') || rawLink.startsWith('https://')) {
+          link = rawLink;
+        }
+        const desc = item.querySelector('description')?.textContent?.trim() || '';
+        const cats = Array.from(item.querySelectorAll('category')).map(c => c.textContent?.trim()).filter(Boolean);
+
+        // Find image
+        let imgSrc = '';
+        const mediaCont = item.getElementsByTagName('media:content');
+        if (mediaCont && mediaCont.length > 0 && mediaCont[0].getAttribute('url')) {
+          imgSrc = mediaCont[0].getAttribute('url');
+        } else {
+          const mediaThumb = item.getElementsByTagName('media:thumbnail');
+          if (mediaThumb && mediaThumb.length > 0 && mediaThumb[0].getAttribute('url')) {
+            imgSrc = mediaThumb[0].getAttribute('url');
+          } else {
+            const enclosure = item.querySelector('enclosure');
+            if (enclosure && enclosure.getAttribute('url')) {
+              imgSrc = enclosure.getAttribute('url');
+            } else {
+              // Search <content:encoded> (used by NPR) and <description>
+              const contentEncoded = item.getElementsByTagName('content:encoded');
+              const searchStr = (contentEncoded.length > 0 ? contentEncoded[0].textContent : '') + ' ' + desc;
+              const imgMatch = searchStr.match(/<img[^>]+src=["']([^"']+)["']/i);
+              if (imgMatch) imgSrc = imgMatch[1];
+            }
+          }
+        }
+
+        if (!imgSrc && channelImg && (channelImg.startsWith('http://') || channelImg.startsWith('https://'))) {
+          imgSrc = channelImg;
+        }
+
+        if (!imgSrc) {
+          imgSrc = FALLBACK_NEWS_IMG;
+        }
+
+        const pubDateStr = item.querySelector('pubDate')?.textContent?.trim() ||
+                           item.querySelector('dc\\:date, date')?.textContent?.trim() || '';
+        const pubTimestamp = pubDateStr ? Date.parse(pubDateStr) : 0;
+
+        if (title && link) {
+          items.push({
+            title,
+            link,
+            imgSrc,
+            description: desc,
+            categories: cats,
+            sourceId,
+            sourceName: resolvedSource,
+            sourceColor,
+            sourceBg,
+            sourceBorder,
+            pubDate: isNaN(pubTimestamp) ? 0 : pubTimestamp,
+            isCustom: !!feedMeta.isCustom
+          });
+        }
+      });
+      return items;
+    }
+
+    // Check Atom entries
+    const entries = xml.querySelectorAll('entry');
+    if (entries && entries.length > 0) {
+      entries.forEach(entry => {
+        const title = entry.querySelector('title')?.textContent?.trim() || 'News Headline';
+        const linkEl = entry.querySelector('link[rel="alternate"]') || entry.querySelector('link');
+        const link = linkEl?.getAttribute('href') || linkEl?.textContent?.trim() || '';
+        const summary = entry.querySelector('summary')?.textContent || entry.querySelector('content')?.textContent || '';
+        const cats = Array.from(entry.querySelectorAll('category')).map(c => c.getAttribute('term') || c.textContent?.trim()).filter(Boolean);
+
+        let imgSrc = '';
+        const mediaThumb = entry.getElementsByTagName('media:thumbnail');
+        if (mediaThumb && mediaThumb.length > 0 && mediaThumb[0].getAttribute('url')) {
+          imgSrc = mediaThumb[0].getAttribute('url');
+        } else {
+          const enclosure = entry.querySelector('link[rel="enclosure"]');
+          if (enclosure && enclosure.getAttribute('href')) {
+            imgSrc = enclosure.getAttribute('href');
+          } else {
+            const imgMatch = summary.match(/<img[^>]+src=["']([^"']+)["']/i);
+            if (imgMatch) imgSrc = imgMatch[1];
+          }
+        }
+
+        if (!imgSrc && channelImg && (channelImg.startsWith('http://') || channelImg.startsWith('https://'))) {
+          imgSrc = channelImg;
+        }
+
+        if (!imgSrc) {
+          imgSrc = FALLBACK_NEWS_IMG;
+        }
+
+        const pubDateStr = entry.querySelector('published')?.textContent?.trim() ||
+                           entry.querySelector('updated')?.textContent?.trim() || '';
+        const pubTimestamp = pubDateStr ? Date.parse(pubDateStr) : 0;
+
+        if (title && link) {
+          items.push({
+            title,
+            link,
+            imgSrc,
+            description: summary,
+            categories: cats,
+            sourceId,
+            sourceName: resolvedSource,
+            sourceColor,
+            sourceBg,
+            sourceBorder,
+            pubDate: isNaN(pubTimestamp) ? 0 : pubTimestamp,
+            isCustom: !!feedMeta.isCustom
+          });
+        }
+      });
+    }
+
+    return items;
+  }
+
+  async loadNews() {
     const container = this.container;
     if (!container) return;
     if (this.isLoading) return;
 
-    // Respect Manual Refresh setting
     const settings = window.settingsManager?.currentSettings || {};
     if (settings.newsManualRefresh && this.allItems.length === 0 && !this.isManualTrigger) {
       container.innerHTML = `
         <div style="padding: 20px; text-align: center; border: 1px dashed rgba(0,0,0,0.1); border-radius: 12px;">
-          <p style="font-size: 0.85rem; opacity: 0.7; margin-bottom: 12px;">Manual Refresh is enabled for privacy.</p>
-          <button id="btn-load-news-now" class="settings-btn" style="width: auto; background: var(--primary-color); color: white; border: none; padding: 6px 15px;">Load News Now</button>
+          <p style="font-size: 0.85rem; opacity: 0.7; margin-bottom: 12px;" data-i18n="Manual Refresh is enabled for privacy.">Manual Refresh is enabled for privacy.</p>
+          <button id="btn-load-news-now" class="settings-btn" style="width: auto; background: var(--primary-color); color: white; border: none; padding: 6px 15px;" data-i18n="Load News Now">Load News Now</button>
         </div>
       `;
       document.getElementById('btn-load-news-now')?.addEventListener('click', () => {
@@ -1239,102 +2048,229 @@ class NewsService {
     }
 
     this.isLoading = true;
-    try {
-      const https = window.require('https');
-      const rssUrl = `https://news.yahoo.com/rss/?_t=${Date.now()}`;
+    const providerSetting = settings.newsProvider || ['bbc'];
+    const selectedProviders = Array.isArray(providerSetting) ? providerSetting : [providerSetting];
+    const customFeeds = JSON.parse(localStorage.getItem('leef_custom_rss_feeds') || '[]');
 
-      // Hardened Request Headers
-      const options = {
-        headers: {
-          'User-Agent': 'LeefBrowser-PrivacySync/1.0 (SafeFetch)',
-          'Accept': 'application/rss+xml, text/xml',
-          'Cache-Control': 'no-cache'
-        }
-      };
+    const feedsToFetch = [];
 
-      https.get(rssUrl, options, (res) => {
-        const chunks = [];
-        let dataSize = 0;
-        const MAX_BYTES = 512 * 1024;
-        res.on('data', chunk => {
-          dataSize += chunk.length;
-          if (dataSize < MAX_BYTES) chunks.push(chunk);
-        });
-        res.on('end', () => {
-          this.isLoading = false;
+    // Prioritize Custom Feeds first so user's hand-picked sources lead the mix!
+    customFeeds.forEach(f => {
+      if (f.enabled !== false && f.url) {
+        let cleanName = f.name?.trim();
+        if (!cleanName || cleanName.startsWith('http://') || cleanName.startsWith('https://')) {
           try {
-            const data = Buffer.concat(chunks).toString('utf8');
-            const xml = new DOMParser().parseFromString(data, 'text/xml');
-            const rawItems = xml.querySelectorAll('item');
-            this.allItems = [];
-            const filters = (window.settingsManager?.currentSettings?.newsWordFilters || []).map(w => w.toLowerCase());
-            for (let i = 0; i < rawItems.length; i++) {
-              const item = rawItems[i];
-              const title = item.querySelector('title')?.textContent || 'Breaking News';
-              const rawLink = item.querySelector('link')?.textContent || 'https://news.yahoo.com';
-              const link = rawLink.startsWith('http') ? rawLink : 'https://news.yahoo.com';
-
-              // Filter out dismissed headlines
-              if (this.dismissedHeadlines[link]) continue;
-
-              // Filter out word-blocked headlines
-              if (filters.length > 0) {
-                const lowerTitle = title.toLowerCase();
-                if (filters.some(f => lowerTitle.includes(f))) continue;
-              }
-
-              let imgSrc = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=300&h=200&fit=crop';
-              const mediaCont = item.getElementsByTagName('media:content');
-              if (mediaCont && mediaCont.length > 0 && mediaCont[0].getAttribute('url')) {
-                imgSrc = mediaCont[0].getAttribute('url');
-              }
-              this.allItems.push({ title, link, imgSrc });
-            }
-            // Show first 3
-            this.shownIndices = [];
-            for (let i = 0; i < Math.min(this.allItems.length, 3); i++) {
-              this.shownIndices.push(i);
-            }
-            this.renderCards();
-          } catch (e) { container.innerHTML = '<p style="opacity: 0.6; padding-left: 10px;">Failed to parse latest news.</p>'; }
+            cleanName = new URL(f.url).hostname.replace(/^www\./, '');
+          } catch (e) {
+            cleanName = 'Custom RSS';
+          }
+        }
+        feedsToFetch.push({
+          url: f.url,
+          id: 'custom',
+          isCustom: true,
+          name: cleanName,
+          shortName: cleanName,
+          color: DEFAULT_FEED_THEME.color,
+          bgColor: DEFAULT_FEED_THEME.bgColor,
+          borderColor: DEFAULT_FEED_THEME.borderColor
         });
-      }).on('error', () => { this.isLoading = false; container.innerHTML = '<p style="opacity: 0.6; padding-left: 10px;">Failed to load latest news.</p>'; });
-    } catch (e) { this.isLoading = false; container.innerHTML = '<p style="opacity: 0.6; padding-left: 10px;">Offline news mode.</p>'; }
+      }
+    });
+
+    // Add selected built-in providers
+    selectedProviders.forEach(pId => {
+      if (pId !== 'custom' && NEWS_PROVIDERS[pId]) {
+        const prov = NEWS_PROVIDERS[pId];
+        feedsToFetch.push({
+          url: prov.url,
+          id: prov.id,
+          isCustom: false,
+          name: prov.name,
+          shortName: prov.shortName,
+          color: prov.color,
+          bgColor: prov.bgColor,
+          borderColor: prov.borderColor
+        });
+      }
+    });
+
+    if (feedsToFetch.length === 0) {
+      this.isLoading = false;
+      container.innerHTML = `
+        <div style="padding: 24px; text-align: center; border: 1px dashed rgba(0,0,0,0.12); border-radius: 12px; background: rgba(0,0,0,0.01);">
+          <p style="font-size: 0.9rem; opacity: 0.8; margin-bottom: 8px;" data-i18n="No custom RSS feeds added yet.">No news sources selected.</p>
+          <button id="btn-goto-custom-rss" class="settings-btn" style="width: auto; padding: 6px 14px; background: var(--primary-color); color: #fff; font-size: 0.85rem;" data-i18n="News Settings">News Settings</button>
+        </div>
+      `;
+      document.getElementById('btn-goto-custom-rss')?.addEventListener('click', () => {
+        document.getElementById('btn-news-settings')?.click();
+      });
+      return;
+    }
+
+    try {
+      const results = await Promise.allSettled(feedsToFetch.map(feed => this.fetchFeedUrl(feed.url)));
+      const feedBuckets = [];
+
+      results.forEach((res, i) => {
+        if (res.status === 'fulfilled' && res.value) {
+          const feedInfo = feedsToFetch[i];
+          const parsed = this.parseFeedXml(res.value, feedInfo);
+          if (parsed && parsed.length > 0) {
+            // Sort each source's items by date (newest first)
+            parsed.sort((a, b) => (b.pubDate || 0) - (a.pubDate || 0));
+            feedBuckets.push(parsed);
+          }
+        }
+      });
+
+      this.isLoading = false;
+      if (feedBuckets.length === 0) {
+        const failMsg = window.t ? window.t('Failed to load latest news.') : 'Failed to load latest news.';
+        container.innerHTML = `<p style="opacity: 0.6; padding-left: 10px;">${failMsg}</p>`;
+        return;
+      }
+
+      // Round-robin interleave across all sources so every provider and custom feed is fairly mixed!
+      const rawParsedItems = [];
+      const maxItemsInAnyFeed = Math.max(0, ...feedBuckets.map(b => b.length));
+
+      for (let round = 0; round < maxItemsInAnyFeed; round++) {
+        feedBuckets.forEach(bucket => {
+          if (bucket[round]) {
+            bucket[round]._feedRound = round;
+            rawParsedItems.push(bucket[round]);
+          }
+        });
+      }
+
+      const filters = (window.settingsManager?.currentSettings?.newsWordFilters || []).map(w => w.toLowerCase());
+      this.allItems = [];
+
+      for (const item of rawParsedItems) {
+        if (this.dismissedHeadlines[item.link]) continue;
+
+        if (filters.length > 0) {
+          const lowerTitle = item.title.toLowerCase();
+          if (filters.some(f => lowerTitle.includes(f))) continue;
+        }
+
+        item.keywords = this.extractKeywords(item.title, item.description, item.categories);
+        item.score = this.scoreItem(item);
+        this.allItems.push(item);
+      }
+
+      // Calculate final score:
+      // 1. Base round tier: Round 0 headlines from each source get 100, Round 1 gets 88, etc.
+      // 2. Custom RSS bonus (+12): Curated user feeds get top prominence!
+      // 3. Topic boost (+20 per liked topic level): Liked topics rise to the top from ANY source!
+      this.allItems.forEach((item, idx) => {
+        const round = item._feedRound !== undefined ? item._feedRound : Math.floor(idx / Math.max(1, feedBuckets.length));
+        const baseRank = Math.max(10, 100 - (round * 12));
+        const customBonus = item.isCustom ? 12 : 0;
+        const topicBoost = (item.score || 0) * 10;
+
+        item.finalScore = baseRank + customBonus + topicBoost;
+      });
+
+      // Sort by finalScore descending (shows user curated feeds + fresh mixed headlines + liked topics)
+      this.allItems.sort((a, b) => b.finalScore - a.finalScore);
+
+      this.shownIndices = [];
+      for (let i = 0; i < Math.min(this.allItems.length, 3); i++) {
+        this.shownIndices.push(i);
+      }
+      this.renderCards();
+    } catch (e) {
+      this.isLoading = false;
+      const failMsg = window.t ? window.t('Failed to load latest news.') : 'Failed to load latest news.';
+      container.innerHTML = `<p style="opacity: 0.6; padding-left: 10px;">${failMsg}</p>`;
+    }
   }
 
   renderCards() {
     if (!this.container) return;
     this.container.innerHTML = '';
+
+    const moreText = window.t ? window.t('More') : 'More';
+    const lessText = window.t ? window.t('Less') : 'Less';
+    const moreTitle = window.t ? window.t('Show more stories like this') : 'Show more stories like this';
+    const lessTitle = window.t ? window.t('Show fewer stories like this') : 'Show fewer stories like this';
+    const dismissTitle = window.t ? window.t('Dismiss story') : 'Dismiss story';
+
+    const isClassic = !!(window.labsManager?.flags?.classic_news_dismiss || JSON.parse(localStorage.getItem('leef_labs_flags') || '{}').classic_news_dismiss);
+    const dontCareText = window.t ? window.t("I Don't Care") : "I Don't Care";
+
+    const privacyBadge = document.querySelector('.news-privacy-badge');
+    if (privacyBadge) {
+      privacyBadge.style.display = isClassic ? 'none' : 'inline-flex';
+    }
+
     this.shownIndices.forEach((itemIdx, slotIdx) => {
       const item = this.allItems[itemIdx];
       if (!item) return;
+
+      const isLiked = !!this.smartModel.likedUrls[item.link];
       const card = document.createElement('div');
       card.className = 'news-card';
       card.setAttribute('data-url', item.link);
+
+      const actionsHtml = isClassic
+        ? `<button class="news-action-btn btn-news-dismiss-classic" data-slot="${slotIdx}" title="${dontCareText}" data-i18n="I Don't Care">${dontCareText}</button>`
+        : `
+          <button class="news-action-btn btn-news-more ${isLiked ? 'active-liked' : ''}" data-slot="${slotIdx}" title="${moreTitle}" data-i18n-title="Show more stories like this">👍 <span data-i18n="More">${moreText}</span></button>
+          <button class="news-action-btn btn-news-less" data-slot="${slotIdx}" title="${lessTitle}" data-i18n-title="Show fewer stories like this">👎 <span data-i18n="Less">${lessText}</span></button>
+          <button class="news-dismiss-btn" data-slot="${slotIdx}" title="${dismissTitle}" data-i18n-title="Dismiss story">✕</button>
+        `;
+
       card.innerHTML = `
-        <img src="${item.imgSrc}" alt="News" class="news-img" loading="lazy">
+        <img src="${item.imgSrc}" alt="News" class="news-img" loading="lazy" onerror="this.onerror=null; this.src='${FALLBACK_NEWS_IMG}';">
         <div class="news-content">
-          <p>${BrowserUtils.sanitize(item.title)}</p>
+          <p class="news-title">${BrowserUtils.sanitize(item.title)}</p>
           <div class="news-bottom">
-            <div class="news-source source-yahoo">Yahoo News <svg class="external-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 4px;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></div>
-            <button class="news-dismiss-btn" data-slot="${slotIdx}" title="I don't care">✕ I don't care</button>
+            <div class="news-source">
+              <span class="news-source-pill" style="color: ${item.sourceColor}; background: ${item.sourceBg}; border: 1px solid ${item.sourceBorder};">
+                <span class="news-source-dot" style="background-color: ${item.sourceColor};"></span>
+                ${BrowserUtils.sanitize(item.sourceName || 'News')}
+              </span>
+              <svg class="external-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 5px; opacity: 0.65;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            </div>
+            <div class="news-actions">
+              ${actionsHtml}
+            </div>
           </div>
         </div>
       `;
-      // Click card to navigate (but not if dismiss button was clicked)
+
       card.addEventListener('click', (e) => {
-        if (e.target.closest('.news-dismiss-btn')) return;
+        if (e.target.closest('.news-actions') || e.target.closest('.news-action-btn') || e.target.closest('.news-dismiss-btn')) return;
         if (window.tabManager) window.tabManager.navigateToUrl(item.link);
       });
-      // Dismiss button
-      card.querySelector('.news-dismiss-btn').addEventListener('click', (e) => {
+
+      card.querySelector('.btn-news-dismiss-classic')?.addEventListener('click', (e) => {
         e.stopPropagation();
         this.dismissCard(slotIdx);
       });
+
+      card.querySelector('.btn-news-more')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.rateItem(slotIdx, 2);
+      });
+
+      card.querySelector('.btn-news-less')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.rateItem(slotIdx, -2);
+      });
+
+      card.querySelector('.news-dismiss-btn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.dismissCard(slotIdx);
+      });
+
       this.container.appendChild(card);
     });
 
-    // Restore sports score cards if they were fetched before news loaded
     if (window.sportsSvc && window.sportsSvc.lastChips && window.sportsSvc.lastChips.length > 0) {
       window.sportsSvc._render(window.sportsSvc.lastChips);
     }
@@ -1348,11 +2284,10 @@ class NewsService {
       this.saveDismissed();
     }
 
-    // Find the next unused item from allItems (which are already pre-filtered for dismissals)
-    const currentShownIndices = new Set(this.shownIndices);
+    const currentShown = new Set(this.shownIndices);
     let replacement = -1;
     for (let i = 0; i < this.allItems.length; i++) {
-      if (!currentShownIndices.has(i) && !this.dismissedHeadlines[this.allItems[i].link]) {
+      if (!currentShown.has(i) && !this.dismissedHeadlines[this.allItems[i].link]) {
         replacement = i;
         break;
       }
@@ -1362,14 +2297,14 @@ class NewsService {
       this.shownIndices[slotIdx] = replacement;
       this.renderCards();
     } else {
-      // if no more items just remove the card
       this.shownIndices.splice(slotIdx, 1);
       this.renderCards();
-      if (window.toastManager) window.toastManager.show('📰 No More Headlines', 'You\'ve seen all available stories. Try refreshing later!', 4000);
+      if (window.toastManager) {
+        window.toastManager.show('📰 No More Headlines', 'You\'ve seen all available stories. Try refreshing later!', 4000);
+      }
     }
   }
 
-  // Called by SettingsManager when word filters change — re-fetches with new filters applied
   reloadWithFilters() {
     this.allItems = [];
     this.shownIndices = [];
@@ -1399,7 +2334,7 @@ class LeagueMetaCache {
   static get(slug) {
     const cache = LeagueMetaCache.load();
     const entry = cache[slug];
-    if (entry && (Date.now() - entry.ts < LeagueMetaCache.TTL)) return entry;
+    if (entry && (Date.now() - entry.ts < LeagueMetaCache.TTL) && ('isCurrentlyHappening' in entry)) return entry;
     return null;
   }
 
@@ -1422,12 +2357,35 @@ class LeagueMetaCache {
     const league = data.leagues?.[0];
     if (!league) return null;
 
+    let isCurrentlyHappening = true;
+    if (slug === 'fifa.world') {
+      const now = new Date();
+      const start = league.season?.startDate ? new Date(league.season.startDate) : null;
+      const end = league.season?.endDate ? new Date(league.season.endDate) : null;
+      if (!start || !end || now < start || now > end) {
+        isCurrentlyHappening = false;
+      } else if (Array.isArray(data.events)) {
+        isCurrentlyHappening = data.events.some(e => {
+          const isCompleted = e.competitions?.[0]?.status?.type?.completed;
+          const eventDate = new Date(e.date);
+          if (!isCompleted) return true;
+          const ageMs = now - eventDate;
+          return ageMs >= 0 && ageMs < 24 * 60 * 60 * 1000;
+        });
+      } else {
+        isCurrentlyHappening = false;
+      }
+    }
+
     const entry = {
       ts: Date.now(),
       name: league.name,
       season: league.season?.displayName || league.season?.year?.toString() || '',
       // Whether the season is currently active (has events today)
       hasEvents: Array.isArray(data.events) && data.events.length > 0,
+      startDate: league.season?.startDate || '',
+      endDate: league.season?.endDate || '',
+      isCurrentlyHappening,
     };
     const cache = LeagueMetaCache.load();
     cache[slug] = entry;
@@ -1448,10 +2406,18 @@ class SportsService {
   static get LEAGUES() {
     return [
       { emoji: '⚽', sport: 'soccer', slug: 'fifa.world' },
+      { emoji: '⚽', sport: 'soccer', slug: 'uefa.champions' },
       { emoji: '⚽', sport: 'soccer', slug: 'eng.1' },
+      { emoji: '⚽', sport: 'soccer', slug: 'esp.1' },
+      { emoji: '⚽', sport: 'soccer', slug: 'ger.1' },
+      { emoji: '⚽', sport: 'soccer', slug: 'ita.1' },
+      { emoji: '⚽', sport: 'soccer', slug: 'fra.1' },
       { emoji: '⚽', sport: 'soccer', slug: 'usa.1' },
       { emoji: '🏀', sport: 'basketball', slug: 'nba' },
+      { emoji: '🏀', sport: 'basketball', slug: 'wnba' },
+      { emoji: '🏀', sport: 'basketball', slug: 'mens-college-basketball' },
       { emoji: '🏈', sport: 'football', slug: 'nfl' },
+      { emoji: '🏈', sport: 'football', slug: 'college-football' },
       { emoji: '⚾', sport: 'baseball', slug: 'mlb' },
       { emoji: '🏒', sport: 'hockey', slug: 'nhl' },
     ];
@@ -1539,6 +2505,20 @@ class SportsService {
         const myTeam = competitors.find(c => followedIds.has(String(c.id)));
         if (!myTeam) continue;
 
+        const status = comps.status?.type;
+        const isLive = status?.state === 'in';
+        const isOver = status?.completed;
+        const isUpcoming = !isLive && !isOver;
+
+        const hideUntilNearStart = window.settingsManager?.currentSettings?.hideSportsUntilNearStart;
+        if (hideUntilNearStart && isUpcoming && event.date) {
+          const startTime = new Date(event.date);
+          const diffMs = startTime - Date.now();
+          if (diffMs > 10 * 60 * 1000) {
+            continue;
+          }
+        }
+
         const [home, away] = competitors[0].homeAway === 'home'
           ? [competitors[0], competitors[1]]
           : [competitors[1], competitors[0]];
@@ -1551,9 +2531,6 @@ class SportsService {
           if (closedGames.includes(matchKey)) continue;
         } catch (e) { }
 
-        const status = comps.status?.type;
-        const isLive = status?.state === 'in';
-        const isOver = status?.completed;
         const clock = status?.shortDetail || status?.detail || '';
 
         // Auto-remove 30 minutes after game is over
@@ -1579,7 +2556,6 @@ class SportsService {
 
         // Calculate countdown timer for upcoming/scheduled games
         let displayClock = clock;
-        const isUpcoming = !isLive && !isOver;
         if (isUpcoming && event.date) {
           const startTime = new Date(event.date);
           const diffMs = startTime - Date.now();
@@ -1905,28 +2881,83 @@ class SportsTeamPicker {
 
   _renderLeagues() {
     this.container.innerHTML = '';
+
+    const sportMeta = {
+      football: { name: 'American Football', emoji: '🏈' },
+      basketball: { name: 'Basketball', emoji: '🏀' },
+      baseball: { name: 'Baseball', emoji: '⚾' },
+      hockey: { name: 'Hockey', emoji: '🏒' },
+      soccer: { name: 'Football / Soccer', emoji: '⚽' }
+    };
+
+    // Group leagues by sport
+    const grouped = {};
     SportsService.LEAGUES.forEach(league => {
-      const group = document.createElement('div');
-      group.className = 'sport-league-group';
-      // Start with a slug-based placeholder; update async once ESPN responds
-      const placeholderName = SportsService.getLeagueName(league.slug);
-      group.innerHTML = `
-        <button class="sport-league-toggle" data-slug="${league.slug}" data-sport="${league.sport}">
-          <span class="sport-league-label">${league.emoji} <span class="league-name-text">${placeholderName}</span></span>
+      if (!grouped[league.sport]) grouped[league.sport] = [];
+      grouped[league.sport].push(league);
+    });
+
+    // Render each sport group
+    Object.entries(grouped).forEach(([sportId, leagues]) => {
+      const meta = sportMeta[sportId] || { name: sportId.toUpperCase(), emoji: '🏅' };
+
+      const sportGroup = document.createElement('div');
+      sportGroup.className = 'sport-group';
+      sportGroup.innerHTML = `
+        <button class="sport-toggle" data-sport-id="${sportId}">
+          <span>${meta.emoji} ${meta.name}</span>
           <svg class="sport-league-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
-        <div class="sport-league-teams" id="teams-${league.slug}" style="display:none;"></div>
+        <div class="sport-leagues-container" id="leagues-${sportId}" style="display:none;"></div>
       `;
-      group.querySelector('.sport-league-toggle').addEventListener('click', () => {
-        this._toggleLeague(league);
-      });
-      this.container.appendChild(group);
 
-      LeagueMetaCache.fetch(league.sport, league.slug).then(meta => {
-        if (!meta) return;
-        const nameEl = group.querySelector('.league-name-text');
-        if (nameEl) nameEl.textContent = SportsService.getLeagueName(league.slug);
+      const toggleBtn = sportGroup.querySelector('.sport-toggle');
+      const leaguesDiv = sportGroup.querySelector('.sport-leagues-container');
+      const chevron = sportGroup.querySelector('.sport-league-chevron');
+
+      toggleBtn.addEventListener('click', () => {
+        if (leaguesDiv.style.display === 'none') {
+          leaguesDiv.style.display = 'flex';
+          chevron.style.transform = 'rotate(180deg)';
+        } else {
+          leaguesDiv.style.display = 'none';
+          chevron.style.transform = '';
+        }
       });
+
+      // Render leagues inside this sport
+      leagues.forEach(league => {
+        const leagueGroup = document.createElement('div');
+        leagueGroup.className = 'sport-league-group';
+        const placeholderName = SportsService.getLeagueName(league.slug);
+        leagueGroup.innerHTML = `
+          <button class="sport-league-toggle" data-slug="${league.slug}" data-sport="${league.sport}">
+            <span class="sport-league-label">${league.emoji} <span class="league-name-text">${placeholderName}</span></span>
+            <svg class="sport-league-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="sport-league-teams" id="teams-${league.slug}" style="display:none;"></div>
+        `;
+        leagueGroup.querySelector('.sport-league-toggle').addEventListener('click', () => {
+          this._toggleLeague(league);
+        });
+
+        leaguesDiv.appendChild(leagueGroup);
+
+        LeagueMetaCache.fetch(league.sport, league.slug).then(meta => {
+          if (!meta) return;
+          const nameEl = leagueGroup.querySelector('.league-name-text');
+
+          if (meta.isCurrentlyHappening === false) {
+            leagueGroup.classList.add('inactive-league');
+            if (nameEl) nameEl.textContent = SportsService.getLeagueName(league.slug) + ' (Off-season)';
+          } else {
+            leagueGroup.classList.remove('inactive-league');
+            if (nameEl) nameEl.textContent = SportsService.getLeagueName(league.slug);
+          }
+        });
+      });
+
+      this.container.appendChild(sportGroup);
     });
   }
 
@@ -2027,14 +3058,14 @@ class SportsTeamPicker {
       const tag = document.createElement('span');
       tag.className = 'news-filter-tag';
       tag.textContent = t.teamName + ' ';
-      
+
       const hint = document.createElement('span');
       hint.className = 'tag-league-hint';
       hint.textContent = t.leagueName;
       tag.appendChild(hint);
-      
+
       tag.appendChild(document.createTextNode(' '));
-      
+
       const btn = document.createElement('button');
       btn.className = 'tag-remove';
       btn.title = 'Unfollow';
@@ -2093,18 +3124,382 @@ class NewsWordFilterUI {
       const tag = document.createElement('span');
       tag.className = 'news-filter-tag';
       tag.textContent = word + ' ';
-      
+
       const btn = document.createElement('button');
       btn.className = 'tag-remove';
       btn.title = 'Remove';
       btn.textContent = '✕';
       tag.appendChild(btn);
-      
+
       btn.addEventListener('click', () => {
         filters.splice(i, 1);
         this.settingsManager.currentSettings.newsWordFilters = filters;
         localStorage.setItem('leef_settings', JSON.stringify(this.settingsManager.currentSettings));
         if (window.newsSvc) window.newsSvc.reloadWithFilters();
+        this._render();
+      });
+      this.tagContainer.appendChild(tag);
+    });
+  }
+}
+
+// --- SMART NEWS & RSS FEEDS UI (in Hub settings) ---
+class SmartNewsUI {
+  constructor(settingsManager) {
+    this.settingsManager = settingsManager;
+    this.providerGrid = document.getElementById('news-provider-grid');
+    this.onboardProviderGrid = document.getElementById('onboard-news-provider-grid');
+    this.rssNameInput = document.getElementById('custom-rss-name-input');
+    this.rssUrlInput = document.getElementById('custom-rss-url-input');
+    this.addRssBtn = document.getElementById('btn-add-custom-rss');
+    this.rssTagsContainer = document.getElementById('custom-rss-tags');
+    this.smartTopicsContainer = document.getElementById('smart-news-topic-tags');
+    this.resetSmartBtn = document.getElementById('btn-reset-smart-news');
+
+    this.bindEvents();
+    this.topicsExpanded = false;
+    this.render();
+  }
+
+  bindEvents() {
+    if (this.addRssBtn) {
+      this.addRssBtn.addEventListener('click', () => this.addCustomRss());
+    }
+    if (this.rssUrlInput) {
+      this.rssUrlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') this.addCustomRss();
+      });
+    }
+
+    if (this.resetSmartBtn) {
+      this.resetSmartBtn.addEventListener('click', () => {
+        if (window.newsSvc) {
+          window.newsSvc.resetSmartPreferences();
+          if (window.toastManager) {
+            window.toastManager.show('⚙️ Settings Saved', 'Smart preferences reset. Your news feed is back to neutral.', 3000);
+          }
+        }
+        this.renderSmartTopics();
+      });
+    }
+
+    const toggleBtn = document.getElementById('btn-toggle-smart-topics');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        this.topicsExpanded = !this.topicsExpanded;
+        this.renderSmartTopics();
+      });
+    }
+
+    window.addEventListener('leef-news-smart-updated', () => {
+      this.renderSmartTopics();
+    });
+  }
+
+  getSelectedProviders() {
+    const setting = this.settingsManager.currentSettings.newsProvider;
+    if (Array.isArray(setting)) return setting;
+    if (typeof setting === 'string' && setting) return [setting];
+    return ['bbc'];
+  }
+
+  saveSelectedProviders(selectedArray) {
+    this.settingsManager.currentSettings.newsProvider = selectedArray;
+    localStorage.setItem('leef_settings', JSON.stringify(this.settingsManager.currentSettings));
+    if (window.newsSvc) window.newsSvc.refresh();
+    this.renderProviderGrids();
+  }
+
+  renderProviderGrids() {
+    const selected = this.getSelectedProviders();
+    const providersList = [
+      { id: 'bbc', label: 'BBC News' },
+      { id: 'yahoo', label: 'Yahoo News' },
+      { id: 'npr', label: 'NPR News' },
+      { id: 'dw', label: 'Deutsche Welle' },
+      { id: 'france24', label: 'France 24' },
+      { id: 'nos', label: 'NOS Nieuws' }
+    ];
+
+    const createGridContent = (targetContainer) => {
+      if (!targetContainer) return;
+      targetContainer.innerHTML = '';
+
+      providersList.forEach(prov => {
+        const provMeta = NEWS_PROVIDERS[prov.id] || {};
+        const isChecked = selected.includes(prov.id);
+        const card = document.createElement('label');
+        card.className = `news-provider-checkbox-card ${isChecked ? 'selected' : ''}`;
+        if (provMeta.color) {
+          card.style.setProperty('--provider-color', provMeta.color);
+        }
+        if (provMeta.bgColor) {
+          card.style.setProperty('--provider-bg', provMeta.bgColor);
+        }
+        if (provMeta.glowColor) {
+          card.style.setProperty('--provider-glow', provMeta.glowColor);
+        }
+
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.value = prov.id;
+        chk.checked = isChecked;
+
+        chk.addEventListener('change', () => {
+          let current = [...this.getSelectedProviders()];
+          if (chk.checked) {
+            if (!current.includes(prov.id)) current.push(prov.id);
+          } else {
+            current = current.filter(id => id !== prov.id);
+          }
+          if (current.length === 0) {
+            current = ['bbc']; // fallback if user unchecks all
+          }
+          this.saveSelectedProviders(current);
+        });
+
+        // Top Row: Brand Badge and Circular Custom Checkmark
+        const topRow = document.createElement('div');
+        topRow.className = 'news-provider-card-top';
+
+        const badgeIcon = document.createElement('span');
+        badgeIcon.className = 'news-provider-badge-icon';
+        badgeIcon.textContent = provMeta.brandTag || provMeta.shortName || prov.label;
+
+        const customChk = document.createElement('span');
+        customChk.className = 'news-provider-custom-chk';
+        customChk.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
+        topRow.appendChild(badgeIcon);
+        topRow.appendChild(customChk);
+
+        // Bottom Info: Title & Subtitle
+        const info = document.createElement('div');
+        info.className = 'news-provider-info';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'news-provider-name';
+        nameSpan.textContent = prov.label;
+
+        const subSpan = document.createElement('span');
+        subSpan.className = 'news-provider-sub';
+        subSpan.textContent = provMeta.sub || 'Headlines';
+
+        info.appendChild(nameSpan);
+        info.appendChild(subSpan);
+
+        card.appendChild(chk);
+        card.appendChild(topRow);
+        card.appendChild(info);
+        targetContainer.appendChild(card);
+      });
+    };
+
+    createGridContent(this.providerGrid);
+    createGridContent(this.onboardProviderGrid);
+  }
+
+  getCustomFeeds() {
+    try {
+      return JSON.parse(localStorage.getItem('leef_custom_rss_feeds') || '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  saveCustomFeeds(feeds) {
+    localStorage.setItem('leef_custom_rss_feeds', JSON.stringify(feeds));
+    this.renderCustomFeeds();
+    if (window.newsSvc) window.newsSvc.refresh();
+  }
+
+  addCustomRss() {
+    if (!this.rssUrlInput) return;
+    let url = this.rssUrlInput.value.trim();
+    if (!url) return;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+
+    let name = this.rssNameInput?.value?.trim() || '';
+    if (!name) {
+      try {
+        name = new URL(url).hostname.replace(/^www\./, '');
+      } catch {
+        name = 'Custom Feed';
+      }
+    }
+
+    const feeds = this.getCustomFeeds();
+    feeds.push({
+      id: 'feed_' + Date.now(),
+      name,
+      url,
+      enabled: true
+    });
+
+    this.saveCustomFeeds(feeds);
+
+    if (this.rssNameInput) this.rssNameInput.value = '';
+    if (this.rssUrlInput) this.rssUrlInput.value = '';
+
+    if (window.toastManager) {
+      window.toastManager.show('✅ Tile Added', 'Feed added successfully!', 3000);
+    }
+  }
+
+  render() {
+    this.renderProviderGrids();
+    this.renderCustomFeeds();
+    this.renderSmartTopics();
+  }
+
+  renderCustomFeeds() {
+    if (!this.rssTagsContainer) return;
+    const feeds = this.getCustomFeeds();
+    this.rssTagsContainer.innerHTML = '';
+
+    if (feeds.length === 0) {
+      const emptyMsg = window.t ? window.t('No custom RSS feeds added yet.') : 'No custom RSS feeds added yet.';
+      this.rssTagsContainer.innerHTML = `<span class="news-filter-empty">${emptyMsg}</span>`;
+      return;
+    }
+
+    feeds.forEach((feed, idx) => {
+      const tag = document.createElement('span');
+      tag.className = 'news-filter-tag';
+      tag.title = feed.url;
+      let host = '';
+      try { host = new URL(feed.url).hostname; } catch {}
+      tag.innerHTML = `<span>${BrowserUtils.sanitize(feed.name)}</span> <span class="tag-league-hint">${BrowserUtils.sanitize(host)}</span>`;
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'tag-remove';
+      removeBtn.title = 'Remove Feed';
+      removeBtn.textContent = '✕';
+      removeBtn.addEventListener('click', () => {
+        feeds.splice(idx, 1);
+        this.saveCustomFeeds(feeds);
+      });
+
+      tag.appendChild(removeBtn);
+      this.rssTagsContainer.appendChild(tag);
+    });
+  }
+
+  renderSmartTopics() {
+    if (!this.smartTopicsContainer) return;
+    const model = window.newsSvc?.smartModel || { topics: {} };
+    const topics = model.topics || {};
+    this.smartTopicsContainer.innerHTML = '';
+
+    const toggleBtn = document.getElementById('btn-toggle-smart-topics');
+    const activeEntries = Object.entries(topics).filter(([_, weight]) => weight !== 0);
+
+    if (activeEntries.length === 0) {
+      if (toggleBtn) toggleBtn.style.display = 'none';
+      const emptyMsg = window.t ? window.t('No tuned topics yet. Use 👍 and 👎 on news cards to train your feed.') : 'No tuned topics yet. Use 👍 and 👎 on news cards to train your feed.';
+      this.smartTopicsContainer.innerHTML = `<span class="news-filter-empty">${emptyMsg}</span>`;
+      return;
+    }
+
+    // Sort by absolute score descending
+    activeEntries.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+
+    const INITIAL_LIMIT = 8;
+    const needsToggle = activeEntries.length > INITIAL_LIMIT;
+
+    if (toggleBtn) {
+      if (needsToggle) {
+        toggleBtn.style.display = 'inline-flex';
+        const showAllText = window.t ? window.t('Show all {count} topics ▾', { count: activeEntries.length }) : `Show all ${activeEntries.length} topics ▾`;
+        const showLessText = window.t ? window.t('Show less ▴') : 'Show less ▴';
+        toggleBtn.textContent = this.topicsExpanded ? showLessText : showAllText;
+      } else {
+        toggleBtn.style.display = 'none';
+      }
+    }
+
+    const visibleEntries = (needsToggle && !this.topicsExpanded)
+      ? activeEntries.slice(0, INITIAL_LIMIT)
+      : activeEntries;
+
+    visibleEntries.forEach(([topic, weight]) => {
+      const tag = document.createElement('span');
+      const isPositive = weight > 0;
+      tag.className = `news-filter-tag ${isPositive ? 'smart-tag-pos' : 'smart-tag-neg'}`;
+      tag.textContent = `${topic} (${isPositive ? '+' : ''}${weight}) `;
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'tag-remove';
+      removeBtn.title = 'Reset Topic';
+      removeBtn.textContent = '✕';
+      removeBtn.addEventListener('click', () => {
+        delete topics[topic];
+        window.newsSvc?.saveSmartModel();
+        this.renderSmartTopics();
+        if (window.newsSvc) window.newsSvc.refresh();
+      });
+
+      tag.appendChild(removeBtn);
+      this.smartTopicsContainer.appendChild(tag);
+    });
+  }
+}
+
+class QuickLinksUI {
+  constructor(settingsManager) {
+    this.settingsManager = settingsManager;
+    this.input = document.getElementById('quick-links-input');
+    this.addBtn = document.getElementById('quick-links-add');
+    this.tagContainer = document.getElementById('quick-links-tags');
+    if (!this.input || !this.addBtn) return;
+    this.addBtn.addEventListener('click', () => this._addDomain());
+    this.input.addEventListener('keydown', e => { if (e.key === 'Enter') this._addDomain(); });
+    this._render();
+  }
+
+  _addDomain() {
+    let domain = this.input.value.trim().toLowerCase();
+    if (!domain) return;
+    domain = domain.replace(/^(https?:\/\/)?(www\.)?/, ''); // Cleanup
+    const linksStr = this.settingsManager.currentSettings.quickLinksStr || "";
+    let links = linksStr.split('\n').map(l => l.trim().toLowerCase()).filter(l => l.length > 0);
+
+    if (!links.includes(domain)) {
+      links.push(domain);
+      this.settingsManager.currentSettings.quickLinksStr = links.join('\n');
+      localStorage.setItem('leef_settings', JSON.stringify(this.settingsManager.currentSettings));
+    }
+    this.input.value = '';
+    this._render();
+  }
+
+  _render() {
+    if (!this.tagContainer) return;
+    const linksStr = this.settingsManager.currentSettings.quickLinksStr || "";
+    let links = linksStr.split('\n').map(l => l.trim().toLowerCase()).filter(l => l.length > 0);
+
+    this.tagContainer.innerHTML = '';
+    if (links.length === 0) {
+      this.tagContainer.innerHTML = '<span class="news-filter-empty">No quick links added.</span>';
+      return;
+    }
+    links.forEach((domain, i) => {
+      const tag = document.createElement('span');
+      tag.className = 'news-filter-tag';
+      tag.textContent = domain + ' ';
+
+      const btn = document.createElement('button');
+      btn.className = 'tag-remove';
+      btn.title = 'Remove';
+      btn.textContent = '✕';
+      tag.appendChild(btn);
+
+      btn.addEventListener('click', () => {
+        links.splice(i, 1);
+        this.settingsManager.currentSettings.quickLinksStr = links.join('\n');
+        localStorage.setItem('leef_settings', JSON.stringify(this.settingsManager.currentSettings));
         this._render();
       });
       this.tagContainer.appendChild(tag);
@@ -2485,7 +3880,7 @@ class TabManager {
 
     this.bindGlobalEvents();
 
-    // DRM Detection Listener
+    // DRM Detection Listener — fires when DRM is allowed
     window.require('electron').ipcRenderer.on('drm-detected', (event, data) => {
       this.tabs.forEach(tab => {
         if (tab.webviewEl) {
@@ -2500,6 +3895,37 @@ class TabManager {
           } catch (e) { }
         }
       });
+    });
+
+    // DRM Blocked Listener — fires when Block DRM lab flag is ON
+    window.require('electron').ipcRenderer.on('drm-blocked', (event, data) => {
+      if (window.toastManager) {
+        window.toastManager.show(
+          '🔒 DRM Content Blocked',
+          'This site requires DRM (Widevine) to play content, but "Block DRM Content" is enabled in Leef Labs. Disable it to watch Netflix, Disney+, and similar services.',
+          10000
+        );
+        // Show the action buttons to let user jump to Labs
+        const toastAction = document.getElementById('leef-toast-action');
+        const primaryBtn = document.getElementById('btn-toast-primary');
+        const secondaryBtn = document.getElementById('btn-toast-secondary');
+        if (toastAction && primaryBtn && secondaryBtn) {
+          toastAction.style.display = 'flex';
+          primaryBtn.textContent = window.t ? window.t('Open Labs') : 'Open Labs';
+          secondaryBtn.textContent = window.t ? window.t('Dismiss') : 'Dismiss';
+          const openLabsHandler = () => {
+            if (window.tabManager) window.tabManager.createTab('flags');
+            window.toastManager.hide();
+            primaryBtn.removeEventListener('click', openLabsHandler);
+          };
+          const dismissHandler = () => {
+            window.toastManager.hide();
+            secondaryBtn.removeEventListener('click', dismissHandler);
+          };
+          primaryBtn.addEventListener('click', openLabsHandler);
+          secondaryBtn.addEventListener('click', dismissHandler);
+        }
+      }
     });
   }
 
@@ -2532,7 +3958,7 @@ class TabManager {
     }
     this.lastTabOpen = { url: route, time: now };
 
-    const isInternal = ['home', 'settings', 'changelog', 'credits', 'flags', 'privacy'].includes(route);
+    const isInternal = ['home', 'settings', 'changelog', 'credits', 'flags', 'privacy', 'plugins'].includes(route);
 
     if (window.isCriticalMode && !isInternal) {
       const isGithub = route.includes('github.com');
@@ -2587,7 +4013,7 @@ class TabManager {
 
     const tabTitle = document.createElement('span');
     tabTitle.className = 'tab-title';
-    tabTitle.textContent = route === 'home' ? window.t('Leef Browser | Home') : (route === 'settings' ? window.t('Settings') : (route === 'changelog' ? window.t("What's New") : (route === 'credits' ? window.t('Credits') : (route === 'flags' ? window.t('Leef Labs') : (route === 'privacy' ? window.t('Privacy Center') : window.t('Loading...'))))));
+    tabTitle.textContent = route === 'home' ? window.t('Leef Browser | Home') : (route === 'settings' ? window.t('Settings') : (route === 'changelog' ? window.t("What's New") : (route === 'credits' ? window.t('Credits') : (route === 'flags' ? window.t('Leef Labs') : (route === 'privacy' ? window.t('Privacy Center') : (route === 'plugins' ? window.t('Plugin Store') : window.t('Loading...')))))));
 
     const tabClose = document.createElement('button');
     tabClose.className = 'tab-close';
@@ -2648,7 +4074,10 @@ class TabManager {
 
     // Events
     tabEl.addEventListener('click', (e) => {
-      if (e.target !== tabClose) this.switchTab(tabId);
+      if (e.target !== tabClose) {
+        if (this.activeTabId === tabId) return;
+        this.switchTab(tabId);
+      }
     });
 
     tabEl.addEventListener('mousedown', (e) => {
@@ -2669,10 +4098,12 @@ class TabManager {
       e.preventDefault();
       e.stopPropagation();
       try {
+        const lang = window.getLanguage ? window.getLanguage() : (window.settingsManager?.currentSettings?.language || 'en');
         window.require('electron').ipcRenderer.send('show-tab-context-menu', {
           tabId: tabId,
           isPinned: tabObj.isPinned,
-          isMuted: tabObj.isMuted
+          isMuted: tabObj.isMuted,
+          lang
         });
       } catch (err) { }
     });
@@ -2822,7 +4253,7 @@ class TabManager {
 
     // Background Tab Performance (v0.4.0)
     // Prevent throttling unless the user explicitly enabled the background limiter.
-    tab.webviewEl.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=no, nodeIntegration=no, backgroundThrottling=no');
+    tab.webviewEl.setAttribute('webpreferences', 'contextIsolation=yes, sandbox=no, nodeIntegration=no, backgroundThrottling=no, plugins=yes');
 
     UI.views.webviewsContainer.appendChild(tab.webviewEl);
 
@@ -2891,7 +4322,7 @@ class TabManager {
           const secondaryBtn = document.getElementById('btn-toast-secondary');
           if (toastAction && primaryBtn && secondaryBtn) {
             toastAction.style.display = 'flex';
-            primaryBtn.textContent = 'Learn Why';
+            primaryBtn.textContent = window.t ? window.t('Learn Why') : 'Learn Why';
             primaryBtn.onclick = () => {
               // Display a professional explanation modal
               const modal = document.getElementById('crash-explanation-modal');
@@ -2904,7 +4335,7 @@ class TabManager {
               }
               window.toastManager.hide();
             };
-            secondaryBtn.textContent = 'Dismiss';
+            secondaryBtn.textContent = window.t ? window.t('Dismiss') : 'Dismiss';
             secondaryBtn.onclick = () => {
               window.toastManager.hide();
             };
@@ -3070,6 +4501,18 @@ class TabManager {
       if (typeof tab.webviewEl.setZoomFactor === 'function') {
         try { tab.webviewEl.setZoomFactor(parseFloat(this.settings.currentSettings.zoom) || 1.0); } catch (e) { }
       }
+
+      // Inject Global Plugin Styles and Scripts
+      if (window.leefPluginGlobalCSS) {
+        Object.values(window.leefPluginGlobalCSS).forEach(css => {
+          tab.webviewEl.insertCSS(css).catch(()=>{});
+        });
+      }
+      if (window.leefPluginGlobalJS) {
+        Object.values(window.leefPluginGlobalJS).forEach(code => {
+          tab.webviewEl.executeJavaScript(code).catch(()=>{});
+        });
+      }
       this.updateTabUI(tab);
 
       // Inject custom premium scrollbar styles to match the brand's green theme inside the guest webview page
@@ -3090,6 +4533,16 @@ class TabManager {
         }
       `;
       tab.webviewEl.insertCSS(scrollbarCSS).catch(() => { });
+
+      if (window.labsManager && window.labsManager.isFlagEnabled('opendyslexic')) {
+        const dysCSS = `
+          @import url('https://cdn.jsdelivr.net/npm/@fontsource/opendyslexic/index.css');
+          * {
+            font-family: 'OpenDyslexic', sans-serif !important;
+          }
+        `;
+        tab.webviewEl.insertCSS(dysCSS).catch(() => { });
+      }
 
       // Inject Twemoji to fix flag emojis on Windows (which lacks native country flag support)
       if (process.platform === 'win32') {
@@ -3655,12 +5108,12 @@ class TabManager {
           const secondaryBtn = document.getElementById('btn-toast-secondary');
           if (toastAction && primaryBtn && secondaryBtn) {
             toastAction.style.display = 'flex';
-            primaryBtn.textContent = 'Check Archive';
+            primaryBtn.textContent = window.t ? window.t('Check Archive') : 'Check Archive';
             primaryBtn.onclick = () => {
               this.createTab('https://web.archive.org/web/*/' + e.validatedURL);
               window.toastManager.hide();
             };
-            secondaryBtn.textContent = 'Dismiss';
+            secondaryBtn.textContent = window.t ? window.t('Dismiss') : 'Dismiss';
             secondaryBtn.onclick = () => {
               window.toastManager.hide();
             };
@@ -3701,6 +5154,7 @@ class TabManager {
       try {
         const params = e.params || {};
         params.webContentsId = tab.webviewEl.getWebContentsId();
+        params.lang = window.getLanguage ? window.getLanguage() : (window.settingsManager?.currentSettings?.language || 'en');
         window.require('electron').ipcRenderer.send('show-context-menu', params);
       } catch (err) { }
     });
@@ -3717,7 +5171,7 @@ class TabManager {
 
     // Close dropdowns when clicking on the webview (registers as focus)
     tab.webviewEl.addEventListener('focus', () => {
-      const dropdowns = ['bookmarks-dropdown', 'downloads-dropdown', 'quick-settings-dropdown', 'site-identity-dropdown'];
+      const dropdowns = ['bookmarks-dropdown', 'downloads-dropdown', 'quick-settings-dropdown', 'site-identity-dropdown', 'plugins-dropdown'];
       dropdowns.forEach(id => {
         const d = document.getElementById(id);
         if (d) DropdownUtils.hide(d);
@@ -3768,7 +5222,7 @@ class TabManager {
     } else {
       tab.webviewEl.src = fullUrl;
     }
-    this.switchTab(tab.id);
+    this.switchTab(tab.id, true);
   }
 
   updateTabUI(tab) {
@@ -3777,6 +5231,7 @@ class TabManager {
     else if (tab.url === 'changelog') tab.tabTitle.textContent = window.t("What's New");
     else if (tab.url === 'flags') tab.tabTitle.textContent = window.t("Leef Labs");
     else if (tab.url === 'privacy') tab.tabTitle.textContent = window.t("Privacy Center");
+    else if (tab.url === 'plugins') tab.tabTitle.textContent = window.t("Plugin Store");
     else {
       let displayTitle = window.t(tab.title || 'Loading...');
       if (this.settings.currentSettings.blockAIOverview) {
@@ -3847,6 +5302,7 @@ class TabManager {
         else if (tab.url === 'credits') icon = '💎';
         else if (tab.url === 'flags') icon = '🧪';
         else if (tab.url === 'privacy') icon = '🛡️';
+        else if (tab.url === 'plugins') icon = '🧩';
         tab.faviconEl.textContent = icon;
         tab.faviconEl.style.backgroundImage = 'none';
       } else {
@@ -3882,13 +5338,17 @@ class TabManager {
     }
   }
 
-  switchTab(tabId) {
+  switchTab(tabId, force = false) {
     if (window.addressBarManager) {
       window.addressBarManager._hideSuggestions();
     }
 
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab) return;
+
+    if (this.activeTabId === tabId && !force) {
+      return;
+    }
 
     if (window.isCriticalMode) {
       const isGithub = tab.url && tab.url.includes('github.com');
@@ -4008,6 +5468,8 @@ class TabManager {
     if (labsView) labsView.style.display = tab.url === 'flags' ? 'flex' : 'none';
     const privacyView = document.getElementById('privacy-view');
     if (privacyView) privacyView.style.display = tab.url === 'privacy' ? 'flex' : 'none';
+    const pluginsView = document.getElementById('plugins-view');
+    if (pluginsView) pluginsView.style.display = tab.url === 'plugins' ? 'flex' : 'none';
 
     if (tab.isInternal) {
       UI.views.webviewsContainer.classList.remove('active');
@@ -4217,7 +5679,8 @@ class TabManager {
         e.preventDefault();
         e.stopPropagation();
         try {
-          window.require('electron').ipcRenderer.send('show-tab-context-menu', { tabId: null });
+          const lang = window.getLanguage ? window.getLanguage() : (window.settingsManager?.currentSettings?.language || 'en');
+          window.require('electron').ipcRenderer.send('show-tab-context-menu', { tabId: null, lang });
         } catch (err) { }
       }
     });
@@ -4334,7 +5797,8 @@ class TabManager {
       // Tab Bar Background Context Menu (v0.3.2)
       if (e.target.closest('.tabs-bar-container')) {
         e.preventDefault();
-        window.require('electron').ipcRenderer.send('show-tab-context-menu', { tabId: null });
+        const lang = window.getLanguage ? window.getLanguage() : (window.settingsManager?.currentSettings?.language || 'en');
+        window.require('electron').ipcRenderer.send('show-tab-context-menu', { tabId: null, lang });
         return;
       }
 
@@ -4347,7 +5811,8 @@ class TabManager {
         canGoForward: false,
         editFlags: {},
         isBrowserUI: true,
-        newsManualRefresh: false
+        newsManualRefresh: false,
+        lang: window.getLanguage ? window.getLanguage() : (window.settingsManager?.currentSettings?.language || 'en')
       };
 
       try {
@@ -4399,9 +5864,9 @@ class TabManager {
           if (!tab.blockedDomains) tab.blockedDomains = [];
           if (data.domains) {
             data.domains.forEach(d => {
-               if (!tab.blockedDomains.some(b => b.domain === d) && tab.blockedDomains.length < 50) {
-                  tab.blockedDomains.push({ domain: d, timestamp: Date.now() });
-               }
+              if (!tab.blockedDomains.some(b => b.domain === d) && tab.blockedDomains.length < 50) {
+                tab.blockedDomains.push({ domain: d, timestamp: Date.now() });
+              }
             });
           }
           if (this.activeTabId === tab.id && window.siteIdentityManager) {
@@ -4565,7 +6030,9 @@ class TabManager {
 
     window.toastManager.show("✨ Analyzing...", "Auditing linguistic indicators...", 1000);
     setTimeout(() => {
-      let summary = score >= 1 ? `Found ${found.length} linguistic markers.` : `No synthetic patterns found.`;
+      let summary = score >= 1 
+        ? (window.t ? window.t("Found {count} linguistic markers.", { count: found.length }) : `Found ${found.length} linguistic markers.`)
+        : (window.t ? window.t("No synthetic patterns found.") : "No synthetic patterns found.");
       window.toastManager.show(titleMsg, summary, 12000);
 
       const toastAction = document.getElementById('leef-toast-action');
@@ -4575,7 +6042,7 @@ class TabManager {
       if (toastAction && primaryBtn && score >= 1) {
         toastAction.style.display = 'flex';
         primaryBtn.style.display = 'block';
-        primaryBtn.textContent = 'View Diagnostic Report';
+        primaryBtn.textContent = window.t ? window.t('View Diagnostic Report') : 'View Diagnostic Report';
         primaryBtn.onclick = () => {
           window.labsManager.showAuditWindow(confidence, found, icon);
         };
@@ -4599,8 +6066,9 @@ class ToastManager {
     }
   }
 
-  show(title, msg, durationMs = 8000) {
+  show(title, msg, durationMs = 8000, action = null) {
     if (!this.el) return;
+    this.activeTitle = title;
 
     // Translate title
     const translatedTitle = window.t ? window.t(title) : title;
@@ -4661,6 +6129,11 @@ class ToastManager {
             regex: /Error: (.*)/,
             key: "Error: {error}",
             replace: (match, p1) => window.t("Error: {error}").replace("{error}", p1)
+          },
+          {
+            regex: /Tuned feed for: (.*)/,
+            key: "Tuned feed for: {topics}",
+            replace: (match, p1) => window.t("Tuned feed for: {topics}").replace("{topics}", p1)
           }
         ];
 
@@ -4675,19 +6148,57 @@ class ToastManager {
     }
 
     this.el.querySelector('.leef-toast-title').textContent = translatedTitle;
-    this.el.querySelector('.leef-toast-msg').textContent = translatedMsg;
+    const msgEl = this.el.querySelector('.leef-toast-msg');
+    if (msgEl) {
+      if (translatedMsg && translatedMsg.includes('<') && translatedMsg.includes('>')) {
+        msgEl.innerHTML = translatedMsg;
+      } else {
+        msgEl.textContent = translatedMsg;
+      }
+    }
 
-    // Reset action div visibility so buttons don't leak between toasts
+    // Handle optional interactive action buttons
     const actionDiv = document.getElementById('leef-toast-action');
-    if (actionDiv) actionDiv.style.display = 'none';
+    const primaryBtn = document.getElementById('btn-toast-primary');
+    const secondaryBtn = document.getElementById('btn-toast-secondary');
+
+    if (action && actionDiv && primaryBtn) {
+      actionDiv.style.display = 'flex';
+      primaryBtn.style.display = 'block';
+      primaryBtn.textContent = window.t ? window.t(action.primaryText || 'Action') : (action.primaryText || 'Action');
+      primaryBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.hide();
+        if (action.onPrimary) action.onPrimary();
+      };
+
+      if (secondaryBtn) {
+        if (action.secondaryText !== null) {
+          secondaryBtn.style.display = 'block';
+          secondaryBtn.textContent = window.t ? window.t(action.secondaryText || 'Dismiss') : (action.secondaryText || 'Dismiss');
+          secondaryBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.hide();
+            if (action.onSecondary) action.onSecondary();
+          };
+        } else {
+          secondaryBtn.style.display = 'none';
+        }
+      }
+    } else if (actionDiv) {
+      actionDiv.style.display = 'none';
+    }
 
     this.el.classList.add('visible');
     clearTimeout(this.hideTimer);
-    this.hideTimer = setTimeout(() => this.hide(), durationMs);
+    if (durationMs > 0) {
+      this.hideTimer = setTimeout(() => this.hide(), durationMs);
+    }
   }
 
   hide() {
     if (!this.el) return;
+    this.activeTitle = null;
     this.el.classList.remove('visible');
   }
 
@@ -4718,7 +6229,8 @@ class DownloadManager {
         const placeholder = document.createElement('div');
         placeholder.className = 'downloads-empty-placeholder';
         placeholder.style.cssText = 'padding: 24px; text-align: center; color: var(--text-dark); opacity: 0.6; font-size: 0.85rem; font-style: italic;';
-        placeholder.textContent = 'No downloads yet';
+        placeholder.textContent = window.t ? window.t('No downloads yet') : 'No downloads yet';
+        placeholder.setAttribute('data-i18n', 'No downloads yet');
         this.list.appendChild(placeholder);
       }
     } else {
@@ -4744,6 +6256,8 @@ class DownloadManager {
           if (q) DropdownUtils.hide(q);
           const s = document.getElementById('site-identity-dropdown');
           if (s) DropdownUtils.hide(s);
+          const p = document.getElementById('plugins-dropdown');
+          if (p) DropdownUtils.hide(p);
         }
       });
     }
@@ -5045,6 +6559,8 @@ class QuickSettingsManager {
           if (d) DropdownUtils.hide(d);
           const s = document.getElementById('site-identity-dropdown');
           if (s) DropdownUtils.hide(s);
+          const p = document.getElementById('plugins-dropdown');
+          if (p) DropdownUtils.hide(p);
         }
       });
     }
@@ -5149,12 +6665,11 @@ class QuickSettingsManager {
     if (this.btnBug) {
       this.btnBug.addEventListener('click', () => {
         DropdownUtils.hide(this.dropdown);
-        const confirmed = window.confirm(
-          "Generating a bug report will save a diagnostics file to your PC.\n\n" +
+        const confirmMsg = "Generating a bug report will save a diagnostics file to your PC.\n\n" +
           "This file contains system specs and configurations to help with bug reports. " +
           "It will NEVER leave your PC unless you manually choose to share it.\n\n" +
-          "Do you want to proceed and generate the Bug Report log?"
-        );
+          "Do you want to proceed and generate the Bug Report log?";
+        const confirmed = window.confirm(window.t ? window.t(confirmMsg) : confirmMsg);
         if (confirmed) {
           const payload = {
             settings: JSON.parse(localStorage.getItem('leef_settings') || '{}'),
@@ -5267,6 +6782,19 @@ class SiteIdentityManager {
     }
   }
 
+  parseCaveats(raw) {
+    if (Array.isArray(raw)) {
+      return raw.map(c => parseInt(c) || 0).filter(c => c > 0).slice(0, 3);
+    }
+    if (typeof raw === 'number') {
+      return raw > 0 ? [raw] : [];
+    }
+    if (typeof raw === 'string') {
+      return raw.split(';').map(c => parseInt(c.trim()) || 0).filter(c => c > 0).slice(0, 3);
+    }
+    return [];
+  }
+
   loadGPCManualCache() {
     try {
       const cached = localStorage.getItem('leef_gpc_manual_approved');
@@ -5276,12 +6804,24 @@ class SiteIdentityManager {
           return parsed.map(d => {
             if (typeof d === 'string') {
               const parts = d.split(',');
-              return { rule: parts[0].trim().toLowerCase(), reason: parseInt(parts[1]) || 0, caveat: parseInt(parts[2]) || 0 };
+              const caveatStr = parts.slice(2).join(';');
+              return {
+                rule: parts[0].trim().toLowerCase(),
+                reason: parseInt(parts[1]) || 0,
+                caveat: parseInt(parts[2]) || 0,
+                caveats: this.parseCaveats(caveatStr || parts[2])
+              };
             }
             if (typeof d === 'object' && d !== null && d.rule) {
-              return { rule: String(d.rule).trim().toLowerCase(), reason: parseInt(d.reason) || 0, caveat: parseInt(d.caveat) || 0 };
+              const caveats = this.parseCaveats(d.caveats || d.caveat);
+              return {
+                rule: String(d.rule).trim().toLowerCase(),
+                reason: parseInt(d.reason) || 0,
+                caveat: caveats[0] || parseInt(d.caveat) || 0,
+                caveats
+              };
             }
-            return { rule: String(d).trim().toLowerCase(), reason: 0, caveat: 0 };
+            return { rule: String(d).trim().toLowerCase(), reason: 0, caveat: 0, caveats: [] };
           });
         }
       }
@@ -5311,9 +6851,24 @@ class SiteIdentityManager {
         }
         if (Array.isArray(list)) {
           this.gpcManualApproved = list.map(d => {
+            if (typeof d === 'object' && d !== null && d.rule) {
+              const caveats = this.parseCaveats(d.caveats || d.caveat);
+              return {
+                rule: String(d.rule).trim().toLowerCase(),
+                reason: parseInt(d.reason) || 0,
+                caveat: caveats[0] || parseInt(d.caveat) || 0,
+                caveats
+              };
+            }
             const str = String(d).trim().toLowerCase();
             const parts = str.split(',');
-            return { rule: parts[0].trim(), reason: parseInt(parts[1]) || 0, caveat: parseInt(parts[2]) || 0 };
+            const caveats = parts.slice(2).map(p => parseInt(p.trim()) || 0).filter(c => c > 0).slice(0, 3);
+            return {
+              rule: parts[0].trim(),
+              reason: parseInt(parts[1]) || 0,
+              caveat: caveats[0] || 0,
+              caveats
+            };
           });
           localStorage.setItem('leef_gpc_manual_approved', JSON.stringify(this.gpcManualApproved));
           console.log('SiteIdentityManager: GPC manually approved list successfully synced from remote Gist.');
@@ -5335,17 +6890,19 @@ class SiteIdentityManager {
           const mainView = document.getElementById('si-main-view');
           const trackerView = document.getElementById('si-tracker-view');
           if (mainView && trackerView) {
-             mainView.style.display = 'block';
-             trackerView.style.display = 'none';
+            mainView.style.display = 'block';
+            trackerView.style.display = 'none';
           }
           DropdownUtils.show(this.dropdown, 'block');
           // Close others
           const d1 = document.getElementById('bookmarks-dropdown');
           const d2 = document.getElementById('downloads-dropdown');
           const d3 = document.getElementById('quick-settings-dropdown');
+          const d4 = document.getElementById('plugins-dropdown');
           if (d1) DropdownUtils.hide(d1);
           if (d2) DropdownUtils.hide(d2);
           if (d3) DropdownUtils.hide(d3);
+          if (d4) DropdownUtils.hide(d4);
 
           this.updateUI();
         }
@@ -5387,9 +6944,9 @@ class SiteIdentityManager {
           trackerView.style.display = 'block';
           this.populateTrackerList();
           if (this.dropdown) {
-             this.dropdown.style.display = 'none';
-             void this.dropdown.offsetHeight;
-             this.dropdown.style.display = 'block';
+            this.dropdown.style.display = 'none';
+            void this.dropdown.offsetHeight;
+            this.dropdown.style.display = 'block';
           }
         }
       });
@@ -5402,9 +6959,9 @@ class SiteIdentityManager {
           trackerView.style.display = 'none';
           mainView.style.display = 'block';
           if (this.dropdown) {
-             this.dropdown.style.display = 'none';
-             void this.dropdown.offsetHeight;
-             this.dropdown.style.display = 'block';
+            this.dropdown.style.display = 'none';
+            void this.dropdown.offsetHeight;
+            this.dropdown.style.display = 'block';
           }
         }
       });
@@ -5502,29 +7059,29 @@ class SiteIdentityManager {
     const emptyEl = document.getElementById('si-tracker-empty');
     if (!listEl || !emptyEl) return;
     listEl.innerHTML = '';
-    
+
     const tab = window.tabManager?.getActiveTab();
     if (!tab || !tab.blockedDomains || tab.blockedDomains.length === 0) {
       listEl.style.display = 'none';
       emptyEl.style.display = 'block';
       return;
     }
-    
+
     listEl.style.display = 'block';
     emptyEl.style.display = 'none';
-    
+
     const now = Date.now();
     const twelveHours = 12 * 60 * 60 * 1000;
-    
+
     // Filter and sort domains
     const activeDomains = tab.blockedDomains.filter(d => (now - d.timestamp) < twelveHours);
-    
+
     if (activeDomains.length === 0) {
       listEl.style.display = 'none';
       emptyEl.style.display = 'block';
       return;
     }
-    
+
     activeDomains.forEach(d => {
       const li = document.createElement('li');
       li.className = 'si-tracker-item';
@@ -5615,7 +7172,7 @@ class SiteIdentityManager {
 
     const gpcEnabled = window.settingsManager?.currentSettings?.gpc !== false;
     if (!gpcEnabled || !tab || tab.isInternal) {
-      el.textContent = 'Disabled';
+      el.textContent = window.t ? window.t('Disabled') : 'Disabled';
       el.className = 'gpc-badge gpc-disabled';
       if (timer) timer.textContent = '';
       if (row) row.style.opacity = '0.5';
@@ -5631,14 +7188,17 @@ class SiteIdentityManager {
     // 0. Check for GPC Manually Approved/Verified Whitelist (v0.6.3)
     let manualReason = 0;
     let manualCaveat = 0;
+    let manualCaveats = [];
     const isManuallyApproved = (this.gpcManualApproved || []).some(entry => {
       let rule = '';
       let reason = 0;
       let caveat = 0;
+      let caveats = [];
       if (typeof entry === 'object' && entry !== null) {
         rule = entry.rule;
         reason = entry.reason;
         caveat = entry.caveat;
+        caveats = entry.caveats || (caveat > 0 ? [caveat] : []);
       } else {
         rule = String(entry);
       }
@@ -5655,17 +7215,19 @@ class SiteIdentityManager {
       if (matches) {
         manualReason = reason;
         manualCaveat = caveat;
+        manualCaveats = caveats;
       }
       return matches;
     });
 
     if (isManuallyApproved) {
-      el.textContent = 'Manually Verified';
+      el.textContent = window.t ? window.t('Manually Verified') : 'Manually Verified';
       el.className = 'gpc-badge gpc-verified';
       if (timer) timer.textContent = '(Approved)';
       tab.gpcManuallyVerified = true;
       tab.gpcManualReason = manualReason;
       tab.gpcManualCaveat = manualCaveat;
+      tab.gpcManualCaveats = manualCaveats;
       tab.gpcVerified = true;
       if (this.gpcBadgeDot) {
         this.gpcBadgeDot.className = 'gpc-badge-dot manual show';
@@ -5685,7 +7247,7 @@ class SiteIdentityManager {
       return domain === rule || domain.endsWith('.' + rule);
     });
     if (isNonCompliant) {
-      el.textContent = 'No GPC support';
+      el.textContent = window.t ? window.t('No GPC support') : 'No GPC support';
       el.className = 'gpc-badge gpc-unsupported';
       if (timer) timer.textContent = '(Known)';
       tab.gpcVerified = false;
@@ -5699,7 +7261,7 @@ class SiteIdentityManager {
             <line x1="12" y1="8" x2="12" y2="12"></line>
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
-          <span>No GPC Support</span>
+          <span>${window.t ? window.t('No GPC Support') : 'No GPC Support'}</span>
         `;
         if (!tab.gpcAlertCollapsed) {
           this.gpcAlertEl.classList.remove('collapsed');
@@ -5723,7 +7285,7 @@ class SiteIdentityManager {
     // Already settled this navigation — update DOM unconditionally
     if (tab.gpcVerified !== undefined) {
       if (tab.gpcVerified) {
-        el.textContent = 'Verified ✓';
+        el.textContent = window.t ? window.t('Verified ✓') : 'Verified ✓';
         el.className = 'gpc-badge gpc-verified';
         if (timer) {
           const diff = tab.gpcVerifiedTime
@@ -5742,7 +7304,7 @@ class SiteIdentityManager {
         if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
         return;
       } else {
-        el.textContent = 'Unverified';
+        el.textContent = window.t ? window.t('Unverified') : 'Unverified';
         el.className = 'gpc-badge gpc-unverified';
         if (timer) timer.textContent = '(no response)';
         if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
@@ -5751,7 +7313,7 @@ class SiteIdentityManager {
     }
 
     // Show pending state while we look it up
-    el.textContent = 'Sent';
+    el.textContent = window.t ? window.t('Sent') : 'Sent';
     el.className = 'gpc-badge gpc-sent';
     if (timer) timer.textContent = '(checking...)';
     if (this.gpcAlertEl) this.gpcAlertEl.style.display = 'none';
@@ -5821,7 +7383,7 @@ class SiteIdentityManager {
     if (!gpcEnabled) {
       iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#999999" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>`;
       iconEl.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
-      subtitleEl.textContent = 'GPC Signal Disabled';
+      subtitleEl.textContent = window.t ? window.t('GPC Signal Disabled') : 'GPC Signal Disabled';
       subtitleEl.style.background = 'rgba(0, 0, 0, 0.05)';
       subtitleEl.style.color = '#999';
 
@@ -5842,7 +7404,7 @@ class SiteIdentityManager {
     if (!tab || tab.isInternal) {
       iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#666666" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
       iconEl.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
-      subtitleEl.textContent = 'Local Application Page';
+      subtitleEl.textContent = window.t ? window.t('Local Application Page') : 'Local Application Page';
       subtitleEl.style.background = 'rgba(0, 0, 0, 0.05)';
       subtitleEl.style.color = '#666';
 
@@ -5860,15 +7422,15 @@ class SiteIdentityManager {
 
     // Check if manually approved/verified (Gist-backed) (v0.6.3)
     let manualReason = tab.gpcManualReason || 0;
-    let manualCaveat = tab.gpcManualCaveat || 0;
+    let manualCaveats = tab.gpcManualCaveats || (tab.gpcManualCaveat ? [tab.gpcManualCaveat] : []);
     const isManuallyApproved = (this.gpcManualApproved || []).some(entry => {
       let rule = '';
       let reason = 0;
-      let caveat = 0;
+      let caveats = [];
       if (typeof entry === 'object' && entry !== null) {
         rule = entry.rule;
         reason = entry.reason;
-        caveat = entry.caveat;
+        caveats = entry.caveats || (entry.caveat > 0 ? [entry.caveat] : []);
       } else {
         rule = String(entry);
       }
@@ -5883,7 +7445,7 @@ class SiteIdentityManager {
       }
       if (matches && manualReason === 0) {
         manualReason = reason;
-        manualCaveat = caveat;
+        manualCaveats = caveats;
       }
       return matches;
     });
@@ -5891,7 +7453,7 @@ class SiteIdentityManager {
     if (isManuallyApproved || tab.gpcManuallyVerified) {
       iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#2196f3" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 11 2 2 4-4"></path></svg>`;
       iconEl.style.backgroundColor = 'rgba(33, 150, 243, 0.1)';
-      subtitleEl.textContent = 'Manually Verified';
+      subtitleEl.textContent = window.t ? window.t('Manually Verified') : 'Manually Verified';
       subtitleEl.style.background = 'rgba(33, 150, 243, 0.1)';
       subtitleEl.style.color = '#2196f3';
 
@@ -5916,37 +7478,46 @@ class SiteIdentityManager {
         reasonHtml = `<strong>Reason for Verification:</strong><br>This website is part of a verified network of privacy-first domains.`;
       }
 
-      let caveatHtml = '';
-      if (manualCaveat === 1) {
-        caveatHtml = `<div style="margin-top: 12px; padding: 10px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; color: #e65100; font-size: 0.9em; border-radius: 0 4px 4px 0;">
-            <strong>Heads Up:</strong> Even though they have stated that they respect GPC signals, this website may still use your data internally for analytics, data retention, internal research, and more. Read the privacy policy of this site for more info.
-          </div>`;
-      } else if (manualCaveat === 2) {
-        let reasonSummary = "of their privacy policy";
-        if (manualReason === 2) reasonSummary = "of statements made to journalists or the Leef team";
-        if (manualReason === 3) reasonSummary = "it passed a technical audit";
-        if (manualReason === 4) reasonSummary = "of its privacy-respecting framework";
-        if (manualReason === 5) reasonSummary = "it is in a verified network";
+      const getCaveatMessage = (caveatNum) => {
+        if (caveatNum === 1) return `Even though they have stated that they respect GPC signals, this website may still use your data internally for analytics, data retention, internal research, and more. Read the privacy policy of this site for more info.`;
+        if (caveatNum === 2) {
+          let reasonSummary = "of their privacy policy";
+          if (manualReason === 2) reasonSummary = "of statements made to journalists or the Leef team";
+          if (manualReason === 3) reasonSummary = "it passed a technical audit";
+          if (manualReason === 4) reasonSummary = "of its privacy-respecting framework";
+          if (manualReason === 5) reasonSummary = "it is in a verified network";
+          return `This website technically has GPC compliance because ${reasonSummary}. However, there is no hard evidence that they strictly comply, or they may not legally have to comply depending on where the company is based.`;
+        }
+        if (caveatNum === 3) return `This site says they support GPC, but some elements or sub-services on the site may not support it.`;
+        if (caveatNum === 4) return `This site states they support GPC, but some parts of this company require you to download something to your computer (e.g., software, launchers) which are not audited by Leef.`;
+        if (caveatNum === 5) return `This site is owned by an outside investor (e.g., Tencent, Blackrock, Amazon, Google, Microsoft) which may not follow the same privacy rules as this company. Read the site privacy policy for more info.`;
+        if (caveatNum === 6) return `This site is able to use your data even when you have the GPC header using a legal gray area. For example, AI chatbots can still see and use your chat info even when you have the GPC header. Read the site privacy policy for more info.`;
+        if (caveatNum === 7) return `While this website states they support GPC, their compliance is geographically limited to certain regions or states and may not be honored globally. Please review their privacy policy for details.`;
+        if (caveatNum === 8) return `This website is owned by an organization with a history of meeting only the bare minimum regulatory requirements for user privacy. We recommend exercising caution when sharing sensitive data.`;
+        if (caveatNum === 9) return `This site is operated by a parent company that restricts GPC compliance to specific regions or states. Your privacy signal may not be respected depending on your location.`;
+        if (caveatNum === 10) return `This website requires identity verification through a third-party vendor. This vendor may operate under different privacy standards and could potentially sell your information to outside entities.`;
+        if (caveatNum === 11) return `This organization publicly supports the DNT (Do Not Track) header but has not made explicit statements regarding their support for the Global Privacy Control (GPC) signal.`;
+        if (caveatNum === 12) return `If you explicitly opt-in to data sharing or selling on this website, those settings will override your browser's GPC preferences, and your signal will not be respected.`;
+        return '';
+      };
 
-        caveatHtml = `<div style="margin-top: 12px; padding: 10px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; color: #e65100; font-size: 0.9em; border-radius: 0 4px 4px 0;">
-            <strong>Heads Up:</strong> This website technically has GPC compliance because ${reasonSummary}. However, there is no hard evidence that they strictly comply, or they may not legally have to comply depending on where the company is based.
+      const activeCaveats = manualCaveats.slice(0, 3).filter(c => c > 0);
+      let caveatItems = activeCaveats.map(cNum => {
+        const msg = getCaveatMessage(cNum);
+        if (!msg) return '';
+        const translatedMsg = window.t ? window.t(msg) : msg;
+        return `<div style="padding: 10px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; color: #e65100; font-size: 0.88rem; line-height: 1.45; border-radius: 0 6px 6px 0;">
+            <strong>Heads Up:</strong> ${translatedMsg}
           </div>`;
-      } else if (manualCaveat === 3) {
-        caveatHtml = `<div style="margin-top: 12px; padding: 10px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; color: #e65100; font-size: 0.9em; border-radius: 0 4px 4px 0;">
-            <strong>Heads Up:</strong> This site says they support GPC, but some elements or sub-services on the site may not support it.
-          </div>`;
-      } else if (manualCaveat === 4) {
-        caveatHtml = `<div style="margin-top: 12px; padding: 10px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; color: #e65100; font-size: 0.9em; border-radius: 0 4px 4px 0;">
-            <strong>Heads Up:</strong> This site states they support GPC, but some parts of this company require you to download something to your computer (e.g., software, launchers) which are not audited by Leef.
-          </div>`;
-      } else if (manualCaveat === 5) {
-        caveatHtml = `<div style="margin-top: 12px; padding: 10px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; color: #e65100; font-size: 0.9em; border-radius: 0 4px 4px 0;">
-            <strong>Heads Up:</strong> This site is owned by an outside investor (e.g., Tencent, Blackrock, Amazon, Google, Microsoft) which may not follow the same privacy rules as this company. Read the site privacy policy for more info.
-          </div>`;
-      } else if (manualCaveat === 6) {
-        caveatHtml = `<div style="margin-top: 12px; padding: 10px; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; color: #e65100; font-size: 0.9em; border-radius: 0 4px 4px 0;">
-            <strong>Heads Up:</strong> This site is able to use your data even when you have the GPC header using a legal gray area. For example, AI chatbots can still see and use your chat info even when you have the GPC header. Read the site privacy policy for more info.
-          </div>`;
+      }).filter(Boolean);
+
+      let caveatHtml = '';
+      if (caveatItems.length > 0) {
+        caveatHtml = `
+          <div style="margin-top: 14px; max-height: 135px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;" class="custom-scroll">
+            ${caveatItems.join('')}
+          </div>
+        `;
       }
 
       detailEl.innerHTML = `
@@ -5976,7 +7547,7 @@ class SiteIdentityManager {
     if (isNonCompliant) {
       iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#f44336" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
       iconEl.style.backgroundColor = 'rgba(244, 67, 54, 0.1)';
-      subtitleEl.textContent = 'No GPC Support';
+      subtitleEl.textContent = window.t ? window.t('No GPC Support') : 'No GPC Support';
       subtitleEl.style.background = 'rgba(244, 67, 54, 0.1)';
       subtitleEl.style.color = '#f44336';
 
@@ -6004,7 +7575,7 @@ class SiteIdentityManager {
       if (tab.gpcVerified) {
         iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#17b340" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 11 11 13 15 9"></polyline></svg>`;
         iconEl.style.backgroundColor = 'rgba(23, 179, 64, 0.1)';
-        subtitleEl.textContent = 'Verified Compliant ✓';
+        subtitleEl.textContent = window.t ? window.t('Verified Compliant ✓') : 'Verified Compliant ✓';
         subtitleEl.style.background = 'rgba(23, 179, 64, 0.1)';
         subtitleEl.style.color = '#17b340';
 
@@ -6026,7 +7597,7 @@ class SiteIdentityManager {
       } else {
         iconEl.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#ff9800" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
         iconEl.style.backgroundColor = 'rgba(255, 152, 0, 0.1)';
-        subtitleEl.textContent = 'Unverified Response';
+        subtitleEl.textContent = window.t ? window.t('Unverified Response') : 'Unverified Response';
         subtitleEl.style.background = 'rgba(255, 152, 0, 0.1)';
         subtitleEl.style.color = '#ff9800';
 
@@ -6047,7 +7618,7 @@ class SiteIdentityManager {
 
     // Checking / Sent state
     iconEl.textContent = '⏳';
-    subtitleEl.textContent = 'Signal Sent (Verifying)';
+    subtitleEl.textContent = window.t ? window.t('Signal Sent (Verifying)') : 'Signal Sent (Verifying)';
     subtitleEl.style.background = 'rgba(0, 0, 0, 0.05)';
     subtitleEl.style.color = '#888';
 
@@ -6106,8 +7677,35 @@ class LabsManager {
       const el = document.getElementById(id);
       if (el) {
         el.checked = !!this.flags[key];
+        
+        if (key === 'opendyslexic') {
+          document.body.classList.toggle('opendyslexic-mode', !!this.flags[key]);
+        }
+        
         el.addEventListener('change', (e) => {
           this.flags[key] = e.target.checked;
+          
+          if (key === 'opendyslexic') {
+            document.body.classList.toggle('opendyslexic-mode', e.target.checked);
+            // Re-inject CSS dynamically without reloading webview
+            if (window.tabManager && window.tabManager.tabs) {
+              window.tabManager.tabs.forEach(tab => {
+                if (tab.webviewEl) {
+                  if (e.target.checked) {
+                    const dysCSS = `
+                      @import url('https://cdn.jsdelivr.net/npm/@fontsource/opendyslexic/index.css');
+                      * { font-family: 'OpenDyslexic', sans-serif !important; }
+                    `;
+                    tab.webviewEl.insertCSS(dysCSS).catch(() => {});
+                  } else {
+                    // Quick reload to remove the injected CSS since there's no removeCSS in webview API easily accessible here
+                    tab.webviewEl.reload();
+                  }
+                }
+              });
+            }
+          }
+          
           this.saveFlags();
           // Force apply settings so main process sees the change (e.g. for Stealth UA)
           if (window.settingsManager) window.settingsManager.saveSettings();
@@ -6144,6 +7742,18 @@ class LabsManager {
     bindFlag('flag-css-exorcist', 'css_exorcist');
 
     bindFlag('flag-slop-scanner', 'slop_scanner');
+
+    bindFlag('flag-block-drm', 'block_drm');
+
+    bindFlag('flag-opendyslexic', 'opendyslexic');
+
+    bindFlag('flag-classic-news-dismiss', 'classic_news_dismiss');
+    const chkClassicDismiss = document.getElementById('flag-classic-news-dismiss');
+    if (chkClassicDismiss) {
+      chkClassicDismiss.addEventListener('change', () => {
+        if (window.newsSvc) window.newsSvc.renderCards();
+      });
+    }
   }
 
   syncUI() {
@@ -6166,7 +7776,8 @@ class LabsManager {
     const dotEl = document.getElementById('audit-indicator-dot');
 
     if (modal && summaryEl && tableBody && iconEl) {
-      summaryEl.innerHTML = `<div id="audit-indicator-dot" style="width: 12px; height: 12px; border-radius: 50%; background: ${icon === '🚨' ? '#d32f2f' : (icon === '⚠️' ? '#ff9800' : '#17b340')};"></div> Confidence: ${confidence}`;
+      const confText = window.t ? window.t('Confidence: {level}', { level: confidence }) : `Confidence: ${confidence}`;
+      summaryEl.innerHTML = `<div id="audit-indicator-dot" style="width: 12px; height: 12px; border-radius: 50%; background: ${icon === '🚨' ? '#d32f2f' : (icon === '⚠️' ? '#ff9800' : '#17b340')};"></div> ${confText}`;
       iconEl.textContent = icon;
 
       tableBody.innerHTML = '';
@@ -6177,10 +7788,11 @@ class LabsManager {
         let category = "Linguistic Marker";
         if (m.includes('Structural')) category = "Structural Pattern";
         if (m.includes('Formatting')) category = "Formatting Signature";
+        const catTranslated = window.t ? window.t(category) : category;
 
         row.innerHTML = `
           <td style="padding: 12px; font-family: monospace; font-size: 0.85rem; color: #111;">"${m}"</td>
-          <td style="padding: 12px; font-size: 0.85rem; color: #666;">${category}</td>
+          <td style="padding: 12px; font-size: 0.85rem; color: #666;">${catTranslated}</td>
         `;
         tableBody.appendChild(row);
       });
@@ -6476,7 +8088,7 @@ class AddressBarManager {
       if (this._suggestTimer) clearTimeout(this._suggestTimer);
       this._suggestTimer = setTimeout(() => this.showSuggestions(), 100);
     });
-    this.input.addEventListener('keydown', (e) => this.handleKeydown(e));
+    this.input.addEventListener('keydown', (e) => this.handleKeydown(e), true);
     this.input.addEventListener('blur', () => {
       // Delay hide to allow click on a suggestion
       setTimeout(() => { this._hideSuggestions(true); }, 100);
@@ -6550,8 +8162,117 @@ class AddressBarManager {
 
     const searchForText = window.t ? window.t('Search for "{query}"').replace('{query}', val) : 'Search for "' + val + '"';
     const searchIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:10px;opacity:0.6;flex-shrink:0"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>';
+    const calcIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:10px;opacity:0.6;flex-shrink:0"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="8" y1="6" x2="16" y2="6"></line><line x1="16" y1="14" x2="16" y2="14.01"></line><line x1="12" y1="14" x2="12" y2="14.01"></line><line x1="8" y1="14" x2="8" y2="14.01"></line><line x1="16" y1="18" x2="16" y2="18.01"></line><line x1="12" y1="18" x2="12" y2="18.01"></line><line x1="8" y1="18" x2="8" y2="18.01"></line><line x1="16" y1="10" x2="16" y2="10.01"></line><line x1="12" y1="10" x2="12" y2="10.01"></line><line x1="8" y1="10" x2="8" y2="10.01"></line></svg>';
+    const linkIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:10px;opacity:0.6;flex-shrink:0"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>';
 
     const itemData = [];
+
+    // Safe Math Evaluator
+    const evalMath = (str) => {
+      let pos = -1, ch;
+      const nextChar = () => { ch = (++pos < str.length) ? str.charAt(pos) : -1; };
+      const eat = (c) => {
+        while (ch === ' ') nextChar();
+        if (ch === c) { nextChar(); return true; }
+        return false;
+      };
+      const parse = () => { nextChar(); const x = parseExpression(); if (pos < str.length) throw new Error(); return x; };
+      const parseExpression = () => {
+        let x = parseTerm();
+        for (; ;) { if (eat('+')) x += parseTerm(); else if (eat('-')) x -= parseTerm(); else return x; }
+      };
+      const parseTerm = () => {
+        let x = parseFactor();
+        for (; ;) { if (eat('*')) x *= parseTerm(); /* wait, should be parseFactor for left-assoc, but it's fine for simple math */ else if (eat('/')) x /= parseFactor(); else return x; }
+      };
+      // Fix associativity in parseTerm
+      const parseTermCorrected = () => {
+        let x = parseFactor();
+        for (; ;) { if (eat('*')) x *= parseFactor(); else if (eat('/')) x /= parseFactor(); else return x; }
+      };
+      const parseFactor = () => {
+        if (eat('+')) return parseFactor();
+        if (eat('-')) return -parseFactor();
+        let x, startPos = pos;
+        if (eat('(')) { x = parseExpression(); eat(')'); }
+        else if ((ch >= '0' && ch <= '9') || ch === '.') {
+          while ((ch >= '0' && ch <= '9') || ch === '.') nextChar();
+          x = parseFloat(str.substring(startPos, pos));
+        } else { throw new Error(); }
+        return x;
+      };
+      // Overwrite parseTerm to use the corrected one
+      const parseTermActual = () => {
+        let x = parseFactor();
+        for (; ;) { if (eat('*')) x *= parseFactor(); else if (eat('/')) x /= parseFactor(); else return x; }
+      };
+      // Let's just cleanly define it
+      return (function () {
+        let pos = -1, ch;
+        function nextChar() { ch = (++pos < str.length) ? str.charAt(pos) : -1; }
+        function eat(c) { while (ch === ' ') nextChar(); if (ch === c) { nextChar(); return true; } return false; }
+        function parseExpr() {
+          let x = parseTerm();
+          for (; ;) { if (eat('+')) x += parseTerm(); else if (eat('-')) x -= parseTerm(); else return x; }
+        }
+        function parseTerm() {
+          let x = parseFactor();
+          for (; ;) { if (eat('*')) x *= parseFactor(); else if (eat('/')) x /= parseFactor(); else return x; }
+        }
+        function parseFactor() {
+          if (eat('+')) return parseFactor();
+          if (eat('-')) return -parseFactor();
+          let x, startPos = pos;
+          if (eat('(')) { x = parseExpr(); eat(')'); }
+          else if ((ch >= '0' && ch <= '9') || ch === '.') {
+            while ((ch >= '0' && ch <= '9') || ch === '.') nextChar();
+            x = parseFloat(str.substring(startPos, pos));
+          } else { throw new Error(); }
+          return x;
+        }
+        nextChar();
+        let result = parseExpr();
+        while (ch === ' ') nextChar();
+        if (pos < str.length) throw new Error();
+        return result;
+      })();
+    };
+
+    let mathResult = null;
+    if (/^[\d\+\-\*\/\(\)\.\s]+$/.test(val) && /[+\-*/]/.test(val)) {
+      try {
+        const res = evalMath(val);
+        if (Number.isFinite(res) && res.toString() !== val.trim()) {
+          mathResult = res.toString();
+        }
+      } catch (e) { }
+    }
+
+    // Quick Links
+    const settingsObj = window.tabManager ? window.tabManager.settings : null;
+    const qlStr = settingsObj ? (settingsObj.currentSettings.quickLinksStr || "") : "youtube.com\ngoogle.com\nwikipedia.org\ntwitter.com\nreddit.com\namazon.com\nnetflix.com\ndiscord.com\nfacebook.com\ntwitch.tv\ngithub.com";
+    const quickLinks = qlStr.split('\n').map(l => l.trim().toLowerCase()).filter(l => l.length > 0);
+
+    let quickLinkMatch = null;
+    const lowerVal = val.trim().toLowerCase();
+
+    // Find the first domain that starts with what the user typed
+    for (const domain of quickLinks) {
+      if (domain.startsWith(lowerVal)) {
+        quickLinkMatch = domain;
+        break;
+      }
+    }
+
+    // PUSH IN CORRECT ORDER:
+    if (mathResult !== null) {
+      itemData.push({ title: '= ' + mathResult, url: mathResult, iconHtml: calcIcon, isWeb: true, queryVal: null });
+    }
+
+    if (quickLinkMatch) {
+      itemData.push({ title: quickLinkMatch, url: 'https://' + quickLinkMatch, iconHtml: linkIcon, isWeb: false, queryVal: null });
+    }
+
     itemData.push({ title: searchForText, url: val, iconHtml: searchIcon, isWeb: true, queryVal: val });
 
     bookmarkMatches.forEach(match => {
@@ -6563,6 +8284,9 @@ class AddressBarManager {
 
     webSuggestions.forEach(suggestion => {
       if (suggestion.toLowerCase() === val.toLowerCase()) return;
+      // Filter out if it exactly matches the math result so we don't show duplicates
+      if (mathResult !== null && suggestion === ('= ' + mathResult)) return;
+
       itemData.push({ title: suggestion, url: suggestion, iconHtml: searchIcon, isWeb: true, queryVal: null });
     });
 
@@ -6589,6 +8313,7 @@ class AddressBarManager {
         item.appendChild(info);
         item.onclick = () => {
           if (window.tabManager) window.tabManager.navigateToUrl(item._navUrl);
+          if (this.input.id === 'home-search') this.input.value = '';
           this._hideSuggestions();
         };
         this.suggestionsEl.appendChild(item);
@@ -6622,6 +8347,10 @@ class AddressBarManager {
     for (let i = itemData.length; i < existing.length; i++) {
       existing[i].remove();
     }
+
+    // Automatically select the first item so pressing Enter executes it
+    this.selectedIndex = itemData.length > 0 ? 0 : -1;
+    this.updateSelection(Array.from(this.suggestionsEl.querySelectorAll('.suggestion-item')), false);
   }
 
   handleKeydown(e) {
@@ -6630,27 +8359,31 @@ class AddressBarManager {
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
+      e.stopPropagation();
       this.selectedIndex = (this.selectedIndex + 1) % items.length;
-      this.updateSelection(items);
+      this.updateSelection(items, true);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
+      e.stopPropagation();
       this.selectedIndex = (this.selectedIndex - 1 + items.length) % items.length;
-      this.updateSelection(items);
+      this.updateSelection(items, true);
     } else if (e.key === 'Enter' && this.selectedIndex !== -1) {
       e.preventDefault();
+      e.stopPropagation();
       items[this.selectedIndex].click();
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation();
       this._hideSuggestions(true);
       this.input.blur();
     }
   }
 
-  updateSelection(items) {
+  updateSelection(items, fromArrowKey = true) {
     items.forEach((item, i) => {
       item.classList.toggle('selected', i === this.selectedIndex);
     });
-    if (this.selectedIndex !== -1) {
+    if (this.selectedIndex !== -1 && fromArrowKey) {
       const urlEl = items[this.selectedIndex].querySelector('.suggestion-url');
       const titleEl = items[this.selectedIndex].querySelector('.suggestion-title');
       const queryVal = items[this.selectedIndex].getAttribute('data-query');
@@ -6697,7 +8430,7 @@ class PermissionManager {
       this.currentPermission = data.permission;
 
       this.originEl.textContent = data.origin;
-      this.typeEl.textContent = data.permission;
+      this.typeEl.textContent = window.t ? window.t(data.permission) : data.permission;
       this.promptOverlay.style.display = 'flex';
       document.body.classList.add('modal-open');
 
@@ -6726,7 +8459,8 @@ class PermissionManager {
 
     if (this.btnAddSite) {
       this.btnAddSite.addEventListener('click', () => {
-        const url = prompt("Enter the origin URL (e.g., https://discord.com):");
+        const promptText = window.t ? window.t("Enter the origin URL (e.g., https://discord.com):") : "Enter the origin URL (e.g., https://discord.com):";
+        const url = prompt(promptText);
         if (url) {
           try {
             const origin = new URL(url).origin;
@@ -6776,7 +8510,7 @@ class PermissionManager {
     this.currentPermission = "Windows Hello / Security Key";
 
     this.originEl.textContent = req.host;
-    this.typeEl.textContent = "Windows Hello / Security Key";
+    this.typeEl.textContent = window.t ? window.t("Windows Hello / Security Key") : "Windows Hello / Security Key";
     this.promptOverlay.style.display = 'flex';
     document.body.classList.add('modal-open');
   }
@@ -6817,16 +8551,19 @@ class PermissionManager {
       row.style.borderBottom = '1px solid rgba(0,0,0,0.05)';
 
       let checks = [];
-      if (perms[origin].media !== undefined) checks.push(`Media: ${perms[origin].media ? 'Allow' : 'Block'}`);
-      if (perms[origin].geolocation !== undefined) checks.push(`Location: ${perms[origin].geolocation ? 'Allow' : 'Block'}`);
-      if (perms[origin].notifications !== undefined) checks.push(`Notifs: ${perms[origin].notifications ? 'Allow' : 'Block'}`);
+      const allowStr = window.t ? window.t('Allow') : 'Allow';
+      const blockStr = window.t ? window.t('Block') : 'Block';
+      if (perms[origin].media !== undefined) checks.push(`${window.t ? window.t('Media') : 'Media'}: ${perms[origin].media ? allowStr : blockStr}`);
+      if (perms[origin].geolocation !== undefined) checks.push(`${window.t ? window.t('Location') : 'Location'}: ${perms[origin].geolocation ? allowStr : blockStr}`);
+      if (perms[origin].notifications !== undefined) checks.push(`${window.t ? window.t('Notifications') : 'Notifs'}: ${perms[origin].notifications ? allowStr : blockStr}`);
 
+      const removeTitle = window.t ? window.t('Remove') : 'Remove';
       row.innerHTML = `
         <div style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
           <strong style="font-size: 0.9rem;">${origin}</strong>
           <div style="font-size: 0.75rem; color: #666;">${checks.join(', ')}</div>
         </div>
-        <button class="bookmark-delete" style="opacity: 1; font-size: 1.2rem; cursor: pointer; border: none; background: transparent; padding: 5px;" title="Remove rules">×</button>
+        <button class="bookmark-delete" style="opacity: 1; font-size: 1.2rem; cursor: pointer; border: none; background: transparent; padding: 5px;" title="${BrowserUtils.sanitize(removeTitle)}">×</button>
       `;
 
       row.querySelector('button').addEventListener('click', () => {
@@ -7158,6 +8895,15 @@ window.onload = async () => {
         });
       }
 
+      const onboardNewsCheckbox = document.getElementById('onboard-news');
+      const onboardNewsRow = document.getElementById('onboard-news-provider-row');
+      if (onboardNewsCheckbox && onboardNewsRow) {
+        onboardNewsCheckbox.addEventListener('change', () => {
+          onboardNewsRow.style.opacity = onboardNewsCheckbox.checked ? '1' : '0.4';
+          onboardNewsRow.style.pointerEvents = onboardNewsCheckbox.checked ? 'auto' : 'none';
+        });
+      }
+
       document.getElementById('btn-onboarding-finish').addEventListener('click', () => {
         const aiChecked = document.getElementById('onboard-ai').checked;
         const autoChecked = document.getElementById('onboard-autocomplete').checked;
@@ -7202,7 +8948,7 @@ window.onload = async () => {
         if (bg) bg.style.display = 'none';
 
         // Start loading news now that we have consent/settings
-        if (window.newsSvc) window.newsSvc.loadNews();
+        if (window.newsSvc) window.newsSvc.refresh();
       });
     }
   }
@@ -7216,6 +8962,8 @@ window.onload = async () => {
   window.sportsSvc.start();
   window.sportsTeamPicker = new SportsTeamPicker(settingsMgr);
   window.newsWordFilterUI = new NewsWordFilterUI(settingsMgr);
+  window.smartNewsUI = new SmartNewsUI(settingsMgr);
+  window.quickLinksUI = new QuickLinksUI(settingsMgr);
 
   // Push loaded settings to main process immediately so rules are active on startup
   settingsMgr.sendSettingsToMain();
@@ -7380,7 +9128,7 @@ window.onload = async () => {
   const btnPlugins = document.getElementById('btn-plugin-store');
   if (btnPlugins) {
     btnPlugins.addEventListener('click', () => {
-      if (window.toastManager) window.toastManager.show('🧩 Plugin Store', 'The Plugin Store is a work in progress and will be coming soon!', 3000);
+      if (window.tabManager) window.tabManager.createTab('plugins');
     });
   }
 
@@ -7475,3 +9223,709 @@ window.onload = async () => {
     });
   });
 };
+
+class PluginManager {
+  constructor() {
+    this.plugins = JSON.parse(localStorage.getItem('leef_plugins') || '[]');
+    this.containerInstalled = document.getElementById('installed-plugins-list');
+    this.containerDiscover = document.getElementById('discover-plugins-grid');
+    this.inputUrl = document.getElementById('plugin-install-url');
+    this.btnInstall = document.getElementById('btn-install-plugin');
+    this.btnTopBar = document.getElementById('btn-plugin-store-top');
+    this.dropdown = document.getElementById('plugins-dropdown');
+    this.dropdownList = document.getElementById('plugins-dropdown-list');
+    this.btnManage = document.getElementById('btn-manage-plugins');
+    this.loadedPlugins = {};
+    
+    // Central Repository URL (Uses GitHub API to dynamically scan the plugins folder)
+    this.repositoryUrl = 'https://api.github.com/repos/git-QTech/leef-plugins/contents/plugins';
+    
+    if (this.btnInstall) {
+      this.btnInstall.addEventListener('click', () => this.installPlugin(this.inputUrl.value));
+    }
+    
+    if (this.btnTopBar && this.dropdown) {
+      this.btnTopBar.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isVisible = this.dropdown.classList.contains('visible');
+        if (!isVisible) {
+          this.renderDropdown();
+          DropdownUtils.show(this.dropdown, 'flex');
+          // Close others
+          const others = ['bookmarks-dropdown', 'downloads-dropdown', 'quick-settings-dropdown', 'site-identity-dropdown'];
+          others.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) DropdownUtils.hide(el);
+          });
+        } else {
+          DropdownUtils.hide(this.dropdown);
+        }
+      });
+
+      // Global close when clicking outside
+      document.addEventListener('click', (e) => {
+        if (this.dropdown.classList.contains('visible') && !this.dropdown.contains(e.target) && e.target !== this.btnTopBar && !this.btnTopBar.contains(e.target)) {
+          DropdownUtils.hide(this.dropdown);
+        }
+      });
+    }
+
+    if (this.btnManage) {
+      this.btnManage.addEventListener('click', () => {
+        if (this.dropdown) DropdownUtils.hide(this.dropdown);
+        if (window.tabManager) window.tabManager.createTab('plugins');
+      });
+    }
+    
+    this.setupTabs();
+    this.renderInstalledPlugins();
+    this.loadAllPlugins();
+    this.checkForUpdates();
+    this.loadDiscoverPlugins(true);
+    this.updateTopBarVisibility();
+    
+    const sortSelect = document.getElementById('plugin-sort-select');
+    if (sortSelect) {
+      sortSelect.addEventListener('change', () => {
+         this.loadDiscoverPlugins(false);
+      });
+    }
+  }
+
+  updateTopBarVisibility() {
+    if (this.btnTopBar) {
+      this.btnTopBar.style.display = this.plugins.length > 0 ? '' : 'none';
+      if (this.plugins.length === 0 && this.dropdown) {
+        DropdownUtils.hide(this.dropdown);
+      }
+    }
+  }
+
+  setupTabs() {
+    const tabDiscover = document.getElementById('tab-plugins-discover');
+    const tabInstalled = document.getElementById('tab-plugins-installed');
+    const viewDiscover = document.getElementById('plugin-view-discover');
+    const viewInstalled = document.getElementById('plugin-view-installed');
+
+    if (!tabDiscover || !tabInstalled) return;
+
+    tabDiscover.addEventListener('click', () => {
+      tabDiscover.style.borderBottom = '2px solid var(--primary-color)';
+      tabDiscover.style.color = 'var(--text-color)';
+      tabInstalled.style.borderBottom = 'none';
+      tabInstalled.style.color = '#888';
+      viewDiscover.style.display = 'block';
+      viewInstalled.style.display = 'none';
+    });
+
+    tabInstalled.addEventListener('click', () => {
+      tabInstalled.style.borderBottom = '2px solid var(--primary-color)';
+      tabInstalled.style.color = 'var(--text-color)';
+      tabDiscover.style.borderBottom = 'none';
+      tabDiscover.style.color = '#888';
+      viewInstalled.style.display = 'block';
+      viewDiscover.style.display = 'none';
+    });
+  }
+
+  isVersionMatch(minVersion, currentVersion) {
+    if (!minVersion) return true;
+    const cleanCurrent = (currentVersion || '0.0.0').replace(/[^0-9.]/g, '').split('.');
+    const cleanMin = minVersion.replace(/[^0-9.]/g, '').split('.');
+    for (let i = 0; i < 3; i++) {
+      const cur = parseInt(cleanCurrent[i] || 0);
+      const min = parseInt(cleanMin[i] || 0);
+      if (cur > min) return true;
+      if (cur < min) return false;
+    }
+    return true;
+  }
+  
+  async fetchGitHubFile(url) {
+    try {
+      if (url.includes('raw.githubusercontent.com') || url.includes('github.com')) {
+        let rawPath = url;
+        if (url.includes('raw.githubusercontent.com/')) {
+          rawPath = url.split('raw.githubusercontent.com/')[1];
+        } else if (url.includes('github.com/')) {
+          rawPath = url.split('github.com/')[1];
+        }
+        const parts = rawPath.split('/');
+        if (parts.length >= 3) {
+          const owner = parts[0];
+          const repo = parts[1];
+          const isBlobOrTree = parts[2] === 'tree' || parts[2] === 'blob';
+          const branch = isBlobOrTree ? parts[3] : parts[2];
+          const pathIndex = isBlobOrTree ? 4 : 3;
+          const filePath = parts.slice(pathIndex).join('/');
+          
+          if (filePath) {
+            const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}&t=${Date.now()}`;
+            const res = await fetch(apiUrl, {
+              headers: { 'Accept': 'application/vnd.github.v3+json' },
+              cache: 'no-cache'
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (data.content) {
+                const decoded = decodeURIComponent(escape(atob(data.content.replace(/\s/g, ''))));
+                return decoded;
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('GitHub API fetch failed, falling back to raw HTTP:', e);
+    }
+    const fetchUrl = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+    const res = await fetch(fetchUrl, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  }
+
+  async loadDiscoverPlugins(forceFetch = true) {
+    if (!this.containerDiscover) return;
+    
+    if (forceFetch || !this.discoverManifests) {
+      this.containerDiscover.innerHTML = `<div style="padding: 20px; color: #888; grid-column: 1 / -1;">Loading plugins from repository...</div>`;
+      try {
+        const repoUrl = `${this.repositoryUrl}?t=${Date.now()}`;
+        const res = await fetch(repoUrl, { cache: 'no-cache' });
+        if (!res.ok) {
+          this.containerDiscover.innerHTML = `<div style="padding: 20px; color: #888; grid-column: 1 / -1;">
+            No plugins found yet. Just add folders to your <code>plugins</code> directory!
+          </div>`;
+          return;
+        }
+        
+        const repoContents = await res.json();
+        const repoPlugins = repoContents
+          .filter(item => item.type === 'dir')
+          .map(item => ({
+            manifestUrl: `https://raw.githubusercontent.com/git-QTech/leef-plugins/main/plugins/${item.name}/manifest.json`
+          }));
+          
+        this.discoverManifests = [];
+        for (const item of repoPlugins) {
+          try {
+            const manifestText = await this.fetchGitHubFile(item.manifestUrl);
+            const manifest = JSON.parse(manifestText);
+            manifest.manifestUrl = item.manifestUrl;
+            this.discoverManifests.push(manifest);
+          } catch (e) {
+            console.warn('Failed to load plugin manifest from repository:', e);
+          }
+        }
+      } catch (e) {
+        this.containerDiscover.innerHTML = `<div style="padding: 20px; color: #888; grid-column: 1 / -1;">
+          Could not connect to the plugin repository.
+        </div>`;
+        return;
+      }
+    }
+    
+    const sortSelect = document.getElementById('plugin-sort-select');
+    if (sortSelect && this.discoverManifests) {
+      const sortValue = sortSelect.value;
+      if (sortValue === 'newest') {
+        this.discoverManifests.sort((a, b) => (b.created_at || '1970').localeCompare(a.created_at || '1970'));
+      } else if (sortValue === 'updated') {
+        this.discoverManifests.sort((a, b) => (b.updated_at || '1970').localeCompare(a.updated_at || '1970'));
+      } else if (sortValue === 'alphabetical') {
+        this.discoverManifests.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      }
+    }
+
+    this.containerDiscover.innerHTML = '';
+    
+    for (const manifest of (this.discoverManifests || [])) {
+      const isInstalled = this.plugins.some(p => p.id === manifest.id);
+      const isCompatible = !manifest.min_leef_version || this.isVersionMatch(manifest.min_leef_version, window.APP_VERSION);
+      
+      const card = document.createElement('div');
+      card.className = 'flag-card';
+      card.style.display = 'flex';
+      card.style.flexDirection = 'column';
+      card.style.alignItems = 'flex-start';
+      card.style.justifyContent = 'space-between';
+      card.style.padding = '15px';
+      card.style.gap = '15px';
+      
+      let actionButton = '';
+      if (isInstalled) {
+        actionButton = `<button class="settings-btn" disabled style="background: #555; width: 100%;">Installed</button>`;
+      } else if (!isCompatible) {
+        actionButton = `<button class="settings-btn" disabled style="background: #aa3333; width: 100%;">Requires Update</button>`;
+      } else {
+        actionButton = `<button class="settings-btn btn-discover-install" data-url="${manifest.manifestUrl}" style="background: var(--primary-color); color: white; width: 100%;">Install</button>`;
+      }
+      
+      card.innerHTML = `
+        <div style="width: 100%;">
+          <h3 style="margin: 0 0 5px 0;">${manifest.name} <span class="beta-tag" style="background:#555;">v${manifest.version}</span></h3>
+          <p style="font-size: 0.8rem; color: #888; margin: 0 0 10px 0;">By ${manifest.author}</p>
+          <p style="margin: 0; font-size: 0.9rem;">${manifest.description}</p>
+        </div>
+        ${actionButton}
+      `;
+      
+      if (!isInstalled && isCompatible) {
+        const btnInstall = card.querySelector('.btn-discover-install');
+        btnInstall.addEventListener('click', async () => {
+          btnInstall.textContent = 'Installing...';
+          btnInstall.disabled = true;
+          await this.installPlugin(btnInstall.dataset.url);
+          btnInstall.textContent = 'Installed';
+          btnInstall.style.background = '#555';
+        });
+      }
+      
+      this.containerDiscover.appendChild(card);
+    }
+    
+    if (this.containerDiscover.children.length === 0) {
+      this.containerDiscover.innerHTML = `<div style="padding: 20px; color: #888; grid-column: 1 / -1;">No plugins available.</div>`;
+    }
+  }
+
+  async installPlugin(url) {
+    if (!url) return;
+    try {
+      let manifestUrl = url;
+      if (url.includes('github.com')) {
+        const parts = url.split('github.com/')[1].split('/');
+        if (parts.length >= 2) {
+          manifestUrl = `https://raw.githubusercontent.com/${parts[0]}/${parts[1]}/main/manifest.json`;
+        }
+      }
+      
+      const manifestText = await this.fetchGitHubFile(manifestUrl);
+      const manifest = JSON.parse(manifestText);
+      
+      if (manifest.min_leef_version && !this.isVersionMatch(manifest.min_leef_version, window.APP_VERSION)) {
+        throw new Error(`${manifest.name} requires a newer version of Leef Browser (>= ${manifest.min_leef_version}).`);
+      }
+      
+      const basePath = manifestUrl.replace('/manifest.json', '');
+      const pluginJS = `${basePath}/${manifest.main || 'plugin.js'}`;
+      
+      const jsCode = await this.fetchGitHubFile(pluginJS);
+      
+      const existingPlugin = this.plugins.find(p => p.id === manifest.id);
+      const settings = existingPlugin ? existingPlugin.settings : (manifest.config ? manifest.config.reduce((acc, curr) => ({ ...acc, [curr.id]: curr.default }), {}) : {});
+
+      const plugin = {
+        id: manifest.id,
+        name: manifest.name,
+        description: manifest.description,
+        version: manifest.version,
+        author: manifest.author,
+        url: url,
+        jsUrl: pluginJS,
+        jsCode: jsCode,
+        configSchema: manifest.config || null,
+        settings: settings,
+        enabled: true
+      };
+      
+      this.plugins = this.plugins.filter(p => p.id !== plugin.id);
+      this.plugins.push(plugin);
+      this.savePlugins();
+      this.updateTopBarVisibility();
+      this.renderInstalledPlugins();
+      this.renderDropdown();
+      this.loadPlugin(plugin);
+      if (window.toastManager) window.toastManager.show(`Plugin ${plugin.name} installed successfully!`, 'success');
+      if (this.inputUrl) this.inputUrl.value = '';
+    } catch (e) {
+      if (window.toastManager) window.toastManager.show(`Failed to install plugin: ${e.message}`, 'error');
+    }
+  }
+
+  async updatePlugin(plugin) {
+    try {
+      let manifestUrl = plugin.url;
+      if (plugin.url.includes('github.com')) {
+        const parts = plugin.url.split('github.com/')[1].split('/');
+        if (parts.length >= 2) manifestUrl = `https://raw.githubusercontent.com/${parts[0]}/${parts[1]}/main/manifest.json`;
+      }
+      
+      const manifestText = await this.fetchGitHubFile(manifestUrl);
+      const manifest = JSON.parse(manifestText);
+      
+      if (manifest.version !== plugin.version) {
+        if (manifest.min_leef_version && !this.isVersionMatch(manifest.min_leef_version, window.APP_VERSION)) {
+          if (window.toastManager) window.toastManager.show(`Plugin Update Blocked`, `${plugin.name} v${manifest.version} requires a newer version of Leef Browser.`, 'error');
+          return;
+        }
+        
+        plugin.version = manifest.version;
+        plugin.name = manifest.name;
+        plugin.description = manifest.description;
+        const basePath = manifestUrl.replace('/manifest.json', '');
+        plugin.jsUrl = `${basePath}/${manifest.main || 'plugin.js'}`;
+        
+        plugin.configSchema = manifest.config || null;
+        if (manifest.config) {
+          if (!plugin.settings) plugin.settings = {};
+          manifest.config.forEach(c => {
+             if (plugin.settings[c.id] === undefined) plugin.settings[c.id] = c.default;
+          });
+        }
+        
+        plugin.jsCode = await this.fetchGitHubFile(plugin.jsUrl);
+        
+        this.savePlugins();
+        this.renderInstalledPlugins();
+        this.renderDropdown();
+        if (plugin.enabled) {
+          this.unloadPlugin(plugin);
+          this.loadPlugin(plugin);
+        }
+        if (window.toastManager) window.toastManager.show(`Plugin Updated`, `${plugin.name} was updated to v${plugin.version}`, 'success');
+      }
+    } catch (e) {
+      console.warn(`Failed to check update for ${plugin.name}:`, e);
+    }
+  }
+
+  async checkForUpdates() {
+    for (const p of this.plugins) {
+      await this.updatePlugin(p);
+    }
+  }
+
+  savePlugins() {
+    localStorage.setItem('leef_plugins', JSON.stringify(this.plugins));
+  }
+
+  renderInstalledPlugins() {
+    if (!this.containerInstalled) return;
+    this.containerInstalled.innerHTML = '';
+    
+    if (this.plugins.length > 0) {
+      const updateBar = document.createElement('div');
+      updateBar.style.display = 'flex';
+      updateBar.style.justifyContent = 'flex-end';
+      updateBar.style.marginBottom = '15px';
+      updateBar.innerHTML = `<button class="settings-btn" id="btn-update-all-plugins" style="width:auto; margin:0; font-size:0.85rem;" data-i18n="Check for Updates">Check for Updates</button>`;
+      this.containerInstalled.appendChild(updateBar);
+      
+      const btnUpdate = updateBar.querySelector('#btn-update-all-plugins');
+      btnUpdate.addEventListener('click', () => {
+        btnUpdate.textContent = window.t ? window.t('Checking...') : 'Checking...';
+        this.checkForUpdates().then(() => {
+          btnUpdate.textContent = window.t ? window.t('Check for Updates') : 'Check for Updates';
+        });
+      });
+    }
+
+    this.plugins.forEach(p => {
+      const card = document.createElement('div');
+      card.className = 'flag-card';
+      card.style.flexDirection = 'column';
+      card.style.alignItems = 'stretch';
+      
+      const hasConfig = p.configSchema && p.configSchema.length > 0;
+      const hasOnSettings = this.loadedPlugins[p.id] && typeof this.loadedPlugins[p.id].onSettings === 'function';
+      const showSettingsBtn = hasConfig || hasOnSettings;
+      
+      card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <div class="flag-info" style="flex: 1;">
+            <h3>${p.name} <span class="beta-tag" style="background:#555;">v${p.version}</span></h3>
+            <p>${p.description}</p>
+            <p style="font-size: 0.8rem; color: #888;">By ${p.author}</p>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            ${showSettingsBtn ? `<button class="settings-btn btn-plugin-settings" style="width: auto; padding: 5px 10px; margin: 0; background: none; border: 1px solid #555;">⚙️</button>` : ''}
+            <label class="switch"><input type="checkbox" class="plugin-enable-toggle" ${p.enabled ? 'checked' : ''}><span class="slider"></span></label>
+            <button class="settings-btn btn-remove-plugin" style="background: #ff4444; margin-left: 10px;">Remove</button>
+          </div>
+        </div>
+        <div class="plugin-config-container" style="display: none; width: 100%; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(0,0,0,0.1); flex-direction: column; gap: 10px;"></div>
+      `;
+      
+      const configContainer = card.querySelector('.plugin-config-container');
+      const settingsBtn = card.querySelector('.btn-plugin-settings');
+      
+      if (settingsBtn) {
+        settingsBtn.addEventListener('click', () => {
+          if (hasConfig) {
+            const isVisible = configContainer.style.display !== 'none';
+            configContainer.style.display = isVisible ? 'none' : 'flex';
+            if (!isVisible) this.renderPluginConfig(p, configContainer);
+          } else if (hasOnSettings) {
+            const instance = this.loadedPlugins[p.id];
+            if (instance && instance.onSettings) instance.onSettings();
+          }
+        });
+      }
+      
+      const toggle = card.querySelector('.plugin-enable-toggle');
+      toggle.addEventListener('change', (e) => {
+        p.enabled = e.target.checked;
+        this.savePlugins();
+        if (p.enabled) this.loadPlugin(p);
+        else this.unloadPlugin(p);
+      });
+      
+      const removeBtn = card.querySelector('.btn-remove-plugin');
+      removeBtn.addEventListener('click', () => {
+        this.unloadPlugin(p);
+        this.plugins = this.plugins.filter(x => x.id !== p.id);
+        this.savePlugins();
+        this.updateTopBarVisibility();
+        this.renderInstalledPlugins();
+        this.renderDropdown();
+        
+        // Re-render discover tab to update button states
+        this.loadDiscoverPlugins();
+      });
+      
+      this.containerInstalled.appendChild(card);
+    });
+  }
+
+  renderPluginConfig(plugin, container) {
+    container.innerHTML = `<h4 style="margin: 0 0 10px 0; color: var(--primary-color);">Plugin Settings</h4>`;
+    if (!plugin.settings) plugin.settings = {};
+    
+    plugin.configSchema.forEach(c => {
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.justifyContent = 'space-between';
+      row.style.alignItems = 'center';
+      
+      const label = document.createElement('label');
+      label.textContent = c.label || c.id;
+      label.style.fontSize = '0.9rem';
+      label.style.color = 'var(--text-color)';
+      
+      row.appendChild(label);
+      
+      if (c.type === 'boolean') {
+        const wrap = document.createElement('label');
+        wrap.className = 'switch';
+        wrap.style.margin = '0';
+        wrap.style.transform = 'scale(0.8)';
+        
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = plugin.settings[c.id] !== undefined ? plugin.settings[c.id] : c.default;
+        
+        input.addEventListener('change', (e) => {
+          plugin.settings[c.id] = e.target.checked;
+          this.savePlugins();
+          if (plugin.enabled) { this.unloadPlugin(plugin); this.loadPlugin(plugin); }
+        });
+        
+        const slider = document.createElement('span');
+        slider.className = 'slider';
+        wrap.appendChild(input);
+        wrap.appendChild(slider);
+        row.appendChild(wrap);
+      } else if (c.type === 'number' || c.type === 'string') {
+        const input = document.createElement('input');
+        input.type = c.type === 'number' ? 'number' : 'text';
+        input.value = plugin.settings[c.id] !== undefined ? plugin.settings[c.id] : c.default;
+        input.style.padding = '5px 8px';
+        input.style.border = '1px solid rgba(0,0,0,0.2)';
+        input.style.borderRadius = '4px';
+        input.style.background = 'var(--bg-primary)';
+        input.style.color = 'var(--text-color)';
+        input.style.width = '150px';
+        
+        input.addEventListener('change', (e) => {
+          plugin.settings[c.id] = c.type === 'number' ? parseFloat(e.target.value) : e.target.value;
+          this.savePlugins();
+          if (plugin.enabled) { this.unloadPlugin(plugin); this.loadPlugin(plugin); }
+        });
+        row.appendChild(input);
+      } else if (c.type === 'select' && Array.isArray(c.options)) {
+        const select = document.createElement('select');
+        select.style.padding = '5px 8px';
+        select.style.border = '1px solid rgba(0,0,0,0.2)';
+        select.style.borderRadius = '4px';
+        select.style.background = 'var(--bg-primary)';
+        select.style.color = 'var(--text-color)';
+        
+        c.options.forEach(opt => {
+           const optionEl = document.createElement('option');
+           const val = typeof opt === 'object' ? opt.value : opt;
+           const txt = typeof opt === 'object' ? opt.label : opt;
+           optionEl.value = val;
+           optionEl.textContent = txt;
+           select.appendChild(optionEl);
+        });
+        
+        select.value = plugin.settings[c.id] !== undefined ? plugin.settings[c.id] : c.default;
+        
+        select.addEventListener('change', (e) => {
+          plugin.settings[c.id] = e.target.value;
+          this.savePlugins();
+          if (plugin.enabled) { this.unloadPlugin(plugin); this.loadPlugin(plugin); }
+        });
+        row.appendChild(select);
+      }
+      
+      container.appendChild(row);
+    });
+  }
+
+  renderDropdown() {
+    if (!this.dropdownList) return;
+    this.dropdownList.innerHTML = '';
+    
+    if (this.plugins.length === 0) {
+      this.dropdownList.innerHTML = '<p style="opacity: 0.6; padding: 10px; font-size: 0.9rem;">No plugins installed.</p>';
+      return;
+    }
+    
+    this.plugins.forEach(p => {
+      const item = document.createElement('div');
+      item.style.padding = '10px 15px';
+      item.style.display = 'flex';
+      item.style.justifyContent = 'space-between';
+      item.style.alignItems = 'center';
+      item.style.borderBottom = '1px solid rgba(128,128,128,0.1)';
+      
+      item.innerHTML = `
+        <div style="display: flex; flex-direction: column;">
+          <span style="font-weight: 500; font-size: 0.95rem;">${p.name}</span>
+          <span style="font-size: 0.75rem; color: #888;">v${p.version}</span>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          ${this.loadedPlugins[p.id] && typeof this.loadedPlugins[p.id].onSettings === 'function' ? `<button class="btn-plugin-settings" style="background: none; border: none; cursor: pointer; padding: 4px; border-radius: 4px;" title="Settings">⚙️</button>` : ''}
+          <label class="switch" style="transform: scale(0.8); margin: 0;"><input type="checkbox" ${p.enabled ? 'checked' : ''}><span class="slider"></span></label>
+        </div>
+      `;
+      
+      const settingsBtn = item.querySelector('.btn-plugin-settings');
+      if (settingsBtn) {
+        settingsBtn.addEventListener('click', () => {
+          DropdownUtils.hide(this.dropdown);
+          const instance = this.loadedPlugins[p.id];
+          if (instance && instance.onSettings) instance.onSettings();
+        });
+      }
+      
+      const toggle = item.querySelector('input[type="checkbox"]');
+      toggle.addEventListener('change', (e) => {
+        p.enabled = e.target.checked;
+        this.savePlugins();
+        if (p.enabled) this.loadPlugin(p);
+        else this.unloadPlugin(p);
+        this.renderInstalledPlugins();
+      });
+      
+      this.dropdownList.appendChild(item);
+    });
+  }
+
+  async loadPlugin(plugin) {
+    if (!plugin.enabled) return;
+    try {
+      if (this.loadedPlugins[plugin.id]) return;
+      
+      let code = plugin.jsCode;
+      if (!code) {
+        const res = await fetch(plugin.jsUrl);
+        code = await res.text();
+      }
+      
+      const blob = new Blob([code], { type: 'application/javascript' });
+      const moduleUrl = URL.createObjectURL(blob);
+      const { default: PluginClass } = await import(moduleUrl);
+      URL.revokeObjectURL(moduleUrl);
+      
+      if (!window.leefPluginGlobalCSS) window.leefPluginGlobalCSS = {};
+      if (!window.leefPluginGlobalJS) window.leefPluginGlobalJS = {};
+      
+      const api = {
+        addBrowserClass: (cls) => document.body.classList.add(cls),
+        removeBrowserClass: (cls) => document.body.classList.remove(cls),
+        injectCSS: (css) => {
+          if (window.tabManager && window.tabManager.tabs) {
+            window.tabManager.tabs.forEach(tab => {
+              if (tab.webviewEl) tab.webviewEl.insertCSS(css).catch(()=>{});
+            });
+          }
+          window.leefPluginGlobalCSS[plugin.id] = css;
+        },
+        removeCSS: () => {
+          if (window.leefPluginGlobalCSS) delete window.leefPluginGlobalCSS[plugin.id];
+          if (window.tabManager && window.tabManager.tabs) {
+            window.tabManager.tabs.forEach(tab => {
+              if (tab.webviewEl) tab.webviewEl.reload();
+            });
+          }
+        },
+        executeJavaScript: (code) => {
+          if (window.tabManager && window.tabManager.tabs) {
+            window.tabManager.tabs.forEach(tab => {
+              if (tab.webviewEl) tab.webviewEl.executeJavaScript(code).catch(()=>{});
+            });
+          }
+          window.leefPluginGlobalJS[plugin.id] = code;
+        },
+        removeJS: () => {
+          if (window.leefPluginGlobalJS) delete window.leefPluginGlobalJS[plugin.id];
+          if (window.tabManager && window.tabManager.tabs) {
+            window.tabManager.tabs.forEach(tab => {
+              if (tab.webviewEl) tab.webviewEl.reload();
+            });
+          }
+        },
+        setDNS: (url) => {
+          if (window.leefAPI && window.leefAPI.ipc) {
+            window.leefAPI.ipc.send('set-dns', url);
+          }
+        },
+        settings: plugin.settings || {}
+      };
+      
+      const instance = new PluginClass(api);
+      instance.onEnable();
+      this.loadedPlugins[plugin.id] = instance;
+    } catch (e) {
+      console.error(`Failed to load plugin ${plugin.id}:`, e);
+    }
+  }
+
+  unloadPlugin(plugin) {
+    const instance = this.loadedPlugins[plugin.id];
+    if (instance) {
+      try {
+        if (instance.onDisable) instance.onDisable();
+      } catch (e) {
+        console.warn(`Plugin ${plugin.id} threw error during onDisable:`, e);
+      }
+      delete this.loadedPlugins[plugin.id];
+    }
+    
+    // Force cleanup to ensure uninstall/disable is 100% effective
+    let needsReload = false;
+    if (window.leefPluginGlobalCSS && window.leefPluginGlobalCSS[plugin.id]) {
+      delete window.leefPluginGlobalCSS[plugin.id];
+      needsReload = true;
+    }
+    if (window.leefPluginGlobalJS && window.leefPluginGlobalJS[plugin.id]) {
+      delete window.leefPluginGlobalJS[plugin.id];
+      needsReload = true;
+    }
+    
+    if (needsReload && window.tabManager && window.tabManager.tabs) {
+      window.tabManager.tabs.forEach(tab => {
+        if (tab.webviewEl) tab.webviewEl.reload();
+      });
+    }
+  }
+
+  loadAllPlugins() {
+    this.plugins.forEach(p => this.loadPlugin(p));
+  }
+}
+
+window.pluginManager = new PluginManager();

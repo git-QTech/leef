@@ -389,7 +389,7 @@
             </div>
             <div class="score-box">
                 <div class="score-val" id="score">0</div>
-                <div class="score-lbl">Chlorophyll</div>
+                <div class="score-lbl" data-i18n="Chlorophyll">Chlorophyll</div>
                 <div class="cps-lbl" id="cps">0.00 per second</div>
             </div>
             <button class="btn-action" id="btn-reconnect-game" style="margin-top: 2rem;" data-i18n="Try Reconnecting">Try Reconnecting</button>
@@ -397,18 +397,18 @@
 
         <div class="upgrade-pane">
             <div class="upgrade-section">
-                <h3 class="upgrade-section-title">Manual Tools</h3>
+                <h3 class="upgrade-section-title" data-i18n="Manual Tools">Manual Tools</h3>
                 <div id="click-upgrades"></div>
             </div>
             <div class="upgrade-section" style="margin-top: 1rem;">
-                <h3 class="upgrade-section-title">Auto Garden</h3>
+                <h3 class="upgrade-section-title" data-i18n="Auto Garden">Auto Garden</h3>
                 <div id="upgrades"></div>
             </div>
         </div>
     </div>
 
     <script type="module">
-        import { TRANSLATIONS } from './translations.js';
+        import { TRANSLATIONS, t, applyLocalization } from './translations.js';
         let lang = 'en';
         try {
             const settings = JSON.parse(localStorage.getItem('leef_settings'));
@@ -417,14 +417,17 @@
             }
         } catch (e) {}
 
-        window.t = function(key) {
+        window.t = function(key, params) {
+            if (t) return t(key, params, lang);
             if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) {
                 return TRANSLATIONS[lang][key];
             }
             return key;
         };
 
-        if (lang !== 'en') {
+        if (applyLocalization) {
+            applyLocalization(document, lang);
+        } else if (lang !== 'en') {
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
                 el.innerHTML = window.t(key);
@@ -542,7 +545,9 @@
             const prefix = u.multiplier ? 'click-upg-' : 'upg-';
             card.className = `upg-card ${chlorophyll < u.cost ? 'disabled' : ''}`;
             card.id = prefix + u.id;
-            card.innerHTML = `<div class="upg-info"><div class="upg-name">${u.name} <span class="upg-qty">${u.qty}</span></div><div class="upg-desc">${u.desc}</div></div><div class="upg-cost">${formatNum(u.cost)}</div>`;
+            const uName = window.t ? window.t(u.name) : u.name;
+            const uDesc = window.t ? window.t(u.desc) : u.desc;
+            card.innerHTML = `<div class="upg-info"><div class="upg-name">${uName} <span class="upg-qty">${u.qty}</span></div><div class="upg-desc">${uDesc}</div></div><div class="upg-cost">${formatNum(u.cost)}</div>`;
             card.onclick = callback;
             return card;
         }
@@ -578,7 +583,7 @@
             else if (cps >= 1000000000) { dCps = cps / 1000000000; unit = 'B'; }
             else if (cps >= 1000000) { dCps = cps / 1000000; unit = 'M'; }
             else if (cps >= 1000) { dCps = cps / 1000; unit = 'k'; }
-            cpsEl.textContent = (unit ? dCps.toFixed(2) : dCps.toFixed(2)) + unit + ' per second';
+            cpsEl.textContent = (unit ? dCps.toFixed(2) : dCps.toFixed(2)) + unit + ' ' + (window.t ? window.t('per second') : 'per second');
 
             if (totalEarned >= 100000) {
                 leafMainEl.style.background = 'linear-gradient(135deg, #ffd700 0%, #ffa500 100%)';

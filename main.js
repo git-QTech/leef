@@ -1,5 +1,9 @@
-import { app, BrowserWindow, session, ipcMain, Menu, MenuItem, clipboard, nativeImage, shell, webContents, screen } from 'electron';
+import { app, BrowserWindow, session, ipcMain, Menu, MenuItem, clipboard, nativeImage, shell, webContents, screen, nativeTheme } from 'electron';
 // webContents is explicitly imported for fromId lookups (v0.5.0)
+
+// Force light mode across the entire app and all webviews
+// since Leef Browser currently only has a light theme UI.
+nativeTheme.themeSource = 'light';
 
 import updater from 'electron-updater';
 const { autoUpdater } = updater;
@@ -31,11 +35,104 @@ if (process.platform === 'win32') {
   app.setAppUserModelId('com.quinn.leefbrowser');
 }
 
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+  process.exit(0);
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ─── WIDEVINE CDM AUTO-DETECTION ───────────────────────────────────────────
+// Must be set before app.whenReady() for the switch to take effect.
+// Searches Edge and Chrome installations for the CDM DLL and its version.
+function findWidevineCdm() {
+  if (process.platform === 'win32') {
+    const bases = [
+      path.join('C:\\Program Files (x86)\\Microsoft\\Edge\\Application'),
+      path.join('C:\\Program Files\\Microsoft\\Edge\\Application'),
+      path.join('C:\\Program Files (x86)\\Google\\Chrome\\Application'),
+      path.join('C:\\Program Files\\Google\\Chrome\\Application'),
+    ];
+    for (const base of bases) {
+      if (!fs.existsSync(base)) continue;
+      // Each browser version is a subdirectory; sort descending to pick newest
+      let versions = [];
+      try { versions = fs.readdirSync(base).sort().reverse(); } catch (e) { continue; }
+      for (const ver of versions) {
+        const cdmDir = path.join(base, ver, 'WidevineCdm');
+        const dllPath = path.join(cdmDir, '_platform_specific', 'win_x64', 'widevinecdm.dll');
+        const manifestPath = path.join(cdmDir, 'manifest.json');
+        if (fs.existsSync(dllPath) && fs.existsSync(manifestPath)) {
+          try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            return { dllPath, version: manifest.version };
+          } catch (e) { /* malformed manifest, try next */ }
+        }
+      }
+    }
+  } else if (process.platform === 'darwin') {
+    const bases = [
+      '/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions',
+      '/Applications/Microsoft Edge.app/Contents/Frameworks/Microsoft Edge Framework.framework/Versions',
+    ];
+    for (const base of bases) {
+      if (!fs.existsSync(base)) continue;
+      let versions = [];
+      try { versions = fs.readdirSync(base).sort().reverse(); } catch (e) { continue; }
+      for (const ver of versions) {
+        const cdmPath = path.join(base, ver, 'Libraries', 'WidevineCdm', '_platform_specific', 'mac_x64', 'libwidevinecdm.dylib');
+        const manifestPath = path.join(base, ver, 'Libraries', 'WidevineCdm', 'manifest.json');
+        if (fs.existsSync(cdmPath) && fs.existsSync(manifestPath)) {
+          try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            return { dllPath: cdmPath, version: manifest.version };
+          } catch (e) { }
+        }
+      }
+    }
+  } else if (process.platform === 'linux') {
+    const candidates = [
+      '/opt/google/chrome/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so',
+      '/usr/lib/chromium-browser/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so',
+      '/usr/lib64/chromium/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so',
+    ];
+    for (const c of candidates) {
+      const manifestPath = path.join(path.dirname(path.dirname(path.dirname(c))), 'manifest.json');
+      if (fs.existsSync(c) && fs.existsSync(manifestPath)) {
+        try {
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          return { dllPath: c, version: manifest.version };
+        } catch (e) { }
+      }
+    }
+  }
+  return null;
+}
+
+const widevineCdm = findWidevineCdm();
+if (widevineCdm) {
+  app.commandLine.appendSwitch('widevine-cdm-path', widevineCdm.dllPath);
+  app.commandLine.appendSwitch('widevine-cdm-version', widevineCdm.version);
+  console.log(`Leef Browser: Widevine CDM loaded v${widevineCdm.version} from ${widevineCdm.dllPath}`);
+} else {
+  console.warn('Leef Browser: Widevine CDM not found. DRM content (Netflix, etc.) may not play.');
+}
+// ───────────────────────────────────────────────────────────────────────────
+
 // Disable Chromium's window/tab occlusion tracking to prevent rendering freezes/blank screens when tabbing back in
-const disabledFeatures = ['MacWebContentsOcclusion', 'CalculateNativeWinOcclusion'];
+const disabledFeatures = [
+  'MacWebContentsOcclusion', 
+  'CalculateNativeWinOcclusion',
+  // Disable Google AI / Optimization background model downloads
+  'OptimizationGuideModelDownloading',
+  'OptimizationHintsFetching',
+  'OptimizationTargetPrediction',
+  'OptimizationGuideModelExecution',
+  // Disable Media Router (UDP broadcasts)
+  'MediaRouter'
+];
 if (process.platform === 'win32') {
   disabledFeatures.push('MediaFoundationVideoDecoder', 'DirectCompositionVideoOverlays');
 }
@@ -43,6 +140,27 @@ app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
+
+// Disable Google Telemetry and Built-in Backdoors
+// NOTE: --disable-background-networking is intentionally NOT used here.
+// Despite its name, it also kills Chromium's local storage write-back queue,
+// meaning localStorage is never flushed to disk and all data resets on every launch.
+// The flags below cover all actual Google telemetry without that side effect.
+app.commandLine.appendSwitch('disable-metrics');
+app.commandLine.appendSwitch('disable-metrics-system');
+app.commandLine.appendSwitch('disable-sync');
+app.commandLine.appendSwitch('disable-client-side-phishing-detection');
+app.commandLine.appendSwitch('disable-component-update');
+app.commandLine.appendSwitch('disable-domain-reliability');
+app.commandLine.appendSwitch('no-pings');
+// Additional telemetry blocks based on Ungoogled-Chromium
+app.commandLine.appendSwitch('disable-breakpad');
+app.commandLine.appendSwitch('disable-crash-reporter');
+app.commandLine.appendSwitch('disable-field-trial-config');
+app.commandLine.appendSwitch('disable-variations-seed-fetch');
+app.commandLine.appendSwitch('no-service-autorun');
+app.commandLine.appendSwitch('no-default-browser-check');
+app.commandLine.appendSwitch('no-first-run');
 
 if (process.platform === 'win32') {
   app.commandLine.appendSwitch('use-angle', 'd3d9');
@@ -280,7 +398,7 @@ ipcMain.on('window-maximize', () => {
 });
 
 ipcMain.on('window-close', () => {
-  if (mainWindow) mainWindow.close();
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
 });
 
 let isCriticalMode = false;
@@ -577,7 +695,11 @@ function createWindow() {
       webviewTag: true,
       webSecurity: true,
       backgroundThrottling: false,
-      session: sess
+      plugins: true
+      // NOTE: Do NOT set session here. The main window UI (localStorage for bookmarks,
+      // settings, etc.) must use Electron's default session to persist correctly.
+      // file:// URL localStorage in a named partition does not flush to disk in Electron.
+      // Webviews set partition="persist:leef-session" independently via setAttribute().
     },
     titleBarStyle: isLinux ? undefined : 'hidden',
     titleBarOverlay: process.platform === 'win32' ? {
@@ -759,7 +881,12 @@ function createWindow() {
 
     // DRM Detection: Triggered when Widevine/CDM is requested
     contents.on('select-key-system', (e, keySystem) => {
-      safeSend('drm-detected', { webContentsId: contents.id });
+      if (globalSettings.labs?.block_drm) {
+        // Block DRM is enabled — notify renderer to show warning, suppress DRM
+        safeSend('drm-blocked', { webContentsId: contents.id, keySystem });
+      } else {
+        safeSend('drm-detected', { webContentsId: contents.id });
+      }
     });
   });
 }
@@ -879,6 +1006,10 @@ ipcMain.on('apply-settings', async (event, settings) => {
     delete headers['X-Youtube-Edu-Filter'];
     delete headers['YouTube-Restrict'];
     delete headers['Accept-Language'];
+    
+    // Strip Google Telemetry Headers (X-Client-Data)
+    if (headers['X-Client-Data']) delete headers['X-Client-Data'];
+    if (headers['x-client-data']) delete headers['x-client-data'];
     headers['Accept-Language'] = acceptLang;
 
     // Stealth User Agent (Header Fallback)
@@ -983,7 +1114,7 @@ ipcMain.on('apply-settings', async (event, settings) => {
     if (settings.dohToggle) {
       app.configureHostResolver({
         secureDnsMode: 'secure',
-        secureDnsServers: [ 'https://cloudflare-dns.com/dns-query' ]
+        secureDnsServers: [ settings.dohServer || 'https://cloudflare-dns.com/dns-query' ]
       });
     } else {
       app.configureHostResolver({
@@ -992,6 +1123,23 @@ ipcMain.on('apply-settings', async (event, settings) => {
     }
   } catch (e) {
     console.error('Failed to configure Host Resolver for DoH:', e);
+  }
+});
+
+ipcMain.on('set-dns', (event, url) => {
+  try {
+    if (url) {
+      app.configureHostResolver({
+        secureDnsMode: 'secure',
+        secureDnsServers: [ url ]
+      });
+    } else {
+      app.configureHostResolver({
+        secureDnsMode: 'automatic'
+      });
+    }
+  } catch (e) {
+    console.error('Failed to configure custom DNS from plugin:', e);
   }
 });
 
@@ -1018,6 +1166,11 @@ ipcMain.on('manual-update-check', () => {
 
 ipcMain.on('restart-to-update', () => {
   autoUpdater.quitAndInstall();
+});
+
+ipcMain.on('relaunch-app', () => {
+  app.relaunch();
+  app.exit();
 });
 
 ipcMain.on('start-download', () => {
@@ -1105,25 +1258,81 @@ ipcMain.on('recovery-action', async (event, action) => {
   }
 });
 
+// Dynamic Localization for Main Process Context Menus
+const MAIN_LOCALES = {};
+function loadMainLocales() {
+  try {
+    const localesDir = path.join(__dirname, 'locales');
+    if (fs.existsSync(localesDir)) {
+      const files = fs.readdirSync(localesDir);
+      for (const f of files) {
+        if (f.endsWith('.json')) {
+          const code = f.replace('.json', '').toLowerCase();
+          try {
+            MAIN_LOCALES[code] = JSON.parse(fs.readFileSync(path.join(localesDir, f), 'utf8'));
+          } catch (e) { }
+        }
+      }
+    }
+  } catch (err) { }
+}
+loadMainLocales();
+
+function tMain(key, lang = 'en', params = null) {
+  if (!key) return '';
+  const l = (lang || 'en').toLowerCase();
+  
+  // Extract emoji prefix if present (e.g. "⬅️ Back" -> prefix "⬅️ ", searchKey "Back")
+  const emojiMatch = key.match(/^([\p{Extended_Pictographic}\u2600-\u27BF\uFE0F\s]+)(.+)$/u);
+  const prefix = emojiMatch ? emojiMatch[1] : '';
+  const searchKey = emojiMatch ? emojiMatch[2].trim() : key;
+
+  let trans = null;
+  if (MAIN_LOCALES[l]) {
+    trans = MAIN_LOCALES[l][key] || MAIN_LOCALES[l][searchKey];
+  }
+  if (!trans && (l === 'en-gb' || l === 'en-ca') && MAIN_LOCALES['en']) {
+    trans = MAIN_LOCALES['en'][key] || MAIN_LOCALES['en'][searchKey];
+  }
+  if (!trans && MAIN_LOCALES['en']) {
+    trans = MAIN_LOCALES['en'][key] || MAIN_LOCALES['en'][searchKey];
+  }
+
+  let finalStr = trans || key;
+  if (prefix && trans && !trans.startsWith(prefix.trim())) {
+    finalStr = prefix + trans;
+  }
+
+  if (params && typeof params === 'object') {
+    for (const [pKey, pVal] of Object.entries(params)) {
+      finalStr = finalStr.replace(new RegExp(`\\{${pKey}\\}`, 'g'), pVal);
+    }
+  }
+
+  return finalStr;
+}
+
 ipcMain.on('show-context-menu', (event, params) => {
+  const lang = params.lang || 'en';
+  const targetLang = lang.split('-')[0];
   const menu = new Menu();
 
   // Navigation Group
   if (!params.isBrowserUI) {
     menu.append(new MenuItem({
-      label: '⬅️ Back',
+      label: tMain('⬅️ Back', lang),
       accelerator: 'Alt+Left',
       enabled: params.editFlags.canGoBack || params.canGoBack,
       click: () => event.sender.send('context-menu-command', { command: 'go-back' })
     }));
     menu.append(new MenuItem({
-      label: '➡️ Forward',
+      label: tMain('➡️ Forward', lang),
       accelerator: 'Alt+Right',
       enabled: params.editFlags.canGoForward || params.canGoForward,
       click: () => event.sender.send('context-menu-command', { command: 'go-forward' })
     }));
     menu.append(new MenuItem({
-      label: '🔄 Reload',
+      label: tMain('🔄 Reload', lang),
       accelerator: 'CmdOrCtrl+R',
       click: () => event.sender.send('context-menu-command', { command: 'reload' })
     }));
@@ -1133,11 +1342,11 @@ ipcMain.on('show-context-menu', (event, params) => {
   // Link actions
   if (params.linkURL) {
     menu.append(new MenuItem({
-      label: '🔗 Open Link in New Tab',
+      label: tMain('🔗 Open Link in New Tab', lang),
       click: () => event.sender.send('context-menu-command', { command: 'create-tab', url: params.linkURL })
     }));
     menu.append(new MenuItem({
-      label: '📋 Copy Link Address',
+      label: tMain('📋 Copy Link Address', lang),
       click: () => clipboard.writeText(params.linkURL)
     }));
     menu.append(new MenuItem({ type: 'separator' }));
@@ -1146,28 +1355,28 @@ ipcMain.on('show-context-menu', (event, params) => {
   // Image actions
   if (params.hasImageContents || params.mediaType === 'image') {
     menu.append(new MenuItem({
-      label: '🖼️ Open Image in New Tab',
+      label: tMain('🖼️ Open Image in New Tab', lang),
       click: () => event.sender.send('context-menu-command', { command: 'create-tab', url: params.srcURL })
     }));
     menu.append(new MenuItem({
-      label: '💾 Save Image As...',
+      label: tMain('💾 Save Image As...', lang),
       click: () => {
         if (mainWindow) mainWindow.webContents.downloadURL(params.srcURL);
       }
     }));
     menu.append(new MenuItem({
-      label: '🔍 Search Image on Google',
+      label: tMain('🔍 Search Image on Google', lang),
       click: () => {
         const searchUrl = `https://www.google.com/searchbyimage?image_url=${encodeURIComponent(params.srcURL)}`;
         event.sender.send('context-menu-command', { command: 'create-tab', url: searchUrl });
       }
     }));
     menu.append(new MenuItem({
-      label: '📋 Copy Image',
+      label: tMain('📋 Copy Image', lang),
       click: () => event.sender.send('context-menu-command', { command: 'copy-image', x: params.x, y: params.y })
     }));
     menu.append(new MenuItem({
-      label: '🔗 Copy Image Address',
+      label: tMain('🔗 Copy Image Address', lang),
       click: () => clipboard.writeText(params.srcURL)
     }));
     menu.append(new MenuItem({ type: 'separator' }));
@@ -1179,14 +1388,20 @@ ipcMain.on('show-context-menu', (event, params) => {
     const displaySelection = cleanText.length > 15 ? cleanText.substring(0, 15) + '...' : cleanText;
 
     menu.append(new MenuItem({
-      label: `🔍 Search Google for "${displaySelection}"`,
+      label: tMain('🔍 Search Google for "{query}"', lang, { query: displaySelection }),
       click: () => event.sender.send('context-menu-command', { command: 'search-google', text: cleanText })
     }));
 
+    const translateLabel = targetLang === 'nl' ? '🌐 Vertalen naar het Nederlands' :
+      (targetLang === 'de' ? '🌐 Auf Deutsch übersetzen' :
+      (targetLang === 'fr' ? '🌐 Traduire en français' :
+      (targetLang === 'es' ? '🌐 Traducir al español' :
+      tMain('🌐 Translate to English', lang))));
+
     menu.append(new MenuItem({
-      label: '🌐 Translate to English',
+      label: translateLabel,
       click: () => {
-        const translateUrl = `https://translate.google.com/?sl=auto&tl=en&text=${encodeURIComponent(cleanText)}&op=translate`;
+        const translateUrl = `https://translate.google.com/?sl=auto&tl=${encodeURIComponent(targetLang)}&text=${encodeURIComponent(cleanText)}&op=translate`;
         event.sender.send('context-menu-command', { command: 'create-tab', url: translateUrl });
       }
     }));
@@ -1194,16 +1409,16 @@ ipcMain.on('show-context-menu', (event, params) => {
     // AI Analysis (Labs)
     if (globalSettings.labs?.slop_scanner) {
       menu.append(new MenuItem({
-        label: '✨ Analyze AI Heuristics',
+        label: tMain('✨ Analyze AI Heuristics', lang),
         click: () => event.sender.send('context-menu-command', { command: 'check-slop', text: cleanText })
       }));
     }
 
     menu.append(new MenuItem({ type: 'separator' }));
 
-    menu.append(new MenuItem({ label: '📋 Copy', role: 'copy' }));
+    menu.append(new MenuItem({ label: tMain('📋 Copy', lang), role: 'copy' }));
     menu.append(new MenuItem({
-      label: '📝 Raw Copy (No formatting)',
+      label: tMain('📝 Raw Copy (No formatting)', lang),
       click: () => clipboard.writeText(cleanText)
     }));
     menu.append(new MenuItem({ type: 'separator' }));
@@ -1211,29 +1426,29 @@ ipcMain.on('show-context-menu', (event, params) => {
 
   // Input actions (if editable)
   if (params.isEditable) {
-    menu.append(new MenuItem({ label: '✂️ Cut', role: 'cut' }));
-    menu.append(new MenuItem({ label: '📋 Copy', role: 'copy' }));
-    menu.append(new MenuItem({ label: '📥 Paste', role: 'paste' }));
+    menu.append(new MenuItem({ label: tMain('✂️ Cut', lang), role: 'cut' }));
+    menu.append(new MenuItem({ label: tMain('📋 Copy', lang), role: 'copy' }));
+    menu.append(new MenuItem({ label: tMain('📥 Paste', lang), role: 'paste' }));
     menu.append(new MenuItem({ type: 'separator' }));
-    menu.append(new MenuItem({ label: '✅ Select All', role: 'selectAll' }));
+    menu.append(new MenuItem({ label: tMain('✅ Select All', lang), role: 'selectAll' }));
     menu.append(new MenuItem({ type: 'separator' }));
   }
 
   // Page Global Actions
   if (!params.selectionText && !params.linkURL && !params.mediaType && !params.isBrowserUI) {
     menu.append(new MenuItem({
-      label: '💾 Save Page As...',
+      label: tMain('💾 Save Page As...', lang),
       accelerator: 'CmdOrCtrl+S',
       click: () => event.sender.send('context-menu-command', { command: 'save-page' })
     }));
     menu.append(new MenuItem({
-      label: '🖨️ Print...',
+      label: tMain('🖨️ Print...', lang),
       accelerator: 'CmdOrCtrl+P',
       click: () => event.sender.send('context-menu-command', { command: 'print' })
     }));
     menu.append(new MenuItem({ type: 'separator' }));
     menu.append(new MenuItem({
-      label: '📄 View Page Source',
+      label: tMain('📄 View Page Source', lang),
       accelerator: 'CmdOrCtrl+U',
       click: () => event.sender.send('context-menu-command', { command: 'view-source' })
     }));
@@ -1241,7 +1456,7 @@ ipcMain.on('show-context-menu', (event, params) => {
 
   if (!isCriticalMode && (!params.isBrowserUI || isDev)) {
     menu.append(new MenuItem({
-      label: '🛠️ Inspect Element',
+      label: tMain('🛠️ Inspect Element', lang),
       accelerator: 'F12',
       click: () => {
         const targetContents = params.webContentsId ? webContents.fromId(params.webContentsId) : event.sender;
@@ -1260,53 +1475,54 @@ ipcMain.on('show-context-menu', (event, params) => {
 });
 
 ipcMain.on('show-tab-context-menu', (event, data) => {
+  const lang = data.lang || 'en';
   const menu = new Menu();
 
   if (data.tabId) {
     menu.append(new MenuItem({
-      label: '🔄 Reload Tab',
+      label: tMain('🔄 Reload Tab', lang),
       click: () => event.sender.send('tab-command', { command: 'reload', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({
-      label: '📑 Duplicate Tab',
+      label: tMain('📑 Duplicate Tab', lang),
       click: () => event.sender.send('tab-command', { command: 'duplicate', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({ type: 'separator' }));
 
     menu.append(new MenuItem({
-      label: data.isPinned ? '📍 Unpin Tab' : '📌 Pin Tab',
+      label: data.isPinned ? tMain('📍 Unpin Tab', lang) : tMain('📌 Pin Tab', lang),
       click: () => event.sender.send('tab-command', { command: 'toggle-pin', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({
-      label: data.isMuted ? '🔊 Unmute Tab' : '🔇 Mute Tab',
+      label: data.isMuted ? tMain('🔊 Unmute Tab', lang) : tMain('🔇 Mute Tab', lang),
       click: () => event.sender.send('tab-command', { command: 'toggle-mute', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({ type: 'separator' }));
 
     menu.append(new MenuItem({
-      label: '❌ Close Tab',
+      label: tMain('❌ Close Tab', lang),
       accelerator: 'CmdOrCtrl+W',
       click: () => event.sender.send('tab-command', { command: 'close', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({
-      label: '🚫 Close Other Tabs',
+      label: tMain('🚫 Close Other Tabs', lang),
       click: () => event.sender.send('tab-command', { command: 'close-others', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({
-      label: '➡️ Close Tabs to the Right',
+      label: tMain('➡️ Close Tabs to the Right', lang),
       click: () => event.sender.send('tab-command', { command: 'close-right', tabId: data.tabId })
     }));
 
     menu.append(new MenuItem({ type: 'separator' }));
   } else {
     menu.append(new MenuItem({
-      label: '➕ New Tab',
+      label: tMain('➕ New Tab', lang),
       accelerator: 'CmdOrCtrl+T',
       click: () => event.sender.send('tab-command', { command: 'new-tab' })
     }));
@@ -1314,7 +1530,7 @@ ipcMain.on('show-tab-context-menu', (event, data) => {
   }
 
   menu.append(new MenuItem({
-    label: '🕒 Reopen Closed Tab',
+    label: tMain('🕒 Reopen Closed Tab', lang),
     enabled: closedTabsCount > 0,
     accelerator: 'CmdOrCtrl+Shift+T',
     click: () => event.sender.send('reopen-closed-tab')
@@ -1695,6 +1911,13 @@ app.whenReady().then(async () => {
   app.on('activate', function () {
 
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
   });
 });
 
