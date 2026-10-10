@@ -715,20 +715,32 @@ function createWindow() {
     icon: path.join(__dirname, 'images/icon.png')
   });
 
-  if (isLinux) {
-    mainWindow.on('maximize', () => {
-      safeSend('window-state-changed', 'maximized');
-    });
-    mainWindow.on('unmaximize', () => {
-      safeSend('window-state-changed', 'normal');
-    });
-    mainWindow.on('enter-html-full-screen', () => {
-      safeSend('window-state-changed', 'fullscreen');
-    });
-    mainWindow.on('leave-html-full-screen', () => {
-      safeSend('window-state-changed', mainWindow.isMaximized() ? 'maximized' : 'normal');
-    });
-  }
+  // Window state change handlers across all platforms
+  mainWindow.on('maximize', () => {
+    safeSend('window-state-changed', 'maximized');
+  });
+  mainWindow.on('unmaximize', () => {
+    safeSend('window-state-changed', 'normal');
+  });
+  mainWindow.on('enter-full-screen', () => {
+    safeSend('window-state-changed', 'fullscreen');
+  });
+  mainWindow.on('leave-full-screen', () => {
+    safeSend('window-state-changed', mainWindow.isMaximized() ? 'maximized' : 'normal');
+    safeSend('leave-fullscreen-force');
+
+    // Workaround for macOS layout bug where hidden titleBarStyle causes the window bounds
+    // to shift or hide the HTML tab bar upon exiting fullscreen. Forcing a resize reflow fixes it.
+    if (process.platform === 'darwin') {
+      const bounds = mainWindow.getBounds();
+      mainWindow.setBounds({ ...bounds, height: bounds.height + 1 });
+      setTimeout(() => {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.setBounds(bounds);
+        }
+      }, 50);
+    }
+  });
 
   // Explicitly force size and centering to override any OS-level window persistence
   if (isRecoveryMode) {
@@ -755,6 +767,10 @@ function createWindow() {
   mainWindow.webContents.setMaxListeners(30);
 
   // Handle fullscreen requests from webviews (e.g. YouTube fullscreen button)
+  let wasMaximized = false;
+  let normalBounds = null;
+
+  // Handle fullscreen requests from webviews (e.g. YouTube fullscreen button)
   // Using webContents events directly is the most reliable approach
   mainWindow.webContents.on('enter-html-full-screen', () => {
     wasMaximized = mainWindow.isMaximized();
@@ -770,6 +786,7 @@ function createWindow() {
       mainWindow.setResizable(false);
     }
     mainWindow.setFullScreen(true);
+    safeSend('window-state-changed', 'fullscreen');
   });
   mainWindow.webContents.on('leave-html-full-screen', () => {
     mainWindow.setFullScreen(false);
@@ -786,11 +803,9 @@ function createWindow() {
       normalBounds = null;
       wasMaximized = false;
     }
+    safeSend('window-state-changed', mainWindow.isMaximized() ? 'maximized' : 'normal');
+    safeSend('leave-fullscreen-force');
   });
-
-  // mainWindow.webContents.openDevTools();
-  let wasMaximized = false;
-  let normalBounds = null;
 
   // Block DevTools in Critical Mode
   mainWindow.webContents.on('devtools-opened', () => {
@@ -811,7 +826,32 @@ function createWindow() {
       if (isCriticalMode) contents.closeDevTools();
     });
 
+    // Webview HTML fullscreen synchronization
+    contents.on('enter-html-full-screen', () => {
+      if (mainWindow && !mainWindow.isFullScreen()) {
+        mainWindow.setFullScreen(true);
+      }
+      safeSend('window-state-changed', 'fullscreen');
+    });
+
+    contents.on('leave-html-full-screen', () => {
+      if (mainWindow && mainWindow.isFullScreen()) {
+        mainWindow.setFullScreen(false);
+      }
+      safeSend('window-state-changed', mainWindow && mainWindow.isMaximized() ? 'maximized' : 'normal');
+      safeSend('leave-fullscreen-force');
+    });
+
     contents.on('before-input-event', (e, input) => {
+      // Fullscreen Escape handling
+      if (input.key === 'Escape' && input.type === 'keyDown') {
+        if (mainWindow && mainWindow.isFullScreen()) {
+          contents.executeJavaScript('if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); }').catch(() => {});
+          mainWindow.setFullScreen(false);
+          safeSend('leave-fullscreen-force');
+        }
+      }
+
       // Find in Page: Ctrl + F or F3
       if (((input.control && !input.shift && input.key.toLowerCase() === 'f') || input.key.toLowerCase() === 'f3') && input.type === 'keyDown') {
         if (isCriticalMode) { e.preventDefault(); return; }
@@ -833,8 +873,6 @@ function createWindow() {
         safeSend('trigger-offline-game');
         e.preventDefault();
       }
-
-
     });
 
     // Navigation Restriction in Critical Mode
@@ -1963,4 +2001,11 @@ ipcMain.on('open-popup-window', (event, url) => {
   });
 
   popupWin.loadURL(url);
+});
+
+ipcMain.on('exit-html-fullscreen', () => {
+  if (mainWindow && mainWindow.isFullScreen()) {
+    mainWindow.setFullScreen(false);
+  }
+  safeSend('leave-fullscreen-force');
 });

@@ -5167,6 +5167,9 @@ class TabManager {
 
     tab.webviewEl.addEventListener('leave-html-full-screen', () => {
       document.body.classList.remove('video-fullscreen');
+      try {
+        window.require('electron').ipcRenderer.send('exit-html-fullscreen');
+      } catch (err) {}
     });
 
     // Close dropdowns when clicking on the webview (registers as focus)
@@ -9046,11 +9049,11 @@ window.onload = async () => {
     window.tabManager.createTab('home');
   }
 
-  // Handle Linux window controls and state changes
-  if (process.platform === 'linux') {
-    try {
-      const ipc = window.require('electron').ipcRenderer;
+  // Window controls and fullscreen state management across all platforms
+  try {
+    const ipc = window.require('electron').ipcRenderer;
 
+    if (process.platform === 'linux') {
       const btnMin = document.getElementById('btn-linux-minimize');
       const btnMax = document.getElementById('btn-linux-maximize');
       const btnClose = document.getElementById('btn-linux-close');
@@ -9058,22 +9061,50 @@ window.onload = async () => {
       if (btnMin) btnMin.addEventListener('click', () => ipc.send('window-minimize'));
       if (btnMax) btnMax.addEventListener('click', () => ipc.send('window-maximize'));
       if (btnClose) btnClose.addEventListener('click', () => ipc.send('window-close'));
-
-      ipc.on('window-state-changed', (e, state) => {
-        if (state === 'maximized') {
-          document.body.classList.add('maximized');
-          document.body.classList.remove('fullscreen');
-        } else if (state === 'fullscreen') {
-          document.body.classList.add('fullscreen');
-          document.body.classList.remove('maximized');
-        } else {
-          document.body.classList.remove('maximized');
-          document.body.classList.remove('fullscreen');
-        }
-      });
-    } catch (e) {
-      console.warn('IPC / Electron not available for window controls', e);
     }
+
+    const cleanupFullscreen = () => {
+      document.body.classList.remove('fullscreen');
+      document.body.classList.remove('video-fullscreen');
+
+      // Force any webviews currently holding HTML fullscreen to exit cleanly
+      if (window.tabManager && Array.isArray(window.tabManager.tabs)) {
+        window.tabManager.tabs.forEach(tab => {
+          if (tab.webviewEl) {
+            tab.webviewEl.executeJavaScript('if (document.fullscreenElement) document.exitFullscreen();').catch(() => {});
+          }
+        });
+      }
+    };
+
+    ipc.on('window-state-changed', (e, state) => {
+      if (state === 'maximized') {
+        document.body.classList.add('maximized');
+        document.body.classList.remove('fullscreen');
+        document.body.classList.remove('video-fullscreen');
+      } else if (state === 'fullscreen') {
+        document.body.classList.add('fullscreen');
+        document.body.classList.remove('maximized');
+      } else {
+        document.body.classList.remove('maximized');
+        cleanupFullscreen();
+      }
+    });
+
+    ipc.on('leave-fullscreen-force', () => {
+      cleanupFullscreen();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.body.classList.contains('video-fullscreen')) {
+        cleanupFullscreen();
+        try {
+          ipc.send('exit-html-fullscreen');
+        } catch (err) {}
+      }
+    });
+  } catch (e) {
+    console.warn('IPC / Electron not available for window controls', e);
   }
 
   // Set up MutationObserver to shift webviews down when dropdown menus are open (Linux only)
