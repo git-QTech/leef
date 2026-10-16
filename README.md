@@ -9,10 +9,12 @@ A fast, lightweight Chromium browser built with one purpose. No AI overviews, no
 - **Speed**: Optimized for rapid page loads with a minimalist, modern UI.
 - **No Telemetry**: Leef collects zero analytics or tracking data. Since we're fully open source, you don't have to take our word for it.*
 
-## Security
+## Security & Verification
 Leef is actively maintained with security updates and a clear response policy — critical patches
 are issued within 14 days of a verified report. If you discover a vulnerability, please report
 it. See [SECURITY](SECURITY.md) for full details.
+
+Every release provides cryptographic SHA-256 checksums and SLSA provenance attestations so you can verify that downloaded binaries match the source code line-for-line. See [VERIFICATION](VERIFICATION.md).
 
 ## Socials
 - **Bluesky:** [leefbrowser](https://bsky.app/profile/leefbrowser.bsky.social)

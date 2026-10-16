@@ -523,6 +523,64 @@
         <div class="update-card">
           <div class="update-header-meta">
             <span class="changelog-badge latest" data-i18n="Latest">Latest</span>
+            <span class="changelog-badge date">October 15, 2026</span>
+          </div>
+          <h2 class="changelog-title">v1.2.1</h2>
+          <p class="changelog-desc"
+            data-i18n="Cryptographic build provenance, automated release checksums to verify downloads match the source code, and a fix for macOS fullscreen window restoration.">
+            Cryptographic build provenance, automated release checksums to verify downloads match the source code, and a fix for macOS fullscreen window restoration.</p>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category security" data-i18n="Security">Security</span>
+              <span class="changelog-section-title" data-i18n="Build & Download Verification">Build & Download Verification</span>
+            </div>
+            <ul>
+              <li>
+                <strong data-i18n="Cryptographic Release Checksums">Cryptographic Release Checksums</strong>
+                <p
+                  data-i18n="Every Leef release now includes automated SHA-256 checksums (SHA256SUMS.txt) so users can mathematically verify that their downloaded installer was not altered or corrupted.">
+                  Every Leef release now includes automated SHA-256 checksums (SHA256SUMS.txt) so users can mathematically verify that their downloaded installer was not altered or corrupted.</p>
+              </li>
+              <li>
+                <strong data-i18n="GitHub Artifact Attestations (SLSA)">GitHub Artifact Attestations (SLSA)</strong>
+                <p
+                  data-i18n="Releases are cryptographically attested via Sigstore and SLSA framework, providing an official verified badge proving that the download came directly from the exact commit in the source repository.">
+                  Releases are cryptographically attested via Sigstore and SLSA framework, providing an official verified badge proving that the download came directly from the exact commit in the source repository.</p>
+              </li>
+              <li>
+                <strong data-i18n="Direct ASAR Inspection Guide">Direct ASAR Inspection Guide</strong>
+                <p
+                  data-i18n="Added comprehensive documentation showing how anyone can unpack the application bundle and inspect the running code line-for-line against the open-source repository.">
+                  Added comprehensive documentation showing how anyone can unpack the application bundle and inspect the running code line-for-line against the open-source repository.</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category bug-fixes" data-i18n="Bug fixes">Bug fixes</span>
+              <span class="changelog-section-title" data-i18n="macOS & Stability">macOS & Stability</span>
+            </div>
+            <ul>
+              <li>
+                <strong data-i18n="macOS Fullscreen Restoration Fix">macOS Fullscreen Restoration Fix</strong>
+                <p
+                  data-i18n="Fixed a bug on macOS where exiting fullscreen (such as full-screen HTML5 video or window zoom) caused Leef to stay locked and not revert back to its normal layout.">
+                  Fixed a bug on macOS where exiting fullscreen (such as full-screen HTML5 video or window zoom) caused Leef to stay locked and not revert back to its normal layout.</p>
+              </li>
+              <li>
+                <strong data-i18n="macOS Build Compatibility">macOS Build Compatibility</strong>
+                <p
+                  data-i18n="Configured macOS Universal builds with relaxed identity discovery so pulling and building locally on macOS works smoothly without keychain code-signing conflicts.">
+                  Configured macOS Universal builds with relaxed identity discovery so pulling and building locally on macOS works smoothly without keychain code-signing conflicts.</p>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="update-card">
+          <div class="update-header-meta">
             <span class="changelog-badge date">October 8, 2026</span>
           </div>
           <h2 class="changelog-title">v1.2.0</h2>

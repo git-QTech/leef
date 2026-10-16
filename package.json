@@ -1,6 +1,6 @@
 {
   "name": "private-browser",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "Leef is a fast, private, and modern Electron-based web browser built for everyday use.",
   "homepage": "https://leefbrowser.site",
@@ -24,7 +24,8 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win",
     "dist:mac": "electron-builder --mac --universal",
-    "dist:linux": "electron-builder --linux"
+    "dist:linux": "electron-builder --linux",
+    "checksums": "node scripts/generate-checksums.cjs"
   },
   "dependencies": {
     "@ghostery/adblocker-electron": "^2.14.1",
@@ -86,6 +87,8 @@
     },
     "mac": {
       "icon": "images/icon.png",
+      "category": "public.app-category.developer-tools",
+      "identity": null,
       "target": [
         "dmg",
         "zip"

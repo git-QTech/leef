@@ -65,8 +65,8 @@ Leef Browser is built on **Electron** and uses the following security configurat
 - `contextIsolation: true` / `nodeIntegration: false` — secure preload-based IPC model is used to isolate the renderer from Node.js capabilities
 - `sandbox: true` — WebViews explicitly run in an isolated OS-level sandbox
 - Content Security Policy (CSP) is active to prevent unauthorized inline script execution
-- All network-level ad/tracker blocking is handled in the main process via `session.webRequest`
 - No external analytics or telemetry is collected
+- Release Integrity & Attestation: Every release provides cryptographic SHA-256 checksums and SLSA provenance attestations. See [VERIFICATION.md](VERIFICATION.md) for instructions on how to verify installers.
 
 ---
 

@@ -1,5 +1,5 @@
 /**
- * Leef Browser - Advanced i18n & Localization Engine (v1.2.0)
+ * Leef Browser - Advanced i18n & Localization Engine (v1.2.1)
  * Provides robust key lookup, HTML entity decoding, shared vocabulary fallback,
  * parameter interpolation, regional spelling adaptation, and fluid DOM localization.
  */

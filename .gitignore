@@ -4,3 +4,7 @@ dist-electron/
 *.log
 .env
 .DS_Store
+.AppleDouble
+.LSOverride
+.builder-cache/
+dist-merged/

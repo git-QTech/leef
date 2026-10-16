@@ -1,0 +1,15 @@
+# Auto detect text files and perform LF normalization on commit/checkout
+* text=auto eol=lf
+
+# Explicit binary file formats to protect against line ending alterations
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.icns binary
+*.ttf binary
+*.woff2 binary
+*.exe binary
+*.dmg binary
+*.zip binary
+*.blockmap binary
