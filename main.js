@@ -1069,8 +1069,8 @@ ipcMain.on('apply-settings', async (event, settings) => {
   });
 
   // HTTPS-Only redirect + AI blocking via onBeforeRequest complement
-  // We use a named filter to only target http:// navigations and google searches
-  if (settings.httpsOnly || settings.blockAIOverview || settings.labs?.force_safe_off) {
+  const isBlockAI = settings.blockAIOverview === 'deep' || settings.blockAIOverview === 'hide' || settings.blockAIOverview === true;
+  if (settings.httpsOnly || isBlockAI || settings.labs?.force_safe_off) {
     // These are handled by Ghostery's pipeline safely by hooking into
     // the webContents will-navigate event on the webview in renderer instead.
     // Signal renderer to apply these via IPC

@@ -523,6 +523,97 @@
         <div class="update-card">
           <div class="update-header-meta">
             <span class="changelog-badge latest" data-i18n="Latest">Latest</span>
+            <span class="changelog-badge date">October 18, 2026</span>
+          </div>
+          <h2 class="changelog-title">v1.2.2</h2>
+          <p class="changelog-desc"
+            data-i18n="Custom Hub greeting names, configurable timezone selection, tiered Google AI Overview blocking (Deep Block vs Visual Hide), Wiktionary fallback for native dictionary definitions, address bar autofill click fixes, and high-severity security patches.">
+            Custom Hub greeting names, configurable timezone selection, tiered Google AI Overview blocking (Deep Block vs Visual Hide), Wiktionary fallback for native dictionary definitions, address bar autofill click fixes, and high-severity security patches.</p>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category new-features" data-i18n="New features">New features</span>
+              <span class="changelog-section-title" data-i18n="Hub Personalization &amp; Timezones">Hub Personalization &amp; Timezones</span>
+            </div>
+            <ul>
+              <li>
+                <strong data-i18n="Personalized Hub Greeting Name">Personalized Hub Greeting Name</strong>
+                <p
+                  data-i18n="Set your own name in Settings &gt; Hub to have the Hub clock greeting address you personally (e.g. &quot;Good Morning, Alex&quot;). Seamlessly supports all translations.">
+                  Set your own name in Settings &gt; Hub to have the Hub clock greeting address you personally (e.g. "Good Morning, Alex"). Seamlessly supports all translations.</p>
+              </li>
+              <li>
+                <strong data-i18n="Custom Timezone Selection">Custom Timezone Selection</strong>
+                <p
+                  data-i18n="Choose your preferred timezone in Settings &gt; Hub. Both the clock display and the time-of-day greeting automatically recalculate according to your chosen region.">
+                  Choose your preferred timezone in Settings &gt; Hub. Both the clock display and the time-of-day greeting automatically recalculate according to your chosen region.</p>
+              </li>
+              <li>
+                <strong data-i18n="Tiered Google AI Overview Blocker">Tiered Google AI Overview Blocker</strong>
+                <p
+                  data-i18n="Choose between Deep Block (server-level Web mode via &amp;udm=14, completely stopping Google from generating AI on their servers), Visual Hide (in-page cosmetic hiding; note that Google still generates the AI overview in the background, but Leef hides it from view to preserve calculators and search widgets), or Off.">
+                  Choose between Deep Block (server-level Web mode via &amp;udm=14, completely stopping Google from generating AI on their servers), Visual Hide (in-page cosmetic hiding; note that Google still generates the AI overview in the background, but Leef hides it from view to preserve calculators and search widgets), or Off.</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category bug-fixes" data-i18n="Bug fixes">Bug fixes</span>
+              <span class="changelog-section-title" data-i18n="Browsing &amp; Search Enhancements">Browsing &amp; Search Enhancements</span>
+            </div>
+            <ul>
+              <li>
+                <strong data-i18n="Google AI Overview Toggle Unblock Fix">Google AI Overview Toggle Unblock Fix</strong>
+                <p
+                  data-i18n="Fixed an issue where toggling off the AI Overview blocker left injected hiding styles active in Google Search tabs. Toggling the setting now immediately restores AI Overviews across all current and future tabs.">
+                  Fixed an issue where toggling off the AI Overview blocker left injected hiding styles active in Google Search tabs. Toggling the setting now immediately restores AI Overviews across all current and future tabs.</p>
+              </li>
+              <li>
+                <strong data-i18n="Native Dictionary Offline &amp; Hang Prevention">Native Dictionary Offline &amp; Hang Prevention</strong>
+                <p
+                  data-i18n="Resolved dictionary lookup cards getting indefinitely stuck on &quot;Fetching definition…&quot;. Added a 3.5s timeout and automatic fallback to Wikimedia Wiktionary's fast, global CDN endpoint.">
+                  Resolved dictionary lookup cards getting indefinitely stuck on "Fetching definition…". Added a 3.5s timeout and automatic fallback to Wikimedia Wiktionary's fast, global CDN endpoint.</p>
+              </li>
+              <li>
+                <strong data-i18n="Address Bar Autofill Click Navigation">Address Bar Autofill Click Navigation</strong>
+                <p
+                  data-i18n="Fixed an issue where clicking on a suggestion in the autofill dropdown dismissed the popup without navigating due to premature input blur. Added mousedown default-prevention to guarantee clean navigation.">
+                  Fixed an issue where clicking on a suggestion in the autofill dropdown dismissed the popup without navigating due to premature input blur. Added mousedown default-prevention to guarantee clean navigation.</p>
+              </li>
+              <li>
+                <strong data-i18n="Fast Typing Enter Key Submission">Fast Typing Enter Key Submission</strong>
+                <p
+                  data-i18n="Fixed a race condition when typing quickly in the search bar and pressing Enter where the first suggestion would override or drop the last character typed.">
+                  Fixed a race condition when typing quickly in the search bar and pressing Enter where the first suggestion would override or drop the last character typed.</p>
+              </li>
+              <li>
+                <strong data-i18n="Linux Primary Selection Auto-Paste Fix">Linux Primary Selection Auto-Paste Fix</strong>
+                <p
+                  data-i18n="Fixed an issue on Linux where closing a tab and transitioning to a new tab or hub automatically pasted whatever text was highlighted on the OS into the address bar or search input without copying.">
+                  Fixed an issue on Linux where closing a tab and transitioning to a new tab or hub automatically pasted whatever text was highlighted on the OS into the address bar or search input without copying.</p>
+              </li>
+            </ul>
+          </div>
+
+          <div class="changelog-section">
+            <div class="changelog-section-header">
+              <span class="changelog-category security" data-i18n="Security">Security</span>
+              <span class="changelog-section-title" data-i18n="Dependency &amp; Engine Hardening">Dependency &amp; Engine Hardening</span>
+            </div>
+            <ul>
+              <li>
+                <strong data-i18n="High-Severity Dependency Vulnerability Resolution">High-Severity Dependency Vulnerability Resolution</strong>
+                <p
+                  data-i18n="Resolved 20 high-severity security vulnerabilities across dependencies including Electron runtime fixes (context isolation hardening, sandboxed iframe popups, and cross-origin checks), builder-util-runtime, ip-address, postcss, and extract-zip.">
+                  Resolved 20 high-severity security vulnerabilities across dependencies including Electron runtime fixes (context isolation hardening, sandboxed iframe popups, and cross-origin checks), builder-util-runtime, ip-address, postcss, and extract-zip.</p>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="update-card">
+          <div class="update-header-meta">
             <span class="changelog-badge date">October 15, 2026</span>
           </div>
           <h2 class="changelog-title">v1.2.1</h2>
@@ -1944,15 +2035,28 @@
             <div id="quick-links-tags" class="news-filter-tags"></div>
           </div>
 
-          <div class="setting-group toggle-group">
-            <div>
-              <h3><span data-i18n="Block AI Overviews">Block AI Overviews</span> <span class="beta-tag"
+          <div class="setting-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3><span data-i18n="Google AI Overview Blocker">Google AI Overview Blocker</span> <span class="beta-tag"
                   data-i18n="GOOGLE ONLY">GOOGLE ONLY</span></h3>
-              <p data-i18n="Force Google Search to show the 'Web' tab by default">Force Google Search to show the 'Web'
-                tab by default</p>
             </div>
-            <label class="switch"><input type="checkbox" id="block-ai-browsing" checked><span
-                class="slider"></span></label>
+            <p data-i18n="Configure how aggressively Leef eliminates AI Overviews from Google searches."
+              style="margin-bottom: 12px;">Configure how aggressively Leef eliminates AI Overviews from Google searches.</p>
+
+            <div class="radio-group">
+              <label class="radio-row">
+                <input type="radio" name="block-ai-tier-browsing" value="deep" checked>
+                <span data-i18n="Deep Block — Server-Level (&amp;udm=14). Stops Google from generating AI on their servers."><strong data-i18n="Deep Block">Deep Block</strong> — Server-Level (&amp;udm=14). Stops Google from generating AI on their servers.</span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="block-ai-tier-browsing" value="hide">
+                <span data-i18n="Visual Hide — In-page cosmetic hiding (Google still generates the AI Overview in the background, but Leef hides it from view). Preserves calculators &amp; search tools."><strong data-i18n="Visual Hide">Visual Hide</strong> — In-page cosmetic hiding (Google still generates the AI Overview in the background, but Leef hides it from view). Preserves calculators &amp; search tools.</span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="block-ai-tier-browsing" value="off">
+                <span data-i18n="Off — Standard Google Search with visible AI Overviews."><strong data-i18n="Off">Off</strong> — Standard Google Search with visible AI Overviews.</span>
+              </label>
+            </div>
           </div>
 
           <div class="setting-group toggle-group">
@@ -2077,14 +2181,28 @@
             </div>
             <label class="switch"><input type="checkbox" id="flag-gpc" checked><span class="slider"></span></label>
           </div>
-          <div class="setting-group toggle-group">
-            <div>
+          <div class="setting-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
               <h3><span data-i18n="Block Google AI Overview">Block Google AI Overview</span> <span
                   class="beta-tag">BETA</span></h3>
-              <p data-i18n="Seamlessly prevent AI Overviews from appearing in Google searches">Seamlessly prevent AI
-                Overviews from appearing in Google searches</p>
             </div>
-            <label class="switch"><input type="checkbox" id="block-ai" checked><span class="slider"></span></label>
+            <p data-i18n="Configure how aggressively Leef eliminates AI Overviews from Google searches."
+              style="margin-bottom: 12px;">Configure how aggressively Leef eliminates AI Overviews from Google searches.</p>
+
+            <div class="radio-group">
+              <label class="radio-row">
+                <input type="radio" name="block-ai-tier" value="deep" checked>
+                <span data-i18n="Deep Block — Server-Level (&amp;udm=14). Stops Google from generating AI on their servers."><strong data-i18n="Deep Block">Deep Block</strong> — Server-Level (&amp;udm=14). Stops Google from generating AI on their servers.</span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="block-ai-tier" value="hide">
+                <span data-i18n="Visual Hide — In-page cosmetic hiding (Google still generates the AI Overview in the background, but Leef hides it from view). Preserves calculators &amp; search tools."><strong data-i18n="Visual Hide">Visual Hide</strong> — In-page cosmetic hiding (Google still generates the AI Overview in the background, but Leef hides it from view). Preserves calculators &amp; search tools.</span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="block-ai-tier" value="off">
+                <span data-i18n="Off — Standard Google Search with visible AI Overviews."><strong data-i18n="Off">Off</strong> — Standard Google Search with visible AI Overviews.</span>
+              </label>
+            </div>
           </div>
           <div class="setting-group toggle-group">
             <div>
@@ -2124,6 +2242,24 @@
         <!-- Hub -->
         <div class="settings-section" id="sec-hub">
           <h1 data-i18n="Hub">Hub</h1>
+
+          <div class="setting-group">
+            <h3 data-i18n="Greeting Name">Greeting Name</h3>
+            <p data-i18n="Personalize the Hub clock greeting (e.g. Good morning, Alex). Leave blank for default."
+              style="margin-bottom: 8px;">Personalize the Hub clock greeting (e.g. Good morning, Alex). Leave blank for default.</p>
+            <input type="text" id="custom-greeting-name" placeholder="Enter your name..."
+              data-i18n-placeholder="Enter your name..." autocomplete="off" spellcheck="false"
+              class="news-filter-input" style="max-width: 320px;">
+          </div>
+
+          <div class="setting-group">
+            <h3 data-i18n="Timezone">Timezone</h3>
+            <p data-i18n="Select the timezone used for the Hub clock and greetings."
+              style="margin-bottom: 8px;">Select the timezone used for the Hub clock and greetings.</p>
+            <select id="hub-timezone-select" style="max-width: 360px;">
+              <option value="auto" data-i18n="System Default (Auto)">System Default (Auto)</option>
+            </select>
+          </div>
 
           <div class="setting-group toggle-group">
             <div>
@@ -3247,14 +3383,33 @@
             experience.</p>
         </div>
         <div class="onboarding-options">
-          <div class="onboarding-card">
-            <div style="flex: 1; padding-right: 16px;">
-              <h3 data-i18n="AI Overview Blocker">AI Overview Blocker</h3>
-              <p data-i18n="Automatically remove AI-generated summaries from Google search results.">Automatically
-                remove AI-generated summaries from Google search results.</p>
+          <div class="onboarding-card"
+            style="flex-direction: column; align-items: flex-start; gap: 12px; height: auto; padding: 20px;">
+            <div style="width: 100%;">
+              <h3 data-i18n="Google AI Overview Blocker">Google AI Overview Blocker</h3>
+              <p data-i18n="Configure how aggressively Leef eliminates AI Overviews from Google searches.">Configure how
+                aggressively Leef eliminates AI Overviews from Google searches.</p>
             </div>
-            <label class="switch" style="flex-shrink: 0;"><input type="checkbox" id="onboard-ai" checked><span
-                class="slider"></span></label>
+            <div class="radio-group" style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+              <label class="radio-row"
+                style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 6px 0;">
+                <input type="radio" name="onboard-ai-tier" value="deep" style="transform: scale(1.2);" checked>
+                <span style="font-size: 0.95rem; color: rgba(0,0,0,0.8);"><strong data-i18n="Deep Block">Deep Block</strong> — <span
+                    data-i18n="Server-Level (&amp;udm=14). Stops Google from generating AI on their servers.">Server-Level (&amp;udm=14). Stops Google from generating AI on their servers.</span></span>
+              </label>
+              <label class="radio-row"
+                style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 6px 0;">
+                <input type="radio" name="onboard-ai-tier" value="hide" style="transform: scale(1.2);">
+                <span style="font-size: 0.95rem; color: rgba(0,0,0,0.8);"><strong data-i18n="Visual Hide">Visual Hide</strong> — <span
+                    data-i18n="In-page cosmetic hiding (Google still generates the AI Overview in the background, but Leef hides it from view). Preserves calculators &amp; search tools.">In-page cosmetic hiding (Google still generates the AI Overview in the background, but Leef hides it from view). Preserves calculators &amp; search tools.</span></span>
+              </label>
+              <label class="radio-row"
+                style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 6px 0;">
+                <input type="radio" name="onboard-ai-tier" value="off" style="transform: scale(1.2);">
+                <span style="font-size: 0.95rem; color: rgba(0,0,0,0.8);"><strong data-i18n="Off">Off</strong> — <span
+                    data-i18n="Standard Google Search with visible AI Overviews.">Standard Google Search with visible AI Overviews.</span></span>
+              </label>
+            </div>
           </div>
 
           <div class="onboarding-card">

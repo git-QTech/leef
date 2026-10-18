@@ -110,7 +110,7 @@ if (process.platform === 'darwin') {
 
 // --- UTILITIES ---
 class BrowserUtils {
-  static parseAddress(str, engineBaseUrl, blockAI = true) {
+  static parseAddress(str, engineBaseUrl, blockAI = 'deep') {
     str = str.trim();
     const domainPattern = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/.*)?$/;
     if (!str.includes(' ') && (domainPattern.test(str) || str.startsWith('http://') || str.startsWith('https://') || str.startsWith('localhost:'))) {
@@ -119,6 +119,11 @@ class BrowserUtils {
     }
 
     let url = engineBaseUrl + encodeURIComponent(str);
+    const isGoogle = engineBaseUrl.includes('google.com/search') || engineBaseUrl.includes('google.co.');
+    const isDeep = blockAI === 'deep' || blockAI === true;
+    if (isGoogle && isDeep && !url.includes('udm=14')) {
+      url += '&udm=14';
+    }
     return url;
   }
 
@@ -173,7 +178,7 @@ class SettingsManager {
       backgroundLimit: false,
       allowNotifications: true,
       askDownload: false,
-      blockAIOverview: true,
+      blockAIOverview: 'deep', // 'deep', 'hide', 'off'
       nativeDictionary: true,
       autoCheckUpdates: true,
       customUa: '',
@@ -189,6 +194,8 @@ class SettingsManager {
       cpuLimit: 100,
       ramLimit: 0,
       customNewTab: 'home',
+      greetingName: '',
+      timezone: 'auto',
       sitePermissions: {},
       newsWordFilters: [],
       followedTeams: [],
@@ -207,6 +214,15 @@ class SettingsManager {
   loadSavedSettings() {
     try {
       const saved = JSON.parse(localStorage.getItem('leef_settings') || '{}');
+
+      // Normalize legacy boolean blockAIOverview to tiered mode
+      if (saved.blockAIOverview === true || saved.blockAIOverview === 'true') {
+        saved.blockAIOverview = 'deep';
+      } else if (saved.blockAIOverview === false || saved.blockAIOverview === 'false') {
+        saved.blockAIOverview = 'off';
+      } else if (saved.blockAIOverview && saved.blockAIOverview !== 'deep' && saved.blockAIOverview !== 'hide' && saved.blockAIOverview !== 'off') {
+        saved.blockAIOverview = 'deep';
+      }
 
       // Fallback: If saved language is not supported anymore, default to en
       const supported = ['en', 'en-gb', 'en-ca', 'fr', 'es', 'nl', 'de'];
@@ -303,11 +319,47 @@ class SettingsManager {
     if (document.getElementById('news-manual-refresh')) document.getElementById('news-manual-refresh').checked = s.newsManualRefresh;
     if (document.getElementById('news-provider-select')) document.getElementById('news-provider-select').value = s.newsProvider || 'bbc';
     if (document.getElementById('hide-sports-until-near-start')) document.getElementById('hide-sports-until-near-start').checked = !!s.hideSportsUntilNearStart;
+    if (el('custom-greeting-name')) el('custom-greeting-name').value = s.greetingName || '';
+    if (el('hub-timezone-select')) {
+      const tzSelect = el('hub-timezone-select');
+      // Populate timezones once if needed
+      if (tzSelect.options.length <= 1) {
+        let zones = [];
+        if (typeof Intl !== 'undefined' && Intl.supportedValuesOf) {
+          try {
+            zones = Intl.supportedValuesOf('timeZone');
+          } catch (e) { }
+        }
+        if (!zones || zones.length === 0) {
+          zones = [
+            'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+            'America/Anchorage', 'America/Honolulu', 'America/Toronto', 'America/Vancouver',
+            'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Rome', 'Europe/Madrid',
+            'Europe/Amsterdam', 'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Singapore', 'Asia/Kolkata',
+            'Asia/Dubai', 'Australia/Sydney', 'Australia/Melbourne', 'Pacific/Auckland'
+          ];
+        }
+        zones.forEach(tz => {
+          const opt = document.createElement('option');
+          opt.value = tz;
+          opt.textContent = tz.replace(/_/g, ' ');
+          tzSelect.appendChild(opt);
+        });
+      }
+      tzSelect.value = s.timezone || 'auto';
+    }
+
     if (el('allow-notifications')) el('allow-notifications').checked = s.allowNotifications;
     if (el('ask-download')) el('ask-download').checked = s.askDownload;
 
-    if (el('block-ai')) el('block-ai').checked = s.blockAIOverview;
-    if (el('block-ai-browsing')) el('block-ai-browsing').checked = s.blockAIOverview;
+    let aiMode = s.blockAIOverview;
+    if (aiMode === true) aiMode = 'deep';
+    else if (aiMode === false) aiMode = 'off';
+    else if (aiMode !== 'deep' && aiMode !== 'hide' && aiMode !== 'off') aiMode = 'deep';
+
+    document.querySelectorAll('input[name="block-ai-tier"]').forEach(r => { r.checked = r.value === aiMode; });
+    document.querySelectorAll('input[name="block-ai-tier-browsing"]').forEach(r => { r.checked = r.value === aiMode; });
+    document.querySelectorAll('input[name="onboard-ai-tier"]').forEach(r => { r.checked = r.value === aiMode; });
 
     if (el('native-dictionary')) el('native-dictionary').checked = s.nativeDictionary !== false;
     if (el('native-dictionary-browsing')) el('native-dictionary-browsing').checked = s.nativeDictionary !== false;
@@ -505,7 +557,7 @@ class SettingsManager {
       }
     };
 
-    ['search-engine-select', 'block-ai', 'native-dictionary', 'live-autocomplete'].forEach(baseId => {
+    ['search-engine-select', 'native-dictionary', 'live-autocomplete'].forEach(baseId => {
       const el1 = document.getElementById(baseId);
       const el2 = document.getElementById(baseId + '-browsing');
       if (el1 && el2) {
@@ -523,6 +575,28 @@ class SettingsManager {
           el2.addEventListener('change', () => el1.checked = el2.checked);
         }
       }
+    });
+
+    document.querySelectorAll('input[name="block-ai-tier"]').forEach(r => {
+      r.addEventListener('change', () => {
+        if (r.checked) {
+          document.querySelectorAll('input[name="block-ai-tier-browsing"]').forEach(b => {
+            b.checked = b.value === r.value;
+          });
+          this.saveSettings();
+        }
+      });
+    });
+
+    document.querySelectorAll('input[name="block-ai-tier-browsing"]').forEach(r => {
+      r.addEventListener('change', () => {
+        if (r.checked) {
+          document.querySelectorAll('input[name="block-ai-tier"]').forEach(b => {
+            b.checked = b.value === r.value;
+          });
+          this.saveSettings();
+        }
+      });
     });
 
     // Auto-save settings on change because i fucked up the first 3 times
@@ -837,7 +911,9 @@ class SettingsManager {
       enableVolumeBoost: document.getElementById('enable-volume-boost').checked,
       allowNotifications: document.getElementById('allow-notifications').checked,
       askDownload: document.getElementById('ask-download').checked,
-      blockAIOverview: document.getElementById('block-ai').checked,
+      blockAIOverview: document.querySelector('input[name="block-ai-tier"]:checked')?.value
+        || document.querySelector('input[name="block-ai-tier-browsing"]:checked')?.value
+        || 'deep',
       nativeDictionary: document.getElementById('native-dictionary') ? document.getElementById('native-dictionary').checked : true,
       customUa: document.getElementById('custom-ua').value,
       dohToggle: document.getElementById('doh-toggle').checked,
@@ -851,6 +927,8 @@ class SettingsManager {
       cpuLimit: parseInt(document.getElementById('cpu-limit-slider').value),
       ramLimit: parseInt(document.getElementById('ram-limit-slider').value),
       customNewTab: document.getElementById('custom-new-tab')?.value || '',
+      greetingName: document.getElementById('custom-greeting-name')?.value?.trim() || '',
+      timezone: document.getElementById('hub-timezone-select')?.value || 'auto',
       newsWordFilters: this.currentSettings.newsWordFilters || [],
       followedTeams: this.currentSettings.followedTeams || [],
       quickLinksStr: this.currentSettings.quickLinksStr
@@ -903,6 +981,78 @@ class SettingsManager {
 
       // Sync Privacy Manager UI (v0.3.3)
       if (window.privacyManager) window.privacyManager.updateUI();
+
+      // Immediately update all existing tabs when blockAIOverview is toggled
+      if (window.tabManager && Array.isArray(window.tabManager.tabs)) {
+        window.tabManager.tabs.forEach(tab => {
+          if (tab.webviewEl && tab.url && (tab.url.includes('google.com') || tab.url.includes('google.co.'))) {
+            const aiMode = this.currentSettings.blockAIOverview;
+            const isBlocked = aiMode === 'deep' || aiMode === 'hide' || aiMode === true;
+            if (isBlocked) {
+              const aiCSS = `
+                [data-attnms],
+                .Kevs9.SLPe5b:has([data-attnms]),
+                div[data-attrid="AIOverview"],
+                [data-attrid="VisualDigestGeneratedDescription"],
+                [jsname="YrZdPb"][data-evn],
+                [jscontroller="Elkdbc"],
+                .oGdvd {
+                  display: none !important;
+                  visibility: hidden !important;
+                  height: 0 !important;
+                  opacity: 0 !important;
+                  pointer-events: none !important;
+                }
+              `;
+              tab.webviewEl.insertCSS(aiCSS).catch(() => { });
+              tab.webviewEl.executeJavaScript(`
+                window.__leefBlockAIEnabled = true;
+                window.__leefBlockAIMode = '${aiMode === 'hide' ? 'hide' : 'deep'}';
+                if (window.blockAIBox && typeof window.blockAIBox === 'function') {
+                  window.blockAIBox();
+                }
+              `).catch(() => { });
+            } else {
+              const restoreCSS = `
+                [data-attnms],
+                .Kevs9.SLPe5b:has([data-attnms]),
+                div[data-attrid="AIOverview"],
+                [data-attrid="VisualDigestGeneratedDescription"],
+                [jsname="YrZdPb"][data-evn],
+                [jscontroller="Elkdbc"],
+                .oGdvd {
+                  display: revert !important;
+                  visibility: visible !important;
+                  height: auto !important;
+                  opacity: 1 !important;
+                  pointer-events: auto !important;
+                }
+              `;
+              tab.webviewEl.insertCSS(restoreCSS).catch(() => { });
+              tab.webviewEl.executeJavaScript(`
+                window.__leefBlockAIEnabled = false;
+                const selectors = [
+                  '[data-attnms]', '.Kevs9.SLPe5b:has([data-attnms])', 'div[data-attrid="AIOverview"]', 
+                  '[data-attrid="VisualDigestGeneratedDescription"]', '[jsname="YrZdPb"][data-evn]', 
+                  '[jscontroller="Elkdbc"]', '.oGdvd'
+                ];
+                selectors.forEach(sel => {
+                  document.querySelectorAll(sel).forEach(el => {
+                    el.style.removeProperty('display');
+                    el.style.removeProperty('visibility');
+                    el.style.removeProperty('height');
+                  });
+                });
+              `).catch(() => { });
+            }
+          }
+        });
+      }
+
+      // Update hero clock and greeting immediately
+      if (window.heroManager && typeof window.heroManager.update === 'function') {
+        window.heroManager.update();
+      }
     } catch (e) { console.log("IPC not available", e); }
   }
 
@@ -3604,7 +3754,10 @@ function getInjectSkeletonJS() {
       function getCol() {
         return document.getElementById('center_col') ||
                document.getElementById('rso') ||
-               document.getElementById('search');
+               document.getElementById('search') ||
+               document.querySelector('div[role="main"]') ||
+               document.getElementById('main') ||
+               document.querySelector('#rcnt');
       }
 
       function inject(colEl) {
@@ -3670,6 +3823,62 @@ function getInjectSkeletonJS() {
   `;
 }
 
+async function fetchWordDefinition(word) {
+  const cleanWord = word.trim().toLowerCase();
+  
+  // 1. Try Free Dictionary API with a 3.5s timeout
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 3500);
+    const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(cleanWord)}`, {
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.length) return data[0];
+    }
+  } catch (e) {
+    // Timeout or network error, proceed to fallback
+  }
+
+  // 2. Fallback to Wikimedia Wiktionary REST API (fast, reliable, global CDN)
+  try {
+    const wCtrl = new AbortController();
+    const wTimer = setTimeout(() => wCtrl.abort(), 4000);
+    const wRes = await fetch(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(cleanWord)}`, {
+      signal: wCtrl.signal
+    });
+    clearTimeout(wTimer);
+    if (wRes.ok) {
+      const wData = await wRes.json();
+      if (wData && wData.en && wData.en.length) {
+        const stripHtml = (html) => (html || '').replace(/<[^>]+>/g, '').trim();
+        const meanings = wData.en.slice(0, 3).map(section => ({
+          partOfSpeech: (section.partOfSpeech || '').toLowerCase(),
+          definitions: (section.definitions || []).slice(0, 2).map(d => ({
+            definition: stripHtml(d.definition || ''),
+            example: stripHtml(d.examples && d.examples[0] ? d.examples[0] : (d.parsedExamples && d.parsedExamples[0] ? d.parsedExamples[0].example : ''))
+          })).filter(d => d.definition)
+        })).filter(m => m.definitions.length > 0);
+
+        if (meanings.length > 0) {
+          return {
+            word: word,
+            phonetic: '',
+            audio: '',
+            meanings: meanings
+          };
+        }
+      }
+    }
+  } catch (e) {
+    // Wiktionary failed or timed out
+  }
+
+  throw new Error('Definition not found');
+}
+
 function getInjectSuccessJS(entry) {
   const phoneticText = entry.phonetic ||
     (entry.phonetics && entry.phonetics.find(p => p.text)?.text) || '';
@@ -3706,7 +3915,10 @@ function getInjectSuccessJS(entry) {
       function getCol() {
         return document.getElementById('center_col') ||
                document.getElementById('rso') ||
-               document.getElementById('search');
+               document.getElementById('search') ||
+               document.querySelector('div[role="main"]') ||
+               document.getElementById('main') ||
+               document.querySelector('#rcnt');
       }
 
       const d = ${payload};
@@ -3845,12 +4057,10 @@ function handleAutocorrectFallback(tab) {
     if (window.toastManager) window.toastManager.show('📖 Leef Dictionary (Beta)', `Looking up "${correctedWord}"…`, 15000);
     tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => { });
 
-    tab._dictFetch = fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(correctedWord.toLowerCase())}`)
-      .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
+    tab._dictFetch = fetchWordDefinition(correctedWord)
       .then(data => {
         tab._dictLoading = false;
-        if (!data || !data.length) throw new Error('empty');
-        const successJS = getInjectSuccessJS(data[0]);
+        const successJS = getInjectSuccessJS(data);
         tab._dictResolvedJS = successJS;
         tab.webviewEl.executeJavaScript(successJS).catch(() => { });
         return successJS;
@@ -4121,13 +4331,19 @@ class TabManager {
       if (route === 'home') {
         const homeSearch = document.getElementById('home-search');
         if (homeSearch) {
-          homeSearch.focus();
+          homeSearch.focus({ preventScroll: true });
+          // Clear any text that Linux primary-selection may have auto-pasted on focus
+          homeSearch.value = '';
         } else {
-          UI.inputs.address.focus();
+          UI.inputs.address.focus({ preventScroll: true });
+          // Clear any text that Linux primary-selection may have auto-pasted on focus
+          UI.inputs.address.value = '';
         }
       } else if (isInternal) {
         // Focus address bar for other internal pages if they don't have their own focus logic
-        UI.inputs.address.focus();
+        UI.inputs.address.focus({ preventScroll: true });
+        // Clear any text that Linux primary-selection may have auto-pasted on focus
+        UI.inputs.address.value = '';
       }
     }, 50);
 
@@ -4430,23 +4646,43 @@ class TabManager {
       const s = this.settings.currentSettings;
       const tabUrl = e.url || '';
       const isGoogle = tabUrl.includes('google.com') || tabUrl.includes('google.co.');
-      if (s.blockAIOverview && isGoogle && !tab._isCrashRecovering) {
-        const aiCSS = `
-          [data-attnms],
-          .Kevs9.SLPe5b:has([data-attnms]),
-          div[data-attrid="AIOverview"],
-          [data-attrid="VisualDigestGeneratedDescription"],
-          [jsname="YrZdPb"][data-evn],
-          [jscontroller="Elkdbc"],
-          .oGdvd {
-            display: none !important;
-            visibility: hidden !important;
-            height: 0 !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-          }
-        `;
-        tab.webviewEl.insertCSS(aiCSS).catch(() => { });
+      if (isGoogle && !tab._isCrashRecovering) {
+        const isBlocked = s.blockAIOverview === 'deep' || s.blockAIOverview === 'hide' || s.blockAIOverview === true;
+        if (isBlocked) {
+          const aiCSS = `
+            [data-attnms],
+            .Kevs9.SLPe5b:has([data-attnms]),
+            div[data-attrid="AIOverview"],
+            [data-attrid="VisualDigestGeneratedDescription"],
+            [jsname="YrZdPb"][data-evn],
+            [jscontroller="Elkdbc"],
+            .oGdvd {
+              display: none !important;
+              visibility: hidden !important;
+              height: 0 !important;
+              opacity: 0 !important;
+              pointer-events: none !important;
+            }
+          `;
+          tab.webviewEl.insertCSS(aiCSS).catch(() => { });
+        } else {
+          const restoreCSS = `
+            [data-attnms],
+            .Kevs9.SLPe5b:has([data-attnms]),
+            div[data-attrid="AIOverview"],
+            [data-attrid="VisualDigestGeneratedDescription"],
+            [jsname="YrZdPb"][data-evn],
+            [jscontroller="Elkdbc"],
+            .oGdvd {
+              display: revert !important;
+              visibility: visible !important;
+              height: auto !important;
+              opacity: 1 !important;
+              pointer-events: auto !important;
+            }
+          `;
+          tab.webviewEl.insertCSS(restoreCSS).catch(() => { });
+        }
       }
     });
 
@@ -4597,10 +4833,18 @@ class TabManager {
           searchQuery = urlObj.searchParams.get('q') || '';
         } catch (e) { }
 
+        // Fallback: check webview's actual live URL if currentTabUrl was missing query params
+        if (!searchQuery && tab.webviewEl && typeof tab.webviewEl.getURL === 'function') {
+          try {
+            const liveUrl = new URL(tab.webviewEl.getURL());
+            searchQuery = liveUrl.searchParams.get('q') || '';
+          } catch (e) { }
+        }
+
         const rawQuery = searchQuery.trim();
         if (rawQuery) {
-          const defineRegex = /^(?:define\s+|meaning\s+of\s+)(.+)$/i;
-          const meaningRegex = /^(.+?)(?:\s+meaning|\s+definition)$/i;
+          const defineRegex = /^(?:define|meaning\s+of|what\s+is\s+the\s+meaning\s+of|definition\s+of)\s+(.+)$/i;
+          const meaningRegex = /^(.+?)\s+(?:meaning|definition)$/i;
           let searchWord = '';
           const m1 = rawQuery.match(defineRegex);
           if (m1) {
@@ -4609,6 +4853,9 @@ class TabManager {
             const m2 = rawQuery.match(meaningRegex);
             if (m2) searchWord = m2[1].trim();
           }
+
+          // Strip optional quotation marks around the search term (e.g., define "serendipity")
+          searchWord = searchWord.replace(/^["']|["']$/g, '').trim();
 
           if (searchWord && /^[a-zA-Z][a-zA-Z\s'-]*$/.test(searchWord) && searchWord.length < 40) {
             tab._dictWord = searchWord;
@@ -4620,12 +4867,10 @@ class TabManager {
             // Also try skeleton in the webview (best-effort).
             tab.webviewEl.executeJavaScript(getInjectSkeletonJS()).catch(() => { });
 
-            tab._dictFetch = fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(searchWord.toLowerCase())}`)
-              .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
+            tab._dictFetch = fetchWordDefinition(searchWord)
               .then(data => {
                 tab._dictLoading = false;
-                if (!data || !data.length) throw new Error('empty');
-                const successJS = getInjectSuccessJS(data[0]);
+                const successJS = getInjectSuccessJS(data);
                 tab._dictResolvedJS = successJS;
                 if (tab._didStopLoadingFired) {
                   tab.webviewEl.executeJavaScript(successJS).catch(() => { });
@@ -4649,7 +4894,7 @@ class TabManager {
       // All per-page scripts are assembled here and fired in ONE executeJavaScript call.
       const s = { ...this.settings.currentSettings };
       if (tab._isCrashRecovering) {
-        s.blockAIOverview = false;
+        s.blockAIOverview = 'off';
         s.adBlockerMode = 'none';
       }
       const labs = window.labsManager;
@@ -4659,23 +4904,43 @@ class TabManager {
       const isWarpEnabled = !!(labs && labs.isFlagEnabled('yt_warp_speed'));
 
       // Apply robust CSS injection to Google Search via webview.insertCSS (immune to guest CSP)
-      if (s.blockAIOverview && isGoogle) {
-        const aiCSS = `
-          [data-attnms],
-          .Kevs9.SLPe5b:has([data-attnms]),
-          div[data-attrid="AIOverview"],
-          [data-attrid="VisualDigestGeneratedDescription"],
-          [jsname="YrZdPb"][data-evn],
-          [jscontroller="Elkdbc"],
-          .oGdvd {
-            display: none !important;
-            visibility: hidden !important;
-            height: 0 !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-          }
-        `;
-        tab.webviewEl.insertCSS(aiCSS).catch(() => { });
+      if (isGoogle) {
+        const isBlocked = s.blockAIOverview === 'deep' || s.blockAIOverview === 'hide' || s.blockAIOverview === true;
+        if (isBlocked) {
+          const aiCSS = `
+            [data-attnms],
+            .Kevs9.SLPe5b:has([data-attnms]),
+            div[data-attrid="AIOverview"],
+            [data-attrid="VisualDigestGeneratedDescription"],
+            [jsname="YrZdPb"][data-evn],
+            [jscontroller="Elkdbc"],
+            .oGdvd {
+              display: none !important;
+              visibility: hidden !important;
+              height: 0 !important;
+              opacity: 0 !important;
+              pointer-events: none !important;
+            }
+          `;
+          tab.webviewEl.insertCSS(aiCSS).catch(() => { });
+        } else {
+          const restoreCSS = `
+            [data-attnms],
+            .Kevs9.SLPe5b:has([data-attnms]),
+            div[data-attrid="AIOverview"],
+            [data-attrid="VisualDigestGeneratedDescription"],
+            [jsname="YrZdPb"][data-evn],
+            [jscontroller="Elkdbc"],
+            .oGdvd {
+              display: revert !important;
+              visibility: visible !important;
+              height: auto !important;
+              opacity: 1 !important;
+              pointer-events: auto !important;
+            }
+          `;
+          tab.webviewEl.insertCSS(restoreCSS).catch(() => { });
+        }
       }
 
       // Build the injection payload conditionally
@@ -4772,15 +5037,102 @@ class TabManager {
         })();
       `);
 
-      // 2. AI Overview Blocker (Google only, when enabled)
-      if (s.blockAIOverview && isGoogle) {
-        chunks.push(`
-          (function() {
-            if (window.__leefAIHooked) return;
-            window.__leefAIHooked = true;
+      // 2. AI Overview Blocker (Google only, dynamic toggle aware)
+      if (isGoogle) {
+        const isBlocked = s.blockAIOverview === 'deep' || s.blockAIOverview === 'hide' || s.blockAIOverview === true;
+        if (isBlocked) {
+          const aiMode = s.blockAIOverview === 'hide' ? 'hide' : 'deep';
+          chunks.push(`
+            (function() {
+              window.__leefBlockAIEnabled = true;
+              window.__leefBlockAIMode = '${aiMode}';
+              if (window.__leefAIHooked) return;
+              window.__leefAIHooked = true;
 
-            // 1. Text-based & selector-based fallback hiding function (attached to window)
-            window.blockAIBox = () => {
+              // 1. Text-based & selector-based fallback hiding function (attached to window)
+              window.blockAIBox = () => {
+                if (!window.__leefBlockAIEnabled) return;
+                const selectors = [
+                  '[data-attnms]', '.Kevs9.SLPe5b:has([data-attnms])', 'div[data-attrid="AIOverview"]', 
+                  '[data-attrid="VisualDigestGeneratedDescription"]', '[jsname="YrZdPb"][data-evn]', 
+                  '[jscontroller="Elkdbc"]', '.oGdvd'
+                ];
+                selectors.forEach(sel => {
+                  document.querySelectorAll(sel).forEach(el => {
+                    el.style.setProperty('display', 'none', 'important');
+                    el.style.setProperty('visibility', 'hidden', 'important');
+                    el.style.setProperty('height', '0', 'important');
+                  });
+                });
+
+                // Search for header text containing exactly "AI Overview" or "Generative AI"
+                document.querySelectorAll('h1, h2, h3, h4, h5, h6, span, div[role="heading"]').forEach(el => {
+                  const text = el.textContent.trim().toLowerCase();
+                  if (text === 'ai overview' || text === 'generative ai' || text === 'experimental ai') {
+                    const container = el.closest('[data-attnms], div[data-attrid="AIOverview"], [jsname="YrZdPb"][data-evn]');
+                    if (container) {
+                      container.style.setProperty('display', 'none', 'important');
+                      container.style.setProperty('visibility', 'hidden', 'important');
+                      container.style.setProperty('height', '0', 'important');
+                    }
+                  }
+                });
+              };
+
+              const NOAI_REGEX = /( ?)-noai/gi;
+              const hookInput = (input) => {
+                if (input.dataset.leefHooked) return;
+                input.dataset.leefHooked = "true";
+                const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value');
+                if (!descriptor) return;
+                Object.defineProperty(input, 'value', {
+                  get: function() { const v = descriptor.get.call(this); return (v && window.__leefBlockAIEnabled) ? v.replace(NOAI_REGEX, '') : v; },
+                  set: function(val) { descriptor.set.call(this, (val && typeof val === 'string' && window.__leefBlockAIEnabled) ? val.replace(NOAI_REGEX, '') : val); }
+                });
+                const initial = descriptor.get.call(input);
+                if (initial && window.__leefBlockAIEnabled) descriptor.set.call(input, initial.replace(NOAI_REGEX, ''));
+              };
+
+              const interceptSearch = (query) => {
+                if (!query || !window.__leefBlockAIEnabled) return;
+                const cleanQuery = query.replace(NOAI_REGEX, '').trim();
+                let targetUrl = '/search?q=' + encodeURIComponent(cleanQuery);
+                if (window.__leefBlockAIMode === 'deep') {
+                  targetUrl += '&udm=14';
+                }
+                window.location.href = targetUrl;
+              };
+
+              document.addEventListener('submit', (e) => {
+                if (!window.__leefBlockAIEnabled) return;
+                const q = e.target.querySelector('input[name="q"], textarea[name="q"]');
+                if (q) { e.preventDefault(); e.stopPropagation(); interceptSearch(q.value); }
+              }, true);
+
+              document.addEventListener('keydown', (e) => {
+                if (!window.__leefBlockAIEnabled) return;
+                if (e.key === 'Enter' && e.target.name === 'q') { e.preventDefault(); e.stopPropagation(); interceptSearch(e.target.value); }
+              }, true);
+
+              let aiTimer;
+              const observer = new MutationObserver(() => {
+                clearTimeout(aiTimer);
+                aiTimer = setTimeout(() => {
+                  if (!window.__leefBlockAIEnabled) return;
+                  document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
+                  window.blockAIBox();
+                }, 100);
+              });
+              observer.observe(document.body, { childList: true, subtree: true });
+
+              document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
+              window.blockAIBox();
+            })();
+          `);
+        } else {
+          chunks.push(`
+            (function() {
+              window.__leefBlockAIEnabled = false;
               const selectors = [
                 '[data-attnms]', '.Kevs9.SLPe5b:has([data-attnms])', 'div[data-attrid="AIOverview"]', 
                 '[data-attrid="VisualDigestGeneratedDescription"]', '[jsname="YrZdPb"][data-evn]', 
@@ -4788,69 +5140,14 @@ class TabManager {
               ];
               selectors.forEach(sel => {
                 document.querySelectorAll(sel).forEach(el => {
-                  el.style.setProperty('display', 'none', 'important');
-                  el.style.setProperty('visibility', 'hidden', 'important');
-                  el.style.setProperty('height', '0', 'important');
+                  el.style.removeProperty('display');
+                  el.style.removeProperty('visibility');
+                  el.style.removeProperty('height');
                 });
               });
-
-              // Search for header text containing exactly "AI Overview" or "Generative AI"
-              document.querySelectorAll('h1, h2, h3, h4, h5, h6, span, div[role="heading"]').forEach(el => {
-                const text = el.textContent.trim().toLowerCase();
-                if (text === 'ai overview' || text === 'generative ai' || text === 'experimental ai') {
-                  const container = el.closest('[data-attnms], div[data-attrid="AIOverview"], [jsname="YrZdPb"][data-evn]');
-                  if (container) {
-                    container.style.setProperty('display', 'none', 'important');
-                    container.style.setProperty('visibility', 'hidden', 'important');
-                    container.style.setProperty('height', '0', 'important');
-                  }
-                }
-              });
-            };
-
-            const NOAI_REGEX = /( ?)-noai/gi;
-            const hookInput = (input) => {
-              if (input.dataset.leefHooked) return;
-              input.dataset.leefHooked = "true";
-              const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value');
-              if (!descriptor) return;
-              Object.defineProperty(input, 'value', {
-                get: function() { const v = descriptor.get.call(this); return v ? v.replace(NOAI_REGEX, '') : v; },
-                set: function(val) { descriptor.set.call(this, (val && typeof val === 'string') ? val.replace(NOAI_REGEX, '') : val); }
-              });
-              const initial = descriptor.get.call(input);
-              if (initial) descriptor.set.call(input, initial.replace(NOAI_REGEX, ''));
-            };
-
-            const interceptSearch = (query) => {
-              if (!query) return;
-              const cleanQuery = query.replace(NOAI_REGEX, '').trim();
-              window.location.href = '/search?q=' + encodeURIComponent(cleanQuery);
-            };
-
-            document.addEventListener('submit', (e) => {
-              const q = e.target.querySelector('input[name="q"], textarea[name="q"]');
-              if (q) { e.preventDefault(); e.stopPropagation(); interceptSearch(q.value); }
-            }, true);
-
-            document.addEventListener('keydown', (e) => {
-              if (e.key === 'Enter' && e.target.name === 'q') { e.preventDefault(); e.stopPropagation(); interceptSearch(e.target.value); }
-            }, true);
-
-            let aiTimer;
-            const observer = new MutationObserver(() => {
-              clearTimeout(aiTimer);
-              aiTimer = setTimeout(() => {
-                document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
-                window.blockAIBox();
-              }, 100);
-            });
-            observer.observe(document.body, { childList: true, subtree: true });
-
-            document.querySelectorAll('input[name="q"], textarea[name="q"]').forEach(hookInput);
-            window.blockAIBox();
-          })();
-        `);
+            })();
+          `);
+        }
       }
 
       if (s.gpc !== false) {
@@ -5047,36 +5344,75 @@ class TabManager {
       }
 
       // Google SPA AI Blocker hook
-      if (isGoogle && s.blockAIOverview && !tab._googleNavHooked) {
+      if (isGoogle && !tab._googleNavHooked) {
         tab._googleNavHooked = true;
         tab.webviewEl.addEventListener('did-navigate-in-page', (e) => {
           if (!e.isMainFrame) return;
           if (tab.webviewEl.getURL().includes('google.')) {
             if (tab._isCrashRecovering) return;
-            // 1. Re-apply elevated CSS injection
-            const aiCSS = `
-              [data-attnms],
-              .Kevs9.SLPe5b:has([data-attnms]),
-              div[data-attrid="AIOverview"],
-              [data-attrid="VisualDigestGeneratedDescription"],
-              [jsname="YrZdPb"][data-evn],
-              [jscontroller="Elkdbc"],
-              .oGdvd {
-                display: none !important;
-                visibility: hidden !important;
-                height: 0 !important;
-                opacity: 0 !important;
-                pointer-events: none !important;
-              }
-            `;
-            tab.webviewEl.insertCSS(aiCSS).catch(() => { });
+            const currentS = this.settings.currentSettings;
+            const isBlocked = currentS.blockAIOverview === 'deep' || currentS.blockAIOverview === 'hide' || currentS.blockAIOverview === true;
+            if (isBlocked) {
+              const aiMode = currentS.blockAIOverview === 'hide' ? 'hide' : 'deep';
+              // 1. Re-apply elevated CSS injection
+              const aiCSS = `
+                [data-attnms],
+                .Kevs9.SLPe5b:has([data-attnms]),
+                div[data-attrid="AIOverview"],
+                [data-attrid="VisualDigestGeneratedDescription"],
+                [jsname="YrZdPb"][data-evn],
+                [jscontroller="Elkdbc"],
+                .oGdvd {
+                  display: none !important;
+                  visibility: hidden !important;
+                  height: 0 !important;
+                  opacity: 0 !important;
+                  pointer-events: none !important;
+                }
+              `;
+              tab.webviewEl.insertCSS(aiCSS).catch(() => { });
 
-            // 2. Re-trigger dynamic JS blocker
-            tab.webviewEl.executeJavaScript(`
-              if (window.blockAIBox && typeof window.blockAIBox === 'function') {
-                window.blockAIBox();
-              }
-            `).catch(() => { });
+              // 2. Re-trigger dynamic JS blocker
+              tab.webviewEl.executeJavaScript(`
+                window.__leefBlockAIEnabled = true;
+                window.__leefBlockAIMode = '${aiMode}';
+                if (window.blockAIBox && typeof window.blockAIBox === 'function') {
+                  window.blockAIBox();
+                }
+              `).catch(() => { });
+            } else {
+              const restoreCSS = `
+                [data-attnms],
+                .Kevs9.SLPe5b:has([data-attnms]),
+                div[data-attrid="AIOverview"],
+                [data-attrid="VisualDigestGeneratedDescription"],
+                [jsname="YrZdPb"][data-evn],
+                [jscontroller="Elkdbc"],
+                .oGdvd {
+                  display: revert !important;
+                  visibility: visible !important;
+                  height: auto !important;
+                  opacity: 1 !important;
+                  pointer-events: auto !important;
+                }
+              `;
+              tab.webviewEl.insertCSS(restoreCSS).catch(() => { });
+              tab.webviewEl.executeJavaScript(`
+                window.__leefBlockAIEnabled = false;
+                const selectors = [
+                  '[data-attnms]', '.Kevs9.SLPe5b:has([data-attnms])', 'div[data-attrid="AIOverview"]', 
+                  '[data-attrid="VisualDigestGeneratedDescription"]', '[jsname="YrZdPb"][data-evn]', 
+                  '[jscontroller="Elkdbc"]', '.oGdvd'
+                ];
+                selectors.forEach(sel => {
+                  document.querySelectorAll(sel).forEach(el => {
+                    el.style.removeProperty('display');
+                    el.style.removeProperty('visibility');
+                    el.style.removeProperty('height');
+                  });
+                });
+              `).catch(() => { });
+            }
           }
         });
       }
@@ -5237,7 +5573,8 @@ class TabManager {
     else if (tab.url === 'plugins') tab.tabTitle.textContent = window.t("Plugin Store");
     else {
       let displayTitle = window.t(tab.title || 'Loading...');
-      if (this.settings.currentSettings.blockAIOverview) {
+      const aiMode = this.settings.currentSettings.blockAIOverview;
+      if (aiMode === 'deep' || aiMode === 'hide' || aiMode === true) {
         displayTitle = displayTitle.replace(/ -noai/gi, '');
       }
       tab.tabTitle.textContent = displayTitle;
@@ -5262,7 +5599,9 @@ class TabManager {
             } catch (e) { }
           }
 
-          if (this.settings.currentSettings.blockAIOverview && displayUrl.includes('google.com/search')) {
+          const currentAiMode = this.settings.currentSettings.blockAIOverview;
+          const isDeepMode = currentAiMode === 'deep' || currentAiMode === true;
+          if (isDeepMode && displayUrl.includes('google.com/search')) {
             displayUrl = displayUrl.replace(/(\+|\%20)-noai/g, '');
             displayUrl = displayUrl.replace(/([?&])udm=14(&?)/g, (match, p1, p2) => p2 ? p1 : '');
             displayUrl = displayUrl.replace(/[?&]$/, '');
@@ -7829,9 +8168,29 @@ class HeroManager {
 
     if (isEfficiency && !isHomeVisible) return;
 
+    const settings = window.settingsManager?.currentSettings;
     const now = new Date();
-    const hours = now.getHours();
-    const minutes = String(now.getMinutes()).padStart(2, '0');
+    let hours = now.getHours();
+    let minutes = String(now.getMinutes()).padStart(2, '0');
+
+    // Timezone conversion if specified
+    if (settings && settings.timezone && settings.timezone !== 'auto') {
+      try {
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: settings.timezone,
+          hour: 'numeric',
+          minute: 'numeric',
+          hourCycle: 'h23'
+        }).formatToParts(now);
+
+        const hPart = parts.find(p => p.type === 'hour');
+        const mPart = parts.find(p => p.type === 'minute');
+        if (hPart) hours = parseInt(hPart.value, 10);
+        if (mPart) minutes = mPart.value.padStart(2, '0');
+      } catch (e) {
+        // Fallback to local time if timezone string is invalid
+      }
+    }
 
     if (this.clockEl) this.clockEl.textContent = `${hours % 12 || 12}:${minutes}`;
 
@@ -7841,11 +8200,17 @@ class HeroManager {
       else if (hours < 17) greet = 'Good Afternoon';
       else if (hours > 21) greet = 'Good Night';
 
-      const lang = window.settingsManager?.currentSettings?.language || 'en';
+      const lang = settings?.language || 'en';
+      let localizedGreet = greet;
       if (lang !== 'en' && TRANSLATIONS[lang] && TRANSLATIONS[lang][greet]) {
-        this.greetingEl.textContent = TRANSLATIONS[lang][greet];
+        localizedGreet = TRANSLATIONS[lang][greet];
+      }
+
+      const customName = (settings?.greetingName || '').trim();
+      if (customName) {
+        this.greetingEl.textContent = `${localizedGreet}, ${customName}`;
       } else {
-        this.greetingEl.textContent = greet;
+        this.greetingEl.textContent = localizedGreet;
       }
     }
   }
@@ -8063,6 +8428,11 @@ class AddressBarManager {
     this.suggestionsEl.style.zIndex = '999999';
     document.body.appendChild(this.suggestionsEl);
 
+    // Prevent input blur when clicking anywhere inside the suggestions popup
+    this.suggestionsEl.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+    });
+
     this.selectedIndex = -1;
     this.currentFetchId = 0; // Track requests to ignore stale results
     this.lastWebSuggestions = []; // Cache to prevent layout jumping/flashing
@@ -8094,7 +8464,7 @@ class AddressBarManager {
     this.input.addEventListener('keydown', (e) => this.handleKeydown(e), true);
     this.input.addEventListener('blur', () => {
       // Delay hide to allow click on a suggestion
-      setTimeout(() => { this._hideSuggestions(true); }, 100);
+      setTimeout(() => { this._hideSuggestions(true); }, 150);
     });
     this.input.addEventListener('focus', () => this.showSuggestions());
   }
@@ -8351,8 +8721,8 @@ class AddressBarManager {
       existing[i].remove();
     }
 
-    // Automatically select the first item so pressing Enter executes it
-    this.selectedIndex = itemData.length > 0 ? 0 : -1;
+    // Keep selectedIndex at -1 by default so pressing Enter submits whatever the user actually typed in the input
+    this.selectedIndex = -1;
     this.updateSelection(Array.from(this.suggestionsEl.querySelectorAll('.suggestion-item')), false);
   }
 
@@ -8908,7 +9278,9 @@ window.onload = async () => {
       }
 
       document.getElementById('btn-onboarding-finish').addEventListener('click', () => {
-        const aiChecked = document.getElementById('onboard-ai').checked;
+        const aiVal = document.querySelector('input[name="onboard-ai-tier"]:checked')?.value
+          || (document.getElementById('onboard-ai')?.checked ? 'deep' : 'off')
+          || 'deep';
         const autoChecked = document.getElementById('onboard-autocomplete').checked;
         const dictChecked = document.getElementById('onboard-dictionary').checked;
         const adblockVal = document.querySelector('input[name="onboard-adblock-tier"]:checked')?.value || 'none';
@@ -8917,8 +9289,8 @@ window.onload = async () => {
         const updatesChecked = document.getElementById('onboard-updates').checked;
 
         // Sync to actual settings DOM
-        const blockAiEl = document.getElementById('block-ai');
-        if (blockAiEl) blockAiEl.checked = aiChecked;
+        document.querySelectorAll('input[name="block-ai-tier"]').forEach(r => { r.checked = r.value === aiVal; });
+        document.querySelectorAll('input[name="block-ai-tier-browsing"]').forEach(r => { r.checked = r.value === aiVal; });
 
         const autoEl = document.getElementById('live-autocomplete');
         if (autoEl) autoEl.checked = autoChecked;
